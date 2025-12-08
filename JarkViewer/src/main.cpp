@@ -376,7 +376,7 @@ public:
         }
     }
 
-    void OnMouseDown(WPARAM btnState, int x, int y, WPARAM wParam) {
+    void OnMouseDown(WPARAM btnState, int x, int y, WPARAM wParam) override {
         switch ((uint64_t)btnState)
         {
         case WM_LBUTTONDOWN: {//左键
@@ -440,7 +440,7 @@ public:
         }
     }
 
-    void OnMouseUp(WPARAM btnState, int x, int y, WPARAM wParam) {
+    void OnMouseUp(WPARAM btnState, int x, int y, WPARAM wParam) override {
         switch ((uint64_t)btnState)
         {
         case WM_LBUTTONUP: {//左键
@@ -451,7 +451,8 @@ public:
 
         case WM_RBUTTONUP: {//右键
             if (GlobalVar::settingParameter.rightClickAction == 0) {
-                // TODO 右键菜单
+                //ShowContextMenu(m_hWnd, x, y);
+                PostMessageW(m_hWnd, WM_CONTEXTMENU, 0, MAKELPARAM(x, y));
             }
             else {
                 operateQueue.push({ ActionENUM::requestExit });
@@ -478,7 +479,7 @@ public:
         }
     }
 
-    void OnMouseMove(WPARAM btnState, int x, int y) {
+    void OnMouseMove(WPARAM btnState, int x, int y) override {
         mousePos = { x, y };
 
         if (mouseIsPressing) {
@@ -601,13 +602,13 @@ public:
         }
     }
 
-    void OnMouseLeave() {
+    void OnMouseLeave() override {
         cursorPosLast = cursorPos = CursorPos::centerArea;
         extraUIFlag = ShowExtraUI::none;
         operateQueue.push({ ActionENUM::normalFresh });
     }
 
-    void OnMouseWheel(UINT nFlags, short zDelta, int x, int y) {
+    void OnMouseWheel(UINT nFlags, short zDelta, int x, int y) override {
         switch (cursorPos)
         {
         case CursorPos::centerArea:
@@ -630,7 +631,7 @@ public:
         }
     }
 
-    void OnKeyDown(WPARAM keyValue) {
+    void OnKeyDown(WPARAM keyValue) override {
         if (ctrlIsPressing) {
             switch (keyValue)
             {
@@ -860,7 +861,7 @@ public:
         }
     }
 
-    void OnKeyUp(WPARAM keyValue) {
+    void OnKeyUp(WPARAM keyValue) override {
         switch (keyValue)
         {
         case VK_CONTROL: {
@@ -875,7 +876,7 @@ public:
         }
     }
 
-    void OnDropFiles(WPARAM wParam) {
+    void OnDropFiles(WPARAM wParam) override {
         wstring path;
         HDROP hDrop = (HDROP)wParam;
         UINT fileCount = DragQueryFileW(hDrop, 0xFFFFFFFF, NULL, 0);
@@ -893,7 +894,71 @@ public:
         }
     }
 
-    void OnResize(UINT width, UINT height) {
+    void OnContextMenuCommand(WPARAM wParam) override {
+        switch ((ContextMenu)wParam) {
+        case ContextMenu::openNewImage: {
+            wstring filePath = jarkUtils::SelectFile(m_hWnd);
+            if (!filePath.empty()) {
+                initOpenFile(filePath);
+                operateQueue.push({ ActionENUM::normalFresh });
+            }
+        }break;
+
+        case ContextMenu::copyImageInfo: {
+            jarkUtils::copyToClipboard(jarkUtils::utf8ToWstring(curPar.imageAssetPtr->exifInfo));
+        }break;
+
+        case ContextMenu::copyImagePath: {
+            jarkUtils::copyToClipboard(imgFileList[curFileIdx]);
+        }break;
+
+        case ContextMenu::copyImageData: {
+            cv::Mat srcImg;
+            if (curPar.imageAssetPtr->format == ImageFormat::None || curPar.imageAssetPtr->format == ImageFormat::Still)
+                srcImg = curPar.imageAssetPtr->primaryFrame;
+            else
+                srcImg = curPar.imageAssetPtr->frames[curPar.curFrameIdx];
+            jarkUtils::copyImageToClipboard(srcImg);
+        }break;
+
+        case ContextMenu::toggleExifDisplay: {
+            operateQueue.push({ ActionENUM::toggleExif });
+        }break;
+
+        case ContextMenu::openContainerFloder: {
+            jarkUtils::openFileLocation(imgFileList[curFileIdx]);
+        }break;
+
+        case ContextMenu::deleteImage: {
+            operateQueue.push({ ActionENUM::deleteImg });
+        }break;
+
+        case ContextMenu::openFileProperties: {
+            jarkUtils::openFileProperties(imgFileList[curFileIdx]);
+        }break;
+
+        case ContextMenu::printImage: {
+            operateQueue.push({ ActionENUM::printImage });
+        }break;
+
+        case ContextMenu::openSetting: {
+            operateQueue.push({ ActionENUM::setting, 0 });
+        }break;
+
+        case ContextMenu::aboutSoftware: {
+            operateQueue.push({ ActionENUM::setting, 3 });
+        }break;
+
+        case ContextMenu::exitSoftware: {
+            operateQueue.push({ ActionENUM::requestExit });
+        }break;
+
+        default:
+            break;
+        }
+    }
+
+    void OnResize(UINT width, UINT height) override {
         operateQueue.push({ ActionENUM::newSize, (int)width, (int)height });
     }
 
@@ -1909,42 +1974,14 @@ public:
         case ActionENUM::deleteImg: {
             if (imgFileList.empty() || curFileIdx < 0 || curFileIdx >= (int)imgFileList.size()) { break; }
 
-            const std::wstring& target = imgFileList[curFileIdx];
-            if (target == m_wndCaption) {
-                break;
-            }
-
-            auto refreshAfterRemoval = [&]() {
-                if (imgFileList.empty()) {
-                    imgFileList.emplace_back(m_wndCaption);
-                    curFileIdx = 0;
-                    imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32)});
-                }
-                else if (curFileIdx >= (int)imgFileList.size()) {
-                    curFileIdx = (int)imgFileList.size() - 1;
-                }
-
-                curPar.imageAssetPtr = imgDB.getSafePtr(
-                    imgFileList[curFileIdx],
-                    imgFileList[(curFileIdx + 1) % imgFileList.size()]);
-                curPar.Init(winWidth, winHeight);
-                };
-
-            namespace fs = std::filesystem;
-            const fs::path targetPath(target);
-            std::error_code existsErr;
-            const bool exists = fs::exists(targetPath, existsErr);
-            std::error_code typeErr;
-            const bool isRegular = fs::is_regular_file(targetPath, typeErr);
-            if (!exists || existsErr || !isRegular || typeErr) {
-                imgFileList.erase(imgFileList.begin() + curFileIdx);
-                refreshAfterRemoval();
+            std::wstring_view target = imgFileList[curFileIdx];
+            if (target == m_wndCaption || !std::filesystem::exists(target)) {
                 break;
             }
 
             bool shouldDelete = true;
             if (GlobalVar::settingParameter.isNoteBeforeDelete) {
-                auto tips = std::format(L"{}\n\n{}", getUIStringW(7), targetPath.wstring());
+                auto tips = std::format(L"{}\n\n{}", getUIStringW(7), target);
                 shouldDelete = MessageBoxW(m_hWnd, tips.c_str(), getUIStringW(1),
                     MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) == IDYES;
             }
@@ -1952,7 +1989,7 @@ public:
             if (!shouldDelete)
                 break;
 
-            std::wstring pathBuffer = targetPath.wstring();
+            std::wstring pathBuffer(target);
             pathBuffer.push_back(L'\0'); // SHFileOperation 需要双零终止
 
             SHFILEOPSTRUCTW fileOp{};
@@ -1970,7 +2007,20 @@ public:
             }
 
             imgFileList.erase(imgFileList.begin() + curFileIdx);
-            refreshAfterRemoval();
+
+            if (imgFileList.empty()) {
+                imgFileList.emplace_back(m_wndCaption);
+                curFileIdx = 0;
+                imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32) });
+            }
+            else if (curFileIdx >= (int)imgFileList.size()) {
+                curFileIdx = (int)imgFileList.size() - 1;
+            }
+
+            curPar.imageAssetPtr = imgDB.getSafePtr(
+                imgFileList[curFileIdx],
+                imgFileList[(curFileIdx + 1) % imgFileList.size()]);
+            curPar.Init(winWidth, winHeight);
         } break;
 
         case ActionENUM::requestExit: {

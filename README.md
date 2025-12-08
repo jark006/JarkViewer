@@ -2,10 +2,7 @@
 
 ![Version](https://img.shields.io/github/v/release/jark006/JarkViewer) ![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total) ![Stars](https://img.shields.io/github/stars/jark006/JarkViewer) ![License](https://img.shields.io/github/license/jark006/JarkViewer) ![Platform](https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg)
 
-<p align="center">
-  中文 |
-  <a href="README_EN.md">English</a>
-</p>
+中文 | [English](README_EN.md)
 
 *一个高效便捷的多格式图片查看工具*
 
@@ -23,7 +20,7 @@
 1. **🖨 打印图像**：窗口左下角 `单击` / `Ctrl + P`
 1. **🎞️ 逐帧浏览**：窗口顶部控制栏 / `J:上帧` `K:暂停/继续` `L:下帧`
 1. **⌨️ 空格按键**：若当前是静态图则切换下一张，若是动图则暂停/播放
-1. **❌ 快捷退出**：右键单击 / `ESC` 键
+1. **✂️ 分解动图**：`Ctrl + S` 将动图每一帧另存为单独的静态图像文件
 
 ---
 

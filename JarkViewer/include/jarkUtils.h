@@ -45,6 +45,8 @@ using std::endl;
 #include <shellapi.h>
 #include <winspool.h>
 #include <dwmapi.h>
+#include <uxtheme.h>
+#include <vssym32.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <shlwapi.h>
@@ -52,6 +54,7 @@ using std::endl;
 #include <mferror.h>
 #include <wmcodecdsp.h>
 #include <shlobj.h>
+#include <commctrl.h>
 
 #pragma comment(lib, "Psapi.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -72,6 +75,9 @@ using std::endl;
 #pragma comment(lib, "wmcodecdspuuid.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "Ole32.lib")
+#pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "uxtheme.lib")
+
 
 #include<opencv2/core.hpp>
 #include<opencv2/opencv.hpp>
@@ -110,7 +116,7 @@ struct SettingParameter {
 
     bool isAllowRotateAnimation = true;
     bool isAllowZoomAnimation = true;
-    bool isOptimizeSlide = true;            // 优化图像平移性能 （实为渲染工作量偷懒减半）
+    bool isOptimizeSlide = false;           // 优化图像平移性能 （实为渲染工作量偷懒减半）
     bool isNoteBeforeDelete = true;         // 删除前提示
     int switchImageAnimationMode = 0;       // 0: 无动画  1:上下滑动  2:左右滑动
 
@@ -260,6 +266,11 @@ enum class CursorPos :int {
 
 enum class ShowExtraUI :int {
     none = 0, rotateLeftButton, printer, leftArrow, rightArrow, setting, rotateRightButton, animationBar
+};
+
+enum class ContextMenu :int {
+    openNewImage = 1000, copyImageInfo, copyImagePath, copyImageData, toggleExifDisplay, openContainerFloder, deleteImage,
+    openFileProperties, printImage, openSetting, aboutSoftware, exitSoftware
 };
 
 struct Action {
@@ -446,6 +457,10 @@ public:
     static void activateWindow(HWND hwnd);
 
     static std::wstring getCurrentAppPath();
+
+    static void openFileLocation(wstring_view filePath);
+
+    static void openFileProperties(wstring_view filePath);
 
     static inline const char COMPILE_DATE_TIME[32] = {
         __DATE__[7],

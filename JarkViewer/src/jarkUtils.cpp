@@ -656,3 +656,33 @@ std::wstring jarkUtils::getCurrentAppPath() {
     GetModuleFileNameW(nullptr, path, MAX_PATH);
     return std::wstring(path);
 }
+
+// 调用 Windows Explorer 来打开文件所在的文件夹并选中该文件
+void jarkUtils::openFileLocation(wstring_view filePath) {
+    if (!std::filesystem::exists(filePath)) {
+        return;
+    }
+
+    ShellExecuteW(
+        nullptr,
+        L"open",
+        L"explorer.exe",
+        std::format(L"/select,\"{}\"", filePath).c_str(),
+        nullptr,
+        SW_SHOWNORMAL
+    );
+}
+
+void jarkUtils::openFileProperties(wstring_view filePath) {
+    if (!std::filesystem::exists(filePath)) {
+        return;
+    }
+
+    SHELLEXECUTEINFOW sei = { sizeof(SHELLEXECUTEINFOW) };
+    sei.lpVerb = L"properties";
+    sei.lpFile = filePath.data();
+    sei.nShow = SW_SHOW;
+    sei.fMask = SEE_MASK_INVOKEIDLIST;
+
+    ShellExecuteExW(&sei);
+}

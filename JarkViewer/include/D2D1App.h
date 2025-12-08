@@ -28,6 +28,21 @@ public:
     void Run();
     // 处理消息
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    static HMENU CreateContextMenu(HWND hwnd);
+    static void ShowContextMenu(HWND hwnd, int x, int y);
+
+    virtual void OnMouseDown(WPARAM btnState, int x, int y, WPARAM wParam) = 0;
+    virtual void OnMouseUp(WPARAM btnState, int x, int y, WPARAM wParam) = 0;
+    virtual void OnMouseMove(WPARAM btnState, int x, int y) = 0;
+    virtual void OnMouseLeave() = 0;
+    virtual void OnMouseWheel(UINT nFlags, short zDelta, int x, int y) = 0;
+    virtual void OnKeyDown(WPARAM keyValue) = 0;
+    virtual void OnKeyUp(WPARAM keyValue) = 0;
+    virtual void OnDropFiles(WPARAM wParam) = 0;
+    virtual void OnContextMenuCommand(WPARAM wParam) = 0;
+
+    virtual void OnResize(UINT width, UINT height) = 0;
+    virtual void OnDestroy();
 
 protected:
 
@@ -45,20 +60,6 @@ protected:
 
     void loadSettings();
     void saveSettings() const;
-
-    // 消息处理：鼠标
-    virtual void OnMouseDown(WPARAM btnState, int x, int y, WPARAM wParam) {}
-    virtual void OnMouseUp(WPARAM btnState, int x, int y, WPARAM wParam) {}
-    virtual void OnMouseMove(WPARAM btnState, int x, int y) {}
-    virtual void OnMouseLeave() {}
-    virtual void OnMouseWheel(UINT nFlags, short zDelta, int x, int y) {}
-    virtual void OnKeyDown(WPARAM keyValue) {}
-    virtual void OnKeyUp(WPARAM keyValue) {}
-    virtual void OnDropFiles(WPARAM wParam) {}
-    // 消息处理：重设尺寸
-    virtual void OnResize(UINT width, UINT height);
-    // 消息处理：窗口销毁
-    virtual void OnDestroy();
 
 protected:
     // 应用程序实例句柄

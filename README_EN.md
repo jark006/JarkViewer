@@ -2,10 +2,7 @@
 
 ![Version](https://img.shields.io/github/v/release/jark006/JarkViewer) ![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total) ![Stars](https://img.shields.io/github/stars/jark006/JarkViewer) ![License](https://img.shields.io/github/license/jark006/JarkViewer) ![Platform](https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg)
 
-<p align="center">
-  <a href="README.md">中文</a> |
-  English
-</p>
+[中文](README.md) | English
 
 *An efficient and convenient multi-format image viewer*
 
@@ -13,17 +10,17 @@
 
 ## ✨ Controls
 
-1.  **⏭ Next/Previous Image**: `Click/Wheel` on left/right window edges / `Left/Right` Arrow Keys
-2.  **🔍 Zoom In/Out**: Mouse wheel in window center / `Up/Down` Arrow Keys
-3.  **🔄 Rotate Image**: `Click/Wheel` on top-left or top-right window corners / `Q/E` Keys
-4.  **🖱️ Pan Image**: Mouse drag / `W/A/S/D` Keys
-5.  **ℹ️ Image Info**: Click mouse wheel / `TAB` or `I` Key
-6.  **🖥️ Toggle Fullscreen**: Double-click window / `F` Key / `F11` Key
+1.  **⏭ Switch**: `Click/Wheel` on left/right window edges / `Left/Right` Arrow Keys
+2.  **🔍 Zoom**: Mouse wheel in window center / `Up/Down` Arrow Keys
+3.  **🔄 Rotate**: `Click/Wheel` on top-left or top-right window corners / `Q/E` Keys
+4.  **🖱️ Panning**: Mouse drag / `W/A/S/D` Keys
+5.  **ℹ️ EXIF Info**: Click mouse wheel / `TAB` or `I` Key
+6.  **🖥️ Fullscreen**: Double-click window / `F` Key / `F11` Key
 7.  **📋 Copy Image**: `Ctrl + C`
-8.  **🖨 Print Image**: `Click` on bottom-left window corner / `Ctrl + P`
+8.  **🖨 Print**: `Click` on bottom-left window corner / `Ctrl + P`
 9.  **🎞️ Browse Frames**: Use top control bar / `J: Previous Frame` `K: Pause/Resume` `L: Next Frame`
 10. **⌨️ Space Key**: If viewing a static image, switches to next image. If viewing an animation, toggles pause/play.
-11. **❌ Quick Exit**: Right-click / `ESC` Key
+11. **✂️ Split animation**: Press `Ctrl + S` to save each frame of the animation as a separate still image file.
 
 ---
 

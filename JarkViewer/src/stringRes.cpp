@@ -21,7 +21,7 @@ const char* const UIStringTable[STRING_MAX_NUM][2] = {
     {"本软件原生绿色单文件，请把软件放置到合适位置再关联文件格式，若软件位置变化则需重新关联。\n若不再使用本软件，请点击【全不选】再点击【立即关联】即可移除所有关联关系。", "This software is a portable single file.  Please place the software in an appropriate location before associating file formats.\nIf you no longer to use this software,  please click \"Clear All\" and then click \"Apply\" to remove all associations." },
     {"旋转动画", "Rotate Animation"},
     {"缩放动画", "Zoom Animation"},
-    {"平移图像加速 (拖动图像时优化渲染速度，图像会微微失真)", "Optimize Slide"},
+    {"优化渲染 (拖动图像时会微微失真)", "Optimized rendering (slight distortion when dragging)"},
     {"删除前提示", "Confirm Before Delete"},
     {"切换动画模式", "Switch Animation Mode"},
     {"幻灯片顺序", "Slideshow Order"},
@@ -59,7 +59,7 @@ const char* const UIStringTable[STRING_MAX_NUM][2] = {
     {"东经 E", "East Longitude"},
     {"西经 W", "West Longitude"},  // 50
     {"子图数量", "Number of subImage"},
-    {"\n\nAI生图提示词 ComfyUI JSON:\n", "\n\nAI-generated image prompt ComfyUI JSON:\n"},
+    {"\n\nAI生图提示词 ComfyUI工作流.json\n", "\n\nAI-generated image prompt ComfyUI_workflow.json\n"},
     {"XX", "XX"},
     {"XX", "XX"},
     {"XX", "XX"},
@@ -96,7 +96,23 @@ const wchar_t* const UIStringTableW[STRING_MAX_NUM][2] = {
     {L"清空剪贴板失败", L"Clearing clipboard failed"},
     {L"保存到图像文件", L"Save to image file"},
     {L"若不再使用本软件，请关闭软件后再手动删除配置文件:\n", L"If no longer in use this program, please close the program and then manually delete the configuration files:  "},
-    {L"XX", L"XX"},  // 25
+    {L"复制EXIF信息 (&E)", L"Copy &EXIF info"},  // 25
+    {L"复制文件路径 (&P)", L"Copy file &path"},
+    {L"复制图像数据 (&C)", L"&Copy image data"},
+    {L"显示EXIF信息 (&I)", L"Show EXIF &info"},
+    {L"打开所在位置 (&L)", L"Open file &location"},
+    {L"删除到回收站 (&D)", L"Move to recycle bin(&D)"},  // 30
+    {L"打印 (&P)", L"&Print"},
+    {L"设置 (&S)", L"&Settings"},
+    {L"关于 (&A)", L"&About"},
+    {L"退出 (&X)", L"E&xit"},
+    {L"打开新图像 (&O)", L"&Open new image"},  // 35
+    {L"文件属性 (&F)", L"&File properties"},
+    {L"XX", L"XX"},
+    {L"XX", L"XX"},
+    {L"XX", L"XX"},
+    {L"XX", L"XX"},  // 40
+    {L"XX", L"XX"},
     {L"XX", L"XX"},
 
 };

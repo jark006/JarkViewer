@@ -29,29 +29,18 @@ void D2D1App::SafeRelease(Interface*& pInterfaceToRelease) {
 
 void D2D1App::loadSettings() {
     PWSTR appDataPath = nullptr;
-    if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &appDataPath)))
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &appDataPath))) {
+        JARK_LOG("SHGetKnownFolderPath FOLDERID_RoamingAppData failed.");
         return;
+    }
 
     GlobalVar::settingPath = std::wstring(appDataPath) + L"\\JarkViewer.db";
     CoTaskMemFree(appDataPath);
     appDataPath = nullptr;
 
     auto f = _wfopen(GlobalVar::settingPath.c_str(), L"rb");
-    if (!f) {
-        wchar_t exePath[MAX_PATH];
-        if (GetModuleFileNameW(NULL, exePath, MAX_PATH) <= 0)
-            return;
-
-        std::wstring exeDir = exePath;
-        size_t pos = exeDir.find_last_of(L"\\/");
-        if (pos == std::wstring::npos)
-            return;
-
-        GlobalVar::settingPath = exeDir.substr(0, pos) + L"\\JarkViewer.db";
-        f = _wfopen(GlobalVar::settingPath.c_str(), L"rb");
-        if (!f)
-            return;
-    }
+    if (!f)
+        return;
 
     SettingParameter tmp;
     auto readLen = fread(&tmp, 1, sizeof(SettingParameter), f);
@@ -383,124 +372,170 @@ void D2D1App::Run() {
     }
 }
 
-void D2D1App::OnResize(UINT width, UINT height)
-{
-    CreateWindowSizeDependentResources();
-}
+//void D2D1App::OnResize(UINT width, UINT height)
+//{
+//    CreateWindowSizeDependentResources();
+//}
 
 void D2D1App::OnDestroy()
 {
     m_fRunning = FALSE;
 }
 
-LRESULT D2D1App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    LRESULT result = 0;
 
-    if (message == WM_CREATE) {
+LRESULT D2D1App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+    case WM_CREATE: {
         LPCREATESTRUCT pcs = (LPCREATESTRUCT)lParam;
-        D2D1App *pD2DApp = (D2D1App *)pcs->lpCreateParams;
-
-        ::SetWindowLongPtrW(
-            hwnd,
-            GWLP_USERDATA,
-            (LONG_PTR)pD2DApp
-            );
-
-        result = 1;
+        D2D1App* pD2DApp = (D2D1App*)pcs->lpCreateParams;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)pD2DApp);
+        return 1;
     }
-    else if (message == WM_GETMINMAXINFO) {
+    case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lParam;
         mmi->ptMinTrackSize.x = 400; // 最小宽度
-        mmi->ptMinTrackSize.y = 300; // 最小高度    
+        mmi->ptMinTrackSize.y = 300; // 最小高度
+        return S_OK;
     }
-    else {
-        static TRACKMOUSEEVENT tme = {
-            .cbSize = sizeof(TRACKMOUSEEVENT),
-            .dwFlags = TME_LEAVE,
-        };
-
-        D2D1App *pD2DApp = reinterpret_cast<D2D1App *>(static_cast<LONG_PTR>(
-            ::GetWindowLongPtrW(
-                hwnd,
-                GWLP_USERDATA
-                )));
-
-        bool wasHandled = false;
-
-        if (pD2DApp)
-        {
-            switch(message)
-            {
-            case WM_LBUTTONDOWN:
-            case WM_MBUTTONDOWN:
-            case WM_RBUTTONDOWN:
-            case WM_XBUTTONDOWN:
-                pD2DApp->OnMouseDown(message, LOWORD(lParam), HIWORD(lParam), wParam);
-                break;
-
-            case WM_SIZE:
-                pD2DApp->OnResize(LOWORD(lParam), HIWORD(lParam));
-                break;
-
-            case WM_LBUTTONUP:
-            case WM_MBUTTONUP:
-            case WM_RBUTTONUP:
-            case WM_XBUTTONUP:
-                pD2DApp->OnMouseUp(message, LOWORD(lParam), HIWORD(lParam), wParam);
-                break;
-
-            case WM_MOUSEMOVE:
-                if (!tme.hwndTrack) {
-                    tme.hwndTrack = hwnd;
-                    TrackMouseEvent(&tme);
-                }
-                pD2DApp->OnMouseMove(message, LOWORD(lParam), HIWORD(lParam));
-                break;
-
-            case WM_MOUSELEAVE:
-                tme.hwndTrack = NULL;
-                pD2DApp->OnMouseLeave();
-                break;
-            
-            case WM_MOUSEWHEEL:
-                pD2DApp->OnMouseWheel(LOWORD(wParam), HIWORD(wParam), LOWORD(lParam), HIWORD(lParam));
-                break;
-
-            case WM_KEYDOWN:
-                pD2DApp->OnKeyDown(wParam);
-                break;
-
-            case WM_KEYUP:
-                pD2DApp->OnKeyUp(wParam);
-                break;
-
-            case WM_DROPFILES:
-                pD2DApp->OnDropFiles(wParam);
-                break;
-
-            case WM_DESTROY:
-                {
-                    pD2DApp->OnDestroy();
-                    PostQuitMessage(0);
-                }
-                result = 1;
-                wasHandled = true;
-                break;
-
-//#ifndef NDEBUG
-//            default: {
-//                JARK_LOG("{} KeyValue: 0x{:04x}", __FUNCTION__, (uint64_t)message);
-//            }break;
-//#endif
-            }
+    case WM_CONTEXTMENU: {
+        if (lParam == -1) { // 键盘触发的上下文菜单
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            int x = (rc.right - rc.left) / 2;
+            int y = (rc.bottom - rc.top) / 2;
+            ShowContextMenu(hwnd, x, y);
         }
-
-        if (!wasHandled)
-        {
-            result = DefWindowProc(hwnd, message, wParam, lParam);
+        else {  // 鼠标触发的上下文菜单
+            ShowContextMenu(hwnd, LOWORD(lParam), HIWORD(lParam));
         }
+        return S_OK;
+    }
     }
 
-    return result;
+    static TRACKMOUSEEVENT tme = {
+        .cbSize = sizeof(TRACKMOUSEEVENT),
+        .dwFlags = TME_LEAVE,
+    };
+
+    D2D1App* pD2DApp = reinterpret_cast<D2D1App*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (!pD2DApp)
+        return DefWindowProcW(hwnd, message, wParam, lParam);
+
+    switch (message)
+    {
+    case WM_LBUTTONDOWN:
+    case WM_MBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+    case WM_XBUTTONDOWN:
+        pD2DApp->OnMouseDown(message, LOWORD(lParam), HIWORD(lParam), wParam);
+        return S_OK;
+
+    case WM_LBUTTONUP:
+    case WM_MBUTTONUP:
+    case WM_RBUTTONUP:
+    case WM_XBUTTONUP:
+        pD2DApp->OnMouseUp(message, LOWORD(lParam), HIWORD(lParam), wParam);
+        return S_OK;
+
+    case WM_MOUSEMOVE:
+        if (!tme.hwndTrack) {
+            tme.hwndTrack = hwnd;
+            TrackMouseEvent(&tme);
+        }
+        pD2DApp->OnMouseMove(message, LOWORD(lParam), HIWORD(lParam));
+        return S_OK;
+
+    case WM_MOUSELEAVE:
+        tme.hwndTrack = NULL;
+        pD2DApp->OnMouseLeave();
+        break;
+
+    case WM_MOUSEWHEEL:
+        pD2DApp->OnMouseWheel(LOWORD(wParam), HIWORD(wParam), LOWORD(lParam), HIWORD(lParam));
+        return S_OK;
+
+    case WM_KEYDOWN:
+        pD2DApp->OnKeyDown(wParam);
+        return S_OK;
+
+    case WM_KEYUP:
+        pD2DApp->OnKeyUp(wParam);
+        return S_OK;
+
+    case WM_DROPFILES:
+        pD2DApp->OnDropFiles(wParam);
+        break;
+
+    case WM_COMMAND:
+        pD2DApp->OnContextMenuCommand(wParam);
+        break;
+
+    case WM_SIZE:
+        pD2DApp->OnResize(LOWORD(lParam), HIWORD(lParam));
+        break;
+
+    case WM_DESTROY:
+    {
+        pD2DApp->OnDestroy();
+        PostQuitMessage(0);
+        return S_OK;
+    }
+    break;
+
+    //#ifndef NDEBUG
+    //    default: {
+    //        JARK_LOG("{} KeyValue: 0x{:04x}", __FUNCTION__, (uint64_t)message);
+    //    }break;
+    //#endif
+    }
+
+    return DefWindowProc(hwnd, message, wParam, lParam);
+}
+
+
+// 创建上下文菜单
+HMENU D2D1App::CreateContextMenu(HWND hwnd) {
+    HMENU hMenu = CreatePopupMenu();
+    MENUINFO mi = { sizeof(MENUINFO) };
+    mi.fMask = MIM_STYLE | MIM_APPLYTOSUBMENUS;
+    mi.dwStyle = MNS_NOCHECK;
+    SetMenuInfo(hMenu, &mi);
+
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openNewImage, getUIStringW(35));
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::copyImageInfo, getUIStringW(25));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::copyImagePath, getUIStringW(26));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::copyImageData, getUIStringW(27));
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::toggleExifDisplay, getUIStringW(28));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openContainerFloder, getUIStringW(29));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::deleteImage, getUIStringW(30));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openFileProperties, getUIStringW(36));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::printImage, getUIStringW(31));
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openSetting, getUIStringW(32));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::aboutSoftware, getUIStringW(33));
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::exitSoftware, getUIStringW(34));
+
+    return hMenu;
+}
+
+// 显示上下文菜单
+void D2D1App::ShowContextMenu(HWND hwnd, int x, int y) {
+    HMENU hMenu = CreateContextMenu(hwnd);
+    POINT pt = { x, y };
+    ClientToScreen(hwnd, &pt);
+
+    UINT flags = TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY;
+    DWORD cmd = TrackPopupMenuEx(hMenu, flags, pt.x, pt.y, hwnd, NULL);
+
+    if (cmd)
+        PostMessageW(hwnd, WM_COMMAND, MAKEWPARAM(cmd, 0), 0);
+
+    DestroyMenu(hMenu);
 }
