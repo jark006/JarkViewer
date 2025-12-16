@@ -503,6 +503,7 @@ HMENU D2D1App::CreateContextMenu(HWND hwnd) {
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::printImage, getUIStringW(31));
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::toggleFullScreen, getUIStringW(38));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openSetting, getUIStringW(32));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openHelp, getUIStringW(37));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::aboutSoftware, getUIStringW(33));

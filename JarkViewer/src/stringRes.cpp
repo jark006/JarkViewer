@@ -107,9 +107,9 @@ const wchar_t* const UIStringTableW[STRING_MAX_NUM][2] = {
     {L"关于 (&A)", L"&About"},
     {L"退出 (&X)", L"E&xit"},
     {L"打开新图像 (&O)", L"&Open new image"},  // 35
-    {L"文件属性 (&F)", L"&File properties"},
+    {L"文件属性 (&A)", L"File properties"},
     {L"帮助 (&H)", L"&Help"},
-    {L"XX", L"XX"},
+    {L"全屏 (&F)", L"&FullScreen"},
     {L"XX", L"XX"},
     {L"XX", L"XX"},  // 40
     {L"XX", L"XX"},

@@ -942,6 +942,10 @@ public:
             operateQueue.push({ ActionENUM::printImage });
         }break;
 
+        case ContextMenu::toggleFullScreen: {
+            jarkUtils::ToggleFullScreen(m_hWnd);
+        }break;
+
         case ContextMenu::openSetting: {
             operateQueue.push({ ActionENUM::setting, 0 });
         }break;
@@ -2162,7 +2166,7 @@ int WINAPI wWinMain(
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    test();
+    //test();
 
     Exiv2::enableBMFF();
     ::ImmDisableIME(GetCurrentThreadId()); // 禁用输入法，防止干扰按键操作
@@ -2193,18 +2197,6 @@ int WINAPI wWinMain(
 }
 
 void test() {
-    return;
-
-    //set<wstring> sortRaw(ImageDatabase::supportRaw.begin(), ImageDatabase::supportRaw.end());
-    //for (auto& ext : sortRaw)
-    //    std::wcout << ext.substr(1) << ' ';
-    //std::wcout << endl;
-
-    //set<wstring> sortExt(ImageDatabase::supportExt.begin(), ImageDatabase::supportExt.end());
-    //for (auto& ext : sortExt)
-    //    std::wcout << ext.substr(1) << ' ';
-    //std::wcout << endl;
-
     std::ifstream file("D:\\Downloads\\test\\22.wp2", std::ios::binary);
     auto buf = std::vector<uint8_t>(std::istreambuf_iterator<char>(file), {});
 
