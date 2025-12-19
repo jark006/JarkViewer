@@ -21,7 +21,9 @@
 */
 
 std::wstring_view appName = L"JarkViewer";
-std::wstring_view appVersion = L"v1.32";
+std::wstring_view appVersion = L"v1.32Alpha";
+constinit int appVersionCode = 13200; // 主版本*10000 + 次版本*100 + 修订版本
+
 std::wstring_view jarkLink = L"https://github.com/jark006";
 std::wstring_view RepositoryLink = L"https://github.com/jark006/JarkViewer";
 std::wstring_view BaiduLink = L"https://pan.baidu.com/s/1ka7p__WVw2du3mnOfqWceQ?pwd=6666"; // 密码 6666
@@ -381,14 +383,15 @@ public:
         {
         case WM_LBUTTONDOWN: {//左键
             if (cursorPos == CursorPos::centerArea) {
-                mouseIsPressing = true;
-
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed = duration_cast<std::chrono::milliseconds>(now - lastClickTimestamp).count();
                 lastClickTimestamp = now;
 
                 if (10 < elapsed && elapsed < 300) { // 10 ~ 300 ms
                     jarkUtils::ToggleFullScreen(m_hWnd);
+                }
+                else {
+                    mouseIsPressing = true;
                 }
             }
 
@@ -598,7 +601,6 @@ public:
         if (mouseIsPressing) {
             auto slideDelta = mousePos - mousePressPos;
             mousePressPos = mousePos;
-            // TODO 双击切换全屏会导致鼠标位置变化
             operateQueue.push({ ActionENUM::slide, slideDelta.x, slideDelta.y });
         }
     }
