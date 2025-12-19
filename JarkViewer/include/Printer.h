@@ -555,7 +555,7 @@ public:
                 SendMessageW(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
                 SendMessageW(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
             }
-            BOOL themeMode = GlobalVar::settingParameter.UI_Mode == 0 ? GlobalVar::isSystemDarkMode : (GlobalVar::settingParameter.UI_Mode == 1 ? 0 : 1);
+            BOOL themeMode = GlobalVar::CURRENT_UI_MODE == 1 ? 0 : 1;
             DwmSetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE::DWMWA_USE_IMMERSIVE_DARK_MODE, &themeMode, sizeof(BOOL));
         }
 

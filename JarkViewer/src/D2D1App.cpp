@@ -113,22 +113,10 @@ HRESULT D2D1App::Initialize(HINSTANCE hInstance) {
 
         DragAcceptFiles(m_hWnd, TRUE);
 
-        HKEY hKey;
-        // 计算机\HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize
-        if (RegOpenKeyEx(HKEY_CURRENT_USER,
-            TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
-            0, KEY_READ, &hKey) == ERROR_SUCCESS)
-        {
-            DWORD value = 0;
-            DWORD size = sizeof(value);
-            if (RegQueryValueEx(hKey, TEXT("AppsUseLightTheme"), NULL, NULL,
-                reinterpret_cast<LPBYTE>(&value), &size) == ERROR_SUCCESS)
-            {
-                GlobalVar::isSystemDarkMode = (value == 0);
-            }
-            RegCloseKey(hKey);
-        }
-        BOOL themeMode = GlobalVar::settingParameter.UI_Mode == 0 ? GlobalVar::isSystemDarkMode : (GlobalVar::settingParameter.UI_Mode == 1 ? 0 : 1);
+        GlobalVar::isSystemDarkMode = jarkUtils::getSystemDarkMode();
+        GlobalVar::CURRENT_UI_MODE = GlobalVar::settingParameter.UI_Mode == 0 ? (GlobalVar::isSystemDarkMode ? 2 : 1) : GlobalVar::settingParameter.UI_Mode;
+
+        BOOL themeMode = GlobalVar::CURRENT_UI_MODE == 1 ? 0 : 1;
         DwmSetWindowAttribute(m_hWnd, DWMWINDOWATTRIBUTE::DWMWA_USE_IMMERSIVE_DARK_MODE, &themeMode, sizeof(BOOL));
 
         ShowWindow(m_hWnd, GlobalVar::settingParameter.showCmd == SW_NORMAL ? SW_NORMAL : SW_MAXIMIZE);
@@ -461,6 +449,12 @@ LRESULT D2D1App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
         pD2DApp->OnResize(LOWORD(lParam), HIWORD(lParam));
         break;
 
+    case WM_SETTINGCHANGE:
+        GlobalVar::isSystemDarkMode = jarkUtils::getSystemDarkMode();
+        GlobalVar::CURRENT_UI_MODE = GlobalVar::settingParameter.UI_Mode == 0 ? (GlobalVar::isSystemDarkMode ? 2 : 1) : GlobalVar::settingParameter.UI_Mode;
+        GlobalVar::isNeedUpdateTheme = true;
+        break;
+
     case WM_DESTROY:
     {
         pD2DApp->OnRequestExitOtherWindows();
@@ -472,7 +466,7 @@ LRESULT D2D1App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 
     //#ifndef NDEBUG
     //    default: {
-    //        JARK_LOG("{} KeyValue: 0x{:04x}", __FUNCTION__, (uint64_t)message);
+    //        JARK_LOG("{} message: 0x{:04x}", __FUNCTION__, (uint64_t)message);
     //    }break;
     //#endif
     }

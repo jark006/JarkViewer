@@ -258,11 +258,7 @@ public:
             return S_FALSE;
 
         jarkUtils::setWindowIcon(m_hWnd, IDI_JARKVIEWER);
-
-        GlobalVar::theme = GlobalVar::settingParameter.UI_Mode == 0 ? 
-            (GlobalVar::isSystemDarkMode ? deepTheme : lightTheme) : 
-            (GlobalVar::settingParameter.UI_Mode == 1 ? lightTheme : deepTheme);
-
+        GlobalVar::theme = GlobalVar::CURRENT_UI_MODE == 1 ? lightTheme : deepTheme;
         return S_OK;
     }
 
@@ -1083,9 +1079,7 @@ public:
             // 内置的用于提示的图像
         }
         else { // 普通图像  画边框
-            const uint32_t lineColor = GlobalVar::settingParameter.UI_Mode == 0 ? 
-                (GlobalVar::isSystemDarkMode ? 0xFF888888 : 0xFF000000) : 
-                (GlobalVar::settingParameter.UI_Mode == 1 ? 0xFF000000 : 0xFF888888);
+            const uint32_t lineColor = GlobalVar::CURRENT_UI_MODE == 1 ? 0xFF000000 : 0xFF888888;
             if (0 < xStart and xStart < canvasW) {
                 const int yMax = std::min(yEnd + 1, canvasH);
                 for (int y = std::max(yStart - 1, 0); y < yMax; y++) {
@@ -1587,14 +1581,8 @@ public:
             const int padding = 10;
             const int areaWidth = (canvas.cols - 2 * padding) / 4;
             cv::Rect rect{ padding, padding, std::max(areaWidth, 400), canvas.rows - 2 * padding };
-
-            const cv::Vec4b colorBlack{ 0, 0, 0, 255 };
-            const cv::Vec4b colorWhite{ 255, 255, 255, 255 };
-            const cv::Vec4b color = GlobalVar::settingParameter.UI_Mode == 0 ? 
-                (GlobalVar::isSystemDarkMode ? colorWhite : colorBlack) :
-                (GlobalVar::settingParameter.UI_Mode == 1 ? colorBlack : colorWhite);
-
-            textDrawer.putAlignLeft(canvas, rect, curPar.imageAssetPtr->exifInfo.c_str(), color); // 长文本 8ms
+            textDrawer.putAlignLeft(canvas, rect, curPar.imageAssetPtr->exifInfo.c_str(), 
+                GlobalVar::CURRENT_UI_MODE == 1 ? cv::Vec4b{ 0, 0, 0, 255 } : cv::Vec4b{ 255, 255, 255, 255 }); // 长文本 8ms
         }
     }
 
@@ -1669,12 +1657,10 @@ public:
     void DrawScene() {
         if (GlobalVar::isNeedUpdateTheme) {
             GlobalVar::isNeedUpdateTheme = false;
-            GlobalVar::theme = GlobalVar::settingParameter.UI_Mode == 0 ? 
-                (GlobalVar::isSystemDarkMode ? deepTheme : lightTheme) : 
-                (GlobalVar::settingParameter.UI_Mode == 1 ? lightTheme : deepTheme);
+            GlobalVar::theme = GlobalVar::CURRENT_UI_MODE == 1 ? lightTheme : deepTheme;
             operateQueue.push({ ActionENUM::normalFresh });
 
-            BOOL themeMode = GlobalVar::settingParameter.UI_Mode == 0 ? GlobalVar::isSystemDarkMode : (GlobalVar::settingParameter.UI_Mode == 1 ? 0 : 1);
+            BOOL themeMode = GlobalVar::CURRENT_UI_MODE == 1 ? 0 : 1;
             DwmSetWindowAttribute(m_hWnd, DWMWINDOWATTRIBUTE::DWMWA_USE_IMMERSIVE_DARK_MODE, &themeMode, sizeof(BOOL));
         }
 

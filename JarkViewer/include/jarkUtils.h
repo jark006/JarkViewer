@@ -420,6 +420,7 @@ struct GlobalVar {
 
     static inline BOOL isSystemDarkMode = 0;
     static inline ThemeColor theme = deepTheme;
+    static inline int CURRENT_UI_MODE = 1; // 界面主题  1:浅色  2:深色
 
     static inline wstring settingPath;
     static inline string_view settingHeader{ "JarkViewerSetting" };
@@ -525,6 +526,8 @@ public:
     static void openFileLocation(wstring_view filePath);
 
     static void openFileProperties(wstring_view filePath);
+
+    static bool getSystemDarkMode();
 
     static inline const char COMPILE_DATE_TIME[32] = {
         __DATE__[7],

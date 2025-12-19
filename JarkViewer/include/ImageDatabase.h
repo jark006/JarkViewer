@@ -169,9 +169,7 @@ public:
                 errorTipsMatDeep = errorTipsMat({ 800, 600, 800, 600 }).clone();
             }
         }
-        return GlobalVar::settingParameter.UI_Mode == 0 ?
-            (GlobalVar::isSystemDarkMode ? errorTipsMatDeep : errorTipsMatLight) :
-            (GlobalVar::settingParameter.UI_Mode == 1 ? errorTipsMatLight : errorTipsMatDeep);
+        return GlobalVar::CURRENT_UI_MODE == 1 ? errorTipsMatLight : errorTipsMatDeep;
     }
 
 
@@ -189,9 +187,7 @@ public:
                 homeMatDeep = homeMat({ 800, 600, 800, 600 }).clone();
             }
         }
-        return GlobalVar::settingParameter.UI_Mode == 0 ?
-            (GlobalVar::isSystemDarkMode ? homeMatDeep : homeMatLight) :
-            (GlobalVar::settingParameter.UI_Mode == 1 ? homeMatLight : homeMatDeep);
+        return GlobalVar::CURRENT_UI_MODE == 1 ? homeMatLight : homeMatDeep;
     }
 
 

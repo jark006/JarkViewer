@@ -289,8 +289,10 @@ public:
                         *radio.valuePtr = clickIdx;
                         isNeedRefreshUI = true;
 
-                        if (radio.stringIDs.front() == 24) {
+                        if (radio.stringIDs.front() == 24) { // UI_Mode 颜色主题改变
                             GlobalVar::isNeedUpdateTheme = true;
+                            GlobalVar::CURRENT_UI_MODE = GlobalVar::settingParameter.UI_Mode == 0 ?
+                                (GlobalVar::isSystemDarkMode ? 2 : 1) : GlobalVar::settingParameter.UI_Mode;
                             updateWindowAttribute();
                         }
                     }
@@ -467,7 +469,7 @@ public:
     }
 
     static void updateWindowAttribute() {
-        BOOL themeMode = GlobalVar::settingParameter.UI_Mode == 0 ? GlobalVar::isSystemDarkMode : (GlobalVar::settingParameter.UI_Mode == 1 ? 0 : 1);
+        BOOL themeMode = GlobalVar::CURRENT_UI_MODE == 1 ? 0 : 1;
         DwmSetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE::DWMWA_USE_IMMERSIVE_DARK_MODE, &themeMode, sizeof(BOOL));
     }
 

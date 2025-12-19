@@ -686,3 +686,23 @@ void jarkUtils::openFileProperties(wstring_view filePath) {
 
     ShellExecuteExW(&sei);
 }
+
+bool jarkUtils::getSystemDarkMode() {
+    bool isDark = false;
+    HKEY hKey;
+
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        DWORD value = 0;
+        DWORD size = sizeof(value);
+        if (RegQueryValueExW(hKey, TEXT("AppsUseLightTheme"), NULL, NULL,
+            reinterpret_cast<LPBYTE>(&value), &size) == ERROR_SUCCESS)
+        {
+            isDark = (value == 0);
+        }
+        RegCloseKey(hKey);
+    }
+    return isDark;
+}
