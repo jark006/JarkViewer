@@ -597,7 +597,7 @@ public:
                             file.close();
                         }
                     }
-                    }, image, &params);
+                    }, image.clone(), &params);
                 saveImageThread.detach();
             }
         }
