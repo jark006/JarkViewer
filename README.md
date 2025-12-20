@@ -1,10 +1,14 @@
 # 🌟 JarkViewer看图
 
-![Version](https://img.shields.io/github/v/release/jark006/JarkViewer) ![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total) ![Stars](https://img.shields.io/github/stars/jark006/JarkViewer) ![License](https://img.shields.io/github/license/jark006/JarkViewer) ![Platform](https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg)
+[![Version](https://img.shields.io/github/v/release/jark006/JarkViewer)](https://github.com/jark006/JarkViewer/releases/latest)
+[![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total)](https://github.com/jark006/JarkViewer/releases)
+[![Download JarkViewer from SourceForge](https://img.shields.io/badge/SourceForge-Download-orange)](https://sourceforge.net/projects/jarkviewer/files/latest/download)
+![License](https://img.shields.io/github/license/jark006/JarkViewer)
+![Platform](https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg)
 
 中文 | [English](README_EN.md)
 
-*一个高效便捷的多格式图片查看工具*
+*一款轻量、飞快且强大的图像查看器，支持从 JPEG 到 AVIF、HEIC 和 JPEG XL 等最新格式的超多图像格式！即使是 iOS 和 Android 的实况照片也能流畅浏览。*
 
 ![Preview](preview.png)
 

@@ -1,10 +1,14 @@
 # 🌟 JarkViewer
 
-![Version](https://img.shields.io/github/v/release/jark006/JarkViewer) ![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total) ![Stars](https://img.shields.io/github/stars/jark006/JarkViewer) ![License](https://img.shields.io/github/license/jark006/JarkViewer) ![Platform](https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg)
+[![Version](https://img.shields.io/github/v/release/jark006/JarkViewer)](https://github.com/jark006/JarkViewer/releases/latest)
+[![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total)](https://github.com/jark006/JarkViewer/releases)
+[![Download JarkViewer from SourceForge](https://img.shields.io/badge/SourceForge-Download-orange)](https://sourceforge.net/projects/jarkviewer/files/latest/download)
+![License](https://img.shields.io/github/license/jark006/JarkViewer)
+![Platform](https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg)
 
 [中文](README.md) | English
 
-*An efficient and convenient multi-format image viewer*
+*A lightweight, lightning-fast, and powerful image viewer that supports a vast array of image formats—from JPEG to the latest ones such as AVIF, HEIC, and JPEG XL! It even smoothly displays iOS Live Photos and Android Motion Photos.*
 
 ![Preview](preview.png)
 
