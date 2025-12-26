@@ -24,13 +24,11 @@ struct PrintParams {
     bool mousePressingContrastBar = false;
     cv::Mat previewImage;         // 预览图像
 
-    const char* windowsName = nullptr;
 };
 
 class Printer {
 private:
-    string windowsNameAnsi = jarkUtils::utf8ToAnsi(getUIString(29));
-    const char* windowsName = windowsNameAnsi.c_str();
+    static inline const char* windowsName = "PrintWindow";
 
     PrintParams params{};
     TextDrawer textDrawer;
@@ -41,7 +39,6 @@ private:
 
     void Init() {
         textDrawer.setSize(24);
-        params.windowsName = windowsNameAnsi.c_str();
 
         rcFileInfo rc;
         rc = jarkUtils::GetResource(IDB_PNG_PRINTER_RES, L"PNG");
@@ -549,6 +546,7 @@ public:
         hwnd = FindWindowA(NULL, windowsName);
         if (hwnd) {
             jarkUtils::disableWindowResize(hwnd);
+            SetWindowTextW(hwnd, getUIStringW(40));
 
             HICON hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(IDI_JARKVIEWER));
             if (hIcon) {
@@ -569,7 +567,7 @@ public:
             if (cv::waitKey(10) == 27) // ESC
                 requestExit();
             if (requestExitFlag || params.confirmed) {
-                cv::destroyWindow(params.windowsName);
+                cv::destroyWindow(windowsName);
                 break;
             }
 

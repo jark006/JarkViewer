@@ -42,7 +42,7 @@ private:
     static inline const cv::Rect baiduBtnRect{ 440, 380, 520, 116 };
     static inline const cv::Rect lanzouBtnRect{ 440, 510, 520, 90 };
 
-    static inline string windowsNameAnsi;
+    static inline const char* windowsName = "SettingsWindow";
     static inline volatile bool requestExitFlag = false;
 
     static inline std::vector<string> allSupportExt;
@@ -56,7 +56,6 @@ private:
 
     void Init(int tabIdx = 0) {
         textDrawer.setSize(24);
-        windowsNameAnsi = jarkUtils::utf8ToAnsi(getUIString(1));
         winCanvas = cv::Mat(winHeight, winWidth, CV_8UC4, cv::Scalar(240, 240, 240, 240));
         curTabIdx = tabIdx;
 
@@ -269,7 +268,7 @@ public:
         default:refreshAboutTab(); break;
         }
 
-        cv::imshow(windowsNameAnsi.c_str(), winCanvas);
+        cv::imshow(windowsName, winCanvas);
     }
 
     static void handleGeneralTab(int event, int x, int y, int flags) {
@@ -474,15 +473,16 @@ public:
     }
 
     void windowsMainLoop() {
-        cv::namedWindow(windowsNameAnsi, cv::WINDOW_AUTOSIZE);
-        cv::resizeWindow(windowsNameAnsi, winWidth, winHeight);
-        cv::setMouseCallback(windowsNameAnsi, mouseCallback, nullptr);
+        cv::namedWindow(windowsName, cv::WINDOW_AUTOSIZE);
+        cv::resizeWindow(windowsName, winWidth, winHeight);
+        cv::setMouseCallback(windowsName, mouseCallback, nullptr);
 
         refreshUI();
 
-        hwnd = FindWindowA(NULL, windowsNameAnsi.c_str());
+        hwnd = FindWindowA(NULL, windowsName);
         if (hwnd) {
             jarkUtils::disableWindowResize(hwnd);
+            SetWindowTextW(hwnd, getUIStringW(39));
 
             HICON hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(IDI_JARKVIEWER));
             if (hIcon) {
@@ -495,7 +495,7 @@ public:
             return;
         }
 
-        while (cv::getWindowProperty(windowsNameAnsi, cv::WND_PROP_VISIBLE) > 0) {
+        while (cv::getWindowProperty(windowsName, cv::WND_PROP_VISIBLE) > 0) {
             if (isNeedRefreshUI) {
                 isNeedRefreshUI = false;
                 refreshUI();
@@ -504,7 +504,7 @@ public:
             if (cv::waitKey(10) == 27) // ESC
                 requestExit();
             if (requestExitFlag) {
-                cv::destroyWindow(windowsNameAnsi);
+                cv::destroyWindow(windowsName);
                 break;
             }
         }

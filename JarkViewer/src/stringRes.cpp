@@ -110,8 +110,8 @@ const wchar_t* const UIStringTableW[STRING_MAX_NUM][2] = {
     {L"文件属性 (&A)", L"File properties"},
     {L"帮助 (&H)", L"&Help"},
     {L"全屏 (&F)", L"&FullScreen"},
-    {L"XX", L"XX"},
-    {L"XX", L"XX"},  // 40
+    {L"设置", L"Settings"},
+    {L"打印", L"Print"},  // 40
     {L"XX", L"XX"},
     {L"XX", L"XX"},
 
