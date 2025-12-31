@@ -570,10 +570,8 @@ ImageAsset ImageDatabase::loadAvif(wstring_view path, const std::vector<uint8_t>
         imageAsset.frames.emplace_back(std::move(frame));
 
         // 计算帧时长
-        if (decoder->imageCount > 1 && decoder->timescale > 0) {
-            double durationInSeconds = (double)decoder->imageTiming.duration /
-                (double)decoder->timescale;
-            int durationMs = static_cast<int>(durationInSeconds * 1000.0 + 0.5);
+        if (decoder->imageCount > 1) {
+            const int durationMs = (int)(decoder->imageTiming.duration * 1000 + 0.5);
             imageAsset.frameDurations.emplace_back(std::max(16, durationMs));  // 至少16ms
         }
         else {
