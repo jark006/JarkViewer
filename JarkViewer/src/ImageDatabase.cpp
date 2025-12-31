@@ -54,9 +54,9 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, const vector<uint8_t>& buf)
     // Multi-threaded parallel runner.
     auto runner = JxlResizableParallelRunnerMake(nullptr);
 
-    auto dec = JxlDecoderMake(nullptr);
-    JxlDecoderStatus status = JxlDecoderSubscribeEvents(dec.get(),
-        JXL_DEC_BASIC_INFO | JXL_DEC_COLOR_ENCODING | JXL_DEC_FULL_IMAGE);
+    auto decoder = JxlDecoderMake(nullptr);
+    JxlDecoderStatus status = JxlDecoderSubscribeEvents(decoder.get(),
+        JXL_DEC_BASIC_INFO | JXL_DEC_FRAME | JXL_DEC_FULL_IMAGE);
     if (JXL_DEC_SUCCESS != status) {
         JARK_LOG("JxlDecoderSubscribeEvents failed\n{}\n{}",
             jarkUtils::wstringToUtf8(path),
@@ -64,7 +64,7 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, const vector<uint8_t>& buf)
         return imageAsset;
     }
 
-    status = JxlDecoderSetParallelRunner(dec.get(), JxlResizableParallelRunner, runner.get());
+    status = JxlDecoderSetParallelRunner(decoder.get(), JxlResizableParallelRunner, runner.get());
     if (JXL_DEC_SUCCESS != status) {
         JARK_LOG("JxlDecoderSetParallelRunner failed\n{}\n{}",
             jarkUtils::wstringToUtf8(path),
@@ -72,16 +72,18 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, const vector<uint8_t>& buf)
         return imageAsset;
     }
 
-    JxlBasicInfo info{};
+    JxlBasicInfo basic_info{};
     JxlPixelFormat format = { 4, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0 };
 
-    JxlDecoderSetInput(dec.get(), buf.data(), buf.size());
-    JxlDecoderCloseInput(dec.get());
+    JxlDecoderSetInput(decoder.get(), buf.data(), buf.size());
+    JxlDecoderCloseInput(decoder.get());
 
     cv::Mat image;
     int duration_ms = 0;
-    for (;;) {
-        status = JxlDecoderProcessInput(dec.get());
+    bool got_basic_info = false;
+
+    while(true) {
+        status = JxlDecoderProcessInput(decoder.get());
 
         if (status == JXL_DEC_ERROR) {
             JARK_LOG("Decoder error\n{}\n{}",
@@ -96,53 +98,44 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, const vector<uint8_t>& buf)
             break;
         }
         else if (status == JXL_DEC_BASIC_INFO) {
-            if (JXL_DEC_SUCCESS != JxlDecoderGetBasicInfo(dec.get(), &info)) {
+            if (JXL_DEC_SUCCESS != JxlDecoderGetBasicInfo(decoder.get(), &basic_info)) {
                 JARK_LOG("JxlDecoderGetBasicInfo failed\n{}\n{}",
                     jarkUtils::wstringToUtf8(path),
                     jxlStatusCode2String(status));
                 break;
             }
-
-            duration_ms = info.animation.tps_numerator == 0 ? 16 : (info.animation.tps_denominator * 1000 / info.animation.tps_numerator);
-            if (duration_ms < 16)
-                duration_ms = 16;
+            got_basic_info = true;
 
             JxlResizableParallelRunnerSetThreads(
                 runner.get(),
-                JxlResizableParallelRunnerSuggestThreads(info.xsize, info.ysize));
+                JxlResizableParallelRunnerSuggestThreads(basic_info.xsize, basic_info.ysize));
         }
-        else if (status == JXL_DEC_COLOR_ENCODING) {
-            // Get the ICC color profile of the pixel data
-            //size_t icc_size;
-            //if (JXL_DEC_SUCCESS !=
-            //    JxlDecoderGetICCProfileSize(dec.get(), JXL_COLOR_PROFILE_TARGET_DATA,
-            //        &icc_size)) {
-            //    JARK_LOG("JxlDecoderGetICCProfileSize failed\n{}\n{}",
-            //        jarkUtils::wstringToUtf8(path),
-            //        jxlStatusCode2String(status));
-            //    return mat;
-            //}
-            //icc_profile.resize(icc_size);
-            //if (JXL_DEC_SUCCESS != JxlDecoderGetColorAsICCProfile(
-            //    dec.get(), JXL_COLOR_PROFILE_TARGET_DATA,
-            //    icc_profile.data(), icc_profile.size())) {
-            //    JARK_LOG("JxlDecoderGetColorAsICCProfile failed\n{}\n{}",
-            //        jarkUtils::wstringToUtf8(path),
-            //        jxlStatusCode2String(status));
-            //    return mat;
-            //}
+        else if (status == JXL_DEC_FRAME) {
+            JxlFrameHeader frame_header{};
+            if (JxlDecoderGetFrameHeader(decoder.get(), &frame_header) == JXL_DEC_SUCCESS) {
+                if (basic_info.have_animation && got_basic_info) {
+                    uint32_t& duration_ticks = frame_header.duration;
+                    uint32_t& tps_num = basic_info.animation.tps_numerator;
+                    uint32_t& tps_den = basic_info.animation.tps_denominator;
+
+                    duration_ms = tps_num > 0 ? ((duration_ticks * 1000 * tps_den) / tps_num) : 33;
+                }
+            }
+            else {
+                duration_ms = 33;
+            }
         }
         else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER) {
             size_t buffer_size;
 
-            status = JxlDecoderImageOutBufferSize(dec.get(), &format, &buffer_size);
+            status = JxlDecoderImageOutBufferSize(decoder.get(), &format, &buffer_size);
             if (JXL_DEC_SUCCESS != status) {
                 JARK_LOG("JxlDecoderImageOutBufferSize failed\n{}\n{}",
                     jarkUtils::wstringToUtf8(path),
                     jxlStatusCode2String(status));
                 break;
             }
-            auto byteSizeRequire = 4ULL * info.xsize * info.ysize;
+            auto byteSizeRequire = 4ULL * basic_info.xsize * basic_info.ysize;
             if (buffer_size != byteSizeRequire) {
                 JARK_LOG("Invalid out buffer size {} {}\n{}\n{}",
                     buffer_size, byteSizeRequire,
@@ -150,8 +143,8 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, const vector<uint8_t>& buf)
                     jxlStatusCode2String(status));
                 break;
             }
-            image = cv::Mat(info.ysize, info.xsize, CV_8UC4);
-            status = JxlDecoderSetImageOutBuffer(dec.get(), &format, image.ptr(), byteSizeRequire);
+            image = cv::Mat(basic_info.ysize, basic_info.xsize, CV_8UC4);
+            status = JxlDecoderSetImageOutBuffer(decoder.get(), &format, image.ptr(), byteSizeRequire);
             if (JXL_DEC_SUCCESS != status) {
                 JARK_LOG("JxlDecoderSetImageOutBuffer failed\n{}\n{}",
                     jarkUtils::wstringToUtf8(path),
@@ -177,7 +170,7 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, const vector<uint8_t>& buf)
         }
         else if (status == JXL_DEC_SUCCESS) {
             // All decoding successfully finished.
-            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since
+            // It's not required to call JxlDecoderReleaseInput(decoder.get()) here since
             // the decoder will be destroyed.
 
             break;
