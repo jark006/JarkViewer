@@ -472,6 +472,8 @@ public:
 
     static std::string ansiToUtf8(string_view str);
 
+    static std::string convertUnicodeEscapesToUTF8(string_view str);
+
     static rcFileInfo GetResource(unsigned int idi, const wchar_t* type);
 
     static string size2Str(const size_t fileSize);

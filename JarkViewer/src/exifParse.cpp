@@ -240,7 +240,7 @@ std::string ExifParse::exifDataToString(wstring_view path, const Exiv2::ExifData
                 
                 if (tagValue.front() == '{' && tagValue.back() == '}') { // ComfyUI JSON format
                     isPrompt = true;
-                    tagValue = getUIString(52) + tagValue;
+                    tagValue = getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(tagValue);
                 }
             }
 
@@ -336,7 +336,7 @@ std::string ExifParse::AI_Prompt(wstring_view path, const uint8_t* buf) {
         }
 
         if (prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
-            return getUIString(52) + prompt;
+            return getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt);
         }
         return getUIString(46) + prompt;
     }
@@ -369,7 +369,7 @@ std::string ExifParse::AI_Prompt(wstring_view path, const uint8_t* buf) {
         }
 
         if (prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
-            return getUIString(52) + prompt;
+            return getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt);
         }
         return getUIString(46) + prompt;
     }
@@ -385,7 +385,7 @@ std::string ExifParse::AI_Prompt(wstring_view path, const uint8_t* buf) {
         prompt = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(prompt));
 
         if (prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
-            return getUIString(52) + prompt;
+            return getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt);
         }
         return getUIString(46) + prompt;
     }

@@ -81,6 +81,65 @@ std::string jarkUtils::ansiToUtf8(string_view str) {
     return wstringToUtf8(ansiToWstring(str));
 }
 
+static inline std::string unicodeToUTF8(uint32_t codePoint) {
+    std::string utf8;
+
+    if (codePoint <= 0x7F) {
+        utf8.push_back(static_cast<char>(codePoint));
+    }
+    else if (codePoint <= 0x7FF) {
+        utf8.push_back(static_cast<char>(0xC0 | ((codePoint >> 6) & 0x1F)));
+        utf8.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    }
+    else if (codePoint <= 0xFFFF) {
+        utf8.push_back(static_cast<char>(0xE0 | ((codePoint >> 12) & 0x0F)));
+        utf8.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+        utf8.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    }
+    else if (codePoint <= 0x10FFFF) {
+        utf8.push_back(static_cast<char>(0xF0 | ((codePoint >> 18) & 0x07)));
+        utf8.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+        utf8.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+        utf8.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    }
+
+    return utf8;
+}
+
+std::string jarkUtils::convertUnicodeEscapesToUTF8(string_view str) {
+    std::string result;
+
+    for (size_t i = 0; i < str.length(); ++i) {
+        if (i + 5 < str.length() &&
+            str[i] == '\\' && str[i + 1] == 'u') {
+
+            std::string hexStr(str.substr(i + 2, 4));
+
+            bool validHex = true;
+            for (char c : hexStr) {
+                if (!isxdigit(c)) {
+                    validHex = false;
+                    break;
+                }
+            }
+
+            if (validHex) {
+                uint32_t codePoint = std::stoul(hexStr, nullptr, 16);
+                result += unicodeToUTF8(codePoint);
+                i += 5; // 跳过已处理的字符
+            }
+            else {
+                result.push_back(str[i]);
+            }
+        }
+        else {
+            result.push_back(str[i]);
+        }
+    }
+
+    return result;
+}
+
 rcFileInfo jarkUtils::GetResource(unsigned int idi, const wchar_t* type) {
     rcFileInfo rc{};
 
