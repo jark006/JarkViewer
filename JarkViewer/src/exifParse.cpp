@@ -306,10 +306,13 @@ std::string ExifParse::iptcDataToString(wstring_view path, const Exiv2::IptcData
     return itpcStr;
 }
 
-std::string ExifParse::AI_Prompt(wstring_view path, const uint8_t* buf) {
+std::string ExifParse::parseAiPrompt(wstring_view path, const uint8_t* buf, size_t fileSize) {
+    if (fileSize < 1024) // AI生图信息一般不会出现在特别小的图片中
+        return "";
+
     if (!strncmp((const char*)buf + 0x25, "tEXtparameters", 14)) {
-        int length = (buf[0x21] << 24) + (buf[0x22] << 16) + (buf[0x23] << 8) + buf[0x24];
-        if (length > 16 * 1024) {
+        int length = (buf[0x21] << 24) + (buf[0x22] << 16) + (buf[0x23] << 8) + buf[0x24]; // 大端 int
+        if ((length + 64ULL) > fileSize) {
             return "";
         }
 
@@ -336,13 +339,32 @@ std::string ExifParse::AI_Prompt(wstring_view path, const uint8_t* buf) {
         }
 
         if (prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
-            return getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt);
+            prompt = getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt);
         }
-        return getUIString(46) + prompt;
+        else {
+            prompt = getUIString(46) + prompt;
+        }
+
+        // 有些图片会同时包含 parameters 和 prompt 信息
+        if (!strncmp((const char*)buf + 0x31 + length, "tEXtprompt", 10)) {
+            int length2 = (buf[0x2d + length] << 24) + (buf[0x2e + length] << 16) + (buf[0x2f + length] << 8) + buf[0x30 + length];
+            if ((length + 128ULL + length2) < fileSize) {
+                string prompt2((const char*)buf + 0x3c + length, length2-7); // format: Windows-1252  ISO/IEC 8859-1（Latin-1）
+                prompt2 = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(prompt2));
+                if (prompt2.front() == '{' && prompt2.back() == '}') { // ComfyUI JSON format
+                    prompt += getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt2);
+                }
+                else {
+                    prompt += getUIString(46) + prompt2;
+                }
+            }
+        }
+
+        return prompt;
     }
     else if (!strncmp((const char*)buf + 0x25, "iTXtparameters", 14)) {
         int length = (buf[0x21] << 24) + (buf[0x22] << 16) + (buf[0x23] << 8) + buf[0x24];
-        if (length > 16 * 1024) {
+        if ((length + 64ULL) > fileSize) {
             return "";
         }
 
@@ -376,7 +398,7 @@ std::string ExifParse::AI_Prompt(wstring_view path, const uint8_t* buf) {
     else if (!strncmp((const char*)buf + 0x25, "tEXtprompt", 10)) {
 
         int length = (buf[0x21] << 24) + (buf[0x22] << 16) + (buf[0x23] << 8) + buf[0x24];
-        if (length > 16 * 1024) {
+        if ((length + 64ULL) > fileSize) {
             return "";
         }
 
@@ -405,7 +427,7 @@ std::string ExifParse::getExif(wstring_view path, const uint8_t* buf, size_t fil
         auto exifStr = exifDataToString(path, image->exifData());
         auto xmpStr = xmpDataToString(path, image->xmpData());
         auto iptcStr = iptcDataToString(path, image->iptcData());
-        string prompt = AI_Prompt(path, buf);
+        auto prompt = parseAiPrompt(path, buf, fileSize);
 
         if ((exifStr.length() + xmpStr.length() + iptcStr.length() + prompt.length()) > 0)
             return  std::format("\n\n{}\n{}{}{}{}", getUIString(42), exifStr, xmpStr, iptcStr, prompt);

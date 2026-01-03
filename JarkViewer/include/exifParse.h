@@ -14,7 +14,7 @@ public:
     static std::string exifDataToString(std::wstring_view path, const Exiv2::ExifData& exifData);
     static std::string xmpDataToString(std::wstring_view path, const Exiv2::XmpData& xmpData);
     static std::string iptcDataToString(std::wstring_view path, const Exiv2::IptcData& IptcData);
-    static std::string AI_Prompt(std::wstring_view path, const uint8_t* buf);
+    static std::string parseAiPrompt(std::wstring_view path, const uint8_t* buf, size_t fileSize);
     static std::string getExif(std::wstring_view path, const uint8_t* buf, size_t fileSize);
 
 private:
