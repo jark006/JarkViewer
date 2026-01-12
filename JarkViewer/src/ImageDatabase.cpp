@@ -1501,6 +1501,84 @@ ImageAsset ImageDatabase::loadAnimation(wstring_view path, const vector<uint8_t>
     return imageAsset;
 }
 
+// tiff 多页图片
+ImageAsset ImageDatabase::loadTiff(wstring_view path, const vector<uint8_t>& buf) {
+    ImageAsset imageAsset;
+
+    if (buf.empty()) {
+        JARK_LOG("TIFF buffer is empty: {}", jarkUtils::wstringToUtf8(path));
+        imageAsset.format = ImageFormat::None;
+        imageAsset.primaryFrame = getErrorTipsMat();
+        return imageAsset;
+    }
+
+    vector<cv::Mat> frames;
+    bool multiPageSuccess = false;
+
+    try {
+        multiPageSuccess = cv::imdecodemulti(buf, cv::IMREAD_UNCHANGED, frames);
+    }
+    catch (cv::Exception e) {
+        JARK_LOG("cv::imdecodemulti exception: {} [{}]", jarkUtils::wstringToUtf8(path), e.what());
+        multiPageSuccess = false;
+    }
+
+    if (!multiPageSuccess || frames.empty()) {
+        JARK_LOG("cv::imdecodemulti failed, fallback to cv::imdecode: {}", jarkUtils::wstringToUtf8(path));
+        cv::Mat singleFrame;
+        try {
+            singleFrame = cv::imdecode(buf, cv::IMREAD_UNCHANGED);
+        }
+        catch (cv::Exception e) {
+            JARK_LOG("cv::imdecode exception: {} [{}]", jarkUtils::wstringToUtf8(path), e.what());
+            imageAsset.format = ImageFormat::None;
+            imageAsset.primaryFrame = getErrorTipsMat();
+            return imageAsset;
+        }
+
+        if (singleFrame.empty()) {
+            JARK_LOG("cv::imdecode failed: {}", jarkUtils::wstringToUtf8(path));
+            imageAsset.format = ImageFormat::None;
+            imageAsset.primaryFrame = getErrorTipsMat();
+            return imageAsset;
+        }
+
+        frames.push_back(std::move(singleFrame));
+    }
+
+    for (auto& frame : frames) {
+        if (frame.empty()) {
+            JARK_LOG("TIFF frame is empty: {}", jarkUtils::wstringToUtf8(path));
+            imageAsset.format = ImageFormat::None;
+            imageAsset.primaryFrame = getErrorTipsMat();
+            return imageAsset;
+        }
+
+        if (frame.channels() == 1)
+            cv::cvtColor(frame, frame, cv::COLOR_GRAY2BGR);
+
+        if (frame.channels() != 3 && frame.channels() != 4) {
+            JARK_LOG("TIFF unsupport channel: {}", frame.channels());
+            imageAsset.format = ImageFormat::None;
+            imageAsset.primaryFrame = getErrorTipsMat();
+            return imageAsset;
+        }
+
+        convertMatToCV_8U(frame);
+    }
+
+    if (frames.size() == 1) {
+        imageAsset.format = ImageFormat::Still;
+        imageAsset.primaryFrame = std::move(frames[0]);
+    }
+    else {
+        imageAsset.format = ImageFormat::Animated;
+        imageAsset.frames = std::move(frames);
+        imageAsset.frameDurations.resize(imageAsset.frames.size(), 1000);
+    }
+
+    return imageAsset;
+}
 
 cv::Mat ImageDatabase::loadImageOpenCV(wstring_view path, const vector<uint8_t>& buf) {
     cv::Mat img;
@@ -2250,6 +2328,32 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
             if (idx != string::npos) {
                 handleExifOrientation(imageAsset.exifInfo[idx + strlen(getUIString(53))] - '0', imageAsset.primaryFrame);
             }
+        }
+        else {
+            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())
+                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
+        }
+        return imageAsset;
+    }
+    else if (ext == L"tiff" || ext == L"tif") { // tiff 多页图像
+        auto imageAsset = loadTiff(path, fileBuf);
+
+        if (imageAsset.format == ImageFormat::None) {
+            imageAsset.primaryFrame = loadImageWinCOM(path, fileBuf);
+            if (!imageAsset.primaryFrame.empty()) {
+                imageAsset.format = ImageFormat::Still;
+            }
+        }
+
+        if (imageAsset.format == ImageFormat::None) {
+            imageAsset.format = ImageFormat::Still;
+            imageAsset.primaryFrame = getErrorTipsMat();
+            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
+        }
+        else if (imageAsset.format == ImageFormat::Still) {
+            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
+                fileBuf.data(), fileBuf.size())
+                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
         }
         else {
             imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())

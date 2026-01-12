@@ -14,7 +14,7 @@
 // QOI v2025.4.29  https://github.com/phoboslab/qoi
 #include "qoi.h"
 
-// opencv 4.12.0  https://github.com/opencv/opencv
+// opencv 4.13.0  https://github.com/opencv/opencv
 #pragma comment(lib, "IlmImf.lib")
 #pragma comment(lib, "ipphal.lib")
 #pragma comment(lib, "ippicvmt.lib")
@@ -23,9 +23,8 @@
 #pragma comment(lib, "libjpeg-turbo.lib")
 #pragma comment(lib, "libopenjp2.lib")
 #pragma comment(lib, "libpng.lib")
-#pragma comment(lib, "libprotobuf.lib")
 #pragma comment(lib, "libtiff.lib")
-#pragma comment(lib, "opencv_world4120.lib")
+#pragma comment(lib, "opencv_world4130.lib")
 #pragma comment(lib, "zlib.lib")
 #pragma comment(lib, "libwebp.lib")
 
@@ -352,6 +351,7 @@ public:
     ImageAsset loadLivp(wstring_view path, const std::vector<uchar>& buf);
     ImageAsset loadMotionPhoto(wstring_view path, const std::vector<uchar>& buf, bool isJPG);
     ImageAsset loadAnimation(wstring_view path, const vector<uint8_t>& buf);
+    ImageAsset loadTiff(wstring_view path, const vector<uint8_t>& buf);
 
     void handleExifOrientation(int orientation, cv::Mat& img);
     ImageAsset myLoader(const wstring& path);
