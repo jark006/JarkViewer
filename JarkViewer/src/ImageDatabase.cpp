@@ -1756,7 +1756,7 @@ cv::Mat ImageDatabase::loadPFM(wstring_view path, std::span<const uint8_t> buf) 
     }
 
     // 创建 OpenCV Mat，格式为 CV_32FC3（或 CV_32FC1 对于灰度图）
-    cv::Mat image(height, width, isColor ? CV_32FC3 : CV_32FC1, (void*)(buf.data() + dataOffset));
+    cv::Mat image = cv::Mat(height, width, isColor ? CV_32FC3 : CV_32FC1, (void*)(buf.data() + dataOffset)).clone();
 
     // 如果比例因子为负数，图像需要垂直翻转
     if (scaleFactor < 0) {
