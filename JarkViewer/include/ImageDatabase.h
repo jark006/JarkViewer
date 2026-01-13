@@ -226,7 +226,7 @@ public:
     cv::Mat readDibFromMemory(const uint8_t* data, size_t size);
 
     // https://github.com/corkami/pics/blob/master/binary/ico_bmp.png
-    std::tuple<cv::Mat, string> loadICO(wstring_view path, const vector<uint8_t>& buf);
+    std::tuple<cv::Mat, string> loadICO(wstring_view path, std::span<const uint8_t> buf);
 
 
     template <typename T, typename DataHolder>
@@ -332,26 +332,26 @@ public:
 
 
     // https://github.com/MolecularMatters/psd_sdk
-    cv::Mat loadPSD(wstring_view path, const vector<uint8_t>& buf);
-    cv::Mat loadTGA_HDR(wstring_view path, const vector<uint8_t>& buf);
-    cv::Mat loadSVG(wstring_view path, const vector<uint8_t>& buf);
-    cv::Mat loadPFM(wstring_view path, const vector<uint8_t>& buf);
-    cv::Mat loadQOI(wstring_view path, const vector<uint8_t>& buf);
-    cv::Mat loadPCX(wstring_view path, const vector<uint8_t>& buf);
-    cv::Mat loadHeic(wstring_view path, const vector<uint8_t>& buf);
-    cv::Mat loadRaw(wstring_view path, const vector<uint8_t>& buf);
+    cv::Mat loadPSD(wstring_view path, std::span<const uint8_t> buf);
+    cv::Mat loadTGA_HDR(wstring_view path, std::span<const uint8_t> buf);
+    cv::Mat loadSVG(wstring_view path, std::span<const uint8_t> buf);
+    cv::Mat loadPFM(wstring_view path, std::span<const uint8_t> buf);
+    cv::Mat loadQOI(wstring_view path, std::span<const uint8_t> buf);
+    cv::Mat loadPCX(wstring_view path, std::span<const uint8_t> buf);
+    cv::Mat loadHeic(wstring_view path, std::span<const uint8_t> buf);
+    cv::Mat loadRaw(wstring_view path, std::span<const uint8_t> buf);
 
-    cv::Mat loadImageWinCOM(wstring_view path, const vector<uint8_t>& buf);
-    cv::Mat loadImageOpenCV(wstring_view path, const vector<uint8_t>& buf);
+    cv::Mat loadImageWinCOM(wstring_view path, std::span<const uint8_t> buf);
+    cv::Mat loadImageOpenCV(wstring_view path, std::span<const uint8_t> buf);
 
-    ImageAsset loadAvif(wstring_view path, const vector<uint8_t>& buf);
-    ImageAsset loadJXL(wstring_view path, const vector<uint8_t>& buf);
-    ImageAsset loadWP2(wstring_view path, const std::vector<uint8_t>& buf);
-    ImageAsset loadBPG(wstring_view path, const std::vector<uchar>& buf);
-    ImageAsset loadLivp(wstring_view path, const std::vector<uchar>& buf);
-    ImageAsset loadMotionPhoto(wstring_view path, const std::vector<uchar>& buf, bool isJPG);
-    ImageAsset loadAnimation(wstring_view path, const vector<uint8_t>& buf);
-    ImageAsset loadTiff(wstring_view path, const vector<uint8_t>& buf);
+    ImageAsset loadAvif(wstring_view path, std::span<const uint8_t> buf);
+    ImageAsset loadJXL(wstring_view path, std::span<const uint8_t> buf);
+    ImageAsset loadWP2(wstring_view path, std::span<const uint8_t> buf);
+    ImageAsset loadBPG(wstring_view path, std::span<const uint8_t> buf);
+    ImageAsset loadLivp(wstring_view path, std::span<const uint8_t> buf);
+    ImageAsset loadMotionPhoto(wstring_view path, std::span<const uint8_t> buf, bool isJPG);
+    ImageAsset loadAnimation(wstring_view path, std::span<const uint8_t> buf);
+    ImageAsset loadTiff(wstring_view path, std::span<const uint8_t> buf);
 
     void handleExifOrientation(int orientation, cv::Mat& img);
     ImageAsset myLoader(const wstring& path);

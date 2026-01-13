@@ -1,21 +1,22 @@
 #pragma once
 
-#include<iostream>
-#include<format>
-#include<algorithm>
-#include<filesystem>
-#include<chrono>
-#include<mutex>
-#include<semaphore>
-#include<string>
-#include<vector>
-#include<array>
-#include<set>
-#include<map>
-#include<unordered_set>
-#include<unordered_map>
-#include<stdexcept>
-#include<ranges>
+#include <iostream>
+#include <format>
+#include <algorithm>
+#include <filesystem>
+#include <chrono>
+#include <mutex>
+#include <semaphore>
+#include <string>
+#include <vector>
+#include <array>
+#include <set>
+#include <map>
+#include <unordered_set>
+#include <unordered_map>
+#include <stdexcept>
+#include <ranges>
+#include <span>
 
 using std::vector;
 using std::string;
@@ -79,9 +80,9 @@ using std::endl;
 #pragma comment(lib, "uxtheme.lib")
 
 
-#include<opencv2/core.hpp>
-#include<opencv2/opencv.hpp>
-#include<opencv2/highgui.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui.hpp>
 
 #include "stringRes.h"
 

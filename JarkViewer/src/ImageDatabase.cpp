@@ -10,6 +10,78 @@
 #include "qoi.h"
 #endif
 
+class MappedFileReader {
+public:
+    explicit MappedFileReader(std::wstring_view path) {
+        hFile = CreateFileW(
+            path.data(),
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr
+        );
+
+        if (hFile == INVALID_HANDLE_VALUE) {
+            JARK_LOG("Failed to open file");
+            return;
+        }
+
+        hMapping = CreateFileMappingW(hFile, nullptr, PAGE_READONLY, 0, 0, nullptr);
+        if (!hMapping) {
+            CloseHandle(hFile);
+            JARK_LOG("Failed to create file mapping");
+            return;
+        }
+
+        void* view = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+        if (!view) {
+            CloseHandle(hMapping);
+            CloseHandle(hFile);
+            JARK_LOG("Failed to map view of file");
+            return;
+        }
+
+        LARGE_INTEGER size;
+        if (!GetFileSizeEx(hFile, &size)) {
+            UnmapViewOfFile(view);
+            CloseHandle(hMapping);
+            CloseHandle(hFile);
+            JARK_LOG("Failed to get file size");
+            return;
+        }
+
+        data_ = static_cast<const uint8_t*>(view);
+        size_ = static_cast<size_t>(size.QuadPart);
+    }
+
+    ~MappedFileReader() {
+        if (data_) UnmapViewOfFile(const_cast<void*>(static_cast<const void*>(data_)));
+        if (hMapping) CloseHandle(hMapping);
+        if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
+    }
+
+    // 禁止拷贝
+    MappedFileReader(const MappedFileReader&) = delete;
+    MappedFileReader& operator=(const MappedFileReader&) = delete;
+
+    [[nodiscard]] std::span<const uint8_t> view() const noexcept {
+        return { data_, size_ };
+    }
+
+    bool isEmpty() const noexcept {
+        return data_ == nullptr || size_ < 16;
+    }
+
+private:
+    HANDLE hFile = INVALID_HANDLE_VALUE;
+    HANDLE hMapping = nullptr;
+    const uint8_t* data_ = nullptr;
+    size_t size_ = 0;
+};
+
+
 static std::string jxlStatusCode2String(JxlDecoderStatus status) {
     switch (status) {
     case JXL_DEC_SUCCESS:
@@ -48,7 +120,7 @@ static std::string jxlStatusCode2String(JxlDecoderStatus status) {
 }
 
 
-ImageAsset ImageDatabase::loadJXL(wstring_view path, const vector<uint8_t>& buf) {
+ImageAsset ImageDatabase::loadJXL(wstring_view path, std::span<const uint8_t> buf) {
     ImageAsset imageAsset;
 
     // Multi-threaded parallel runner.
@@ -244,7 +316,7 @@ static std::string statusExplain(WP2Status status) {
 
 // https://chromium.googlesource.com/codecs/libwebp2  commit 96720e6410284ebebff2007d4d87d7557361b952  Date:   Mon Sep 9 18:11:04 2024 +0000
 // 网络找的不少wp2图像无法解码，使用 libwebp2 的 cwp2.exe 工具编码的 .wp2 图片可以正常解码
-ImageAsset ImageDatabase::loadWP2(wstring_view path, const std::vector<uint8_t>& buf) {
+ImageAsset ImageDatabase::loadWP2(wstring_view path, std::span<const uint8_t> buf) {
     ImageAsset imageAsset;
 
     WP2::ArrayDecoder decoder(buf.data(), buf.size());
@@ -347,7 +419,7 @@ ImageAsset ImageDatabase::loadWP2(wstring_view path, const std::vector<uint8_t>&
 }
 
 
-ImageAsset ImageDatabase::loadBPG(wstring_view path, const std::vector<uchar>& buf) {
+ImageAsset ImageDatabase::loadBPG(wstring_view path, std::span<const uint8_t> buf) {
     auto decoderContext = bpg_decoder_open();
     if (bpg_decoder_decode(decoderContext, buf.data(), (int)buf.size()) < 0) {
         JARK_LOG("cvMat cannot decode: {}", jarkUtils::wstringToUtf8(path));
@@ -419,7 +491,7 @@ ImageAsset ImageDatabase::loadBPG(wstring_view path, const std::vector<uchar>& b
 // https://github.com/strukturag/libheif
 // vcpkg install libheif:x64-windows-static
 // vcpkg install libheif[hevc]:x64-windows-static
-cv::Mat ImageDatabase::loadHeic(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadHeic(wstring_view path, std::span<const uint8_t> buf) {
     if (buf.empty())
         return {};
 
@@ -484,7 +556,7 @@ cv::Mat ImageDatabase::loadHeic(wstring_view path, const vector<uint8_t>& buf) {
 // vcpkg install libavif[core,aom,dav1d]:x64-windows-static
 // https://github.com/AOMediaCodec/libavif/issues/1451#issuecomment-1606903425
 // TODO 部分图像仍不能正常解码
-ImageAsset ImageDatabase::loadAvif(wstring_view path, const std::vector<uint8_t>& fileBuf) {
+ImageAsset ImageDatabase::loadAvif(wstring_view path, std::span<const uint8_t> fileBuf) {
     ImageAsset imageAsset;
 
     if (fileBuf.empty()) {
@@ -593,7 +665,7 @@ ImageAsset ImageDatabase::loadAvif(wstring_view path, const std::vector<uint8_t>
 }
 
 
-cv::Mat ImageDatabase::loadRaw(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadRaw(wstring_view path, std::span<const uint8_t> buf) {
     if (buf.empty()) {
         JARK_LOG("Buf is empty: {}", jarkUtils::wstringToUtf8(path));
         return {};
@@ -790,7 +862,7 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* data, size_t size) {
 
 
 // https://github.com/corkami/pics/blob/master/binary/ico_bmp.png
-std::tuple<cv::Mat, string> ImageDatabase::loadICO(wstring_view path, const vector<uint8_t>& buf) {
+std::tuple<cv::Mat, string> ImageDatabase::loadICO(wstring_view path, std::span<const uint8_t> buf) {
     if (buf.size() < 6) {
         JARK_LOG("Invalid ICO file: {}", jarkUtils::wstringToUtf8(path));
         return { cv::Mat(),"" };
@@ -893,7 +965,7 @@ std::tuple<cv::Mat, string> ImageDatabase::loadICO(wstring_view path, const vect
 
 
 // https://github.com/MolecularMatters/psd_sdk
-cv::Mat ImageDatabase::loadPSD(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadPSD(wstring_view path, std::span<const uint8_t> buf) {
     const int32_t CHANNEL_NOT_FOUND = UINT_MAX;
 
     cv::Mat img;
@@ -1121,7 +1193,7 @@ cv::Mat ImageDatabase::loadPSD(wstring_view path, const vector<uint8_t>& buf) {
 }
 
 
-cv::Mat ImageDatabase::loadTGA_HDR(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadTGA_HDR(wstring_view path, std::span<const uint8_t> buf) {
     int width, height, channels;
 
     // 使用stb_image从内存缓冲区加载图像
@@ -1151,7 +1223,7 @@ cv::Mat ImageDatabase::loadTGA_HDR(wstring_view path, const vector<uint8_t>& buf
 }
 
 
-cv::Mat ImageDatabase::loadSVG(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadSVG(wstring_view path, std::span<const uint8_t> buf) {
     const int maxEdge = 4000;
     static bool isInitFont = false;
 
@@ -1209,7 +1281,7 @@ cv::Mat ImageDatabase::loadSVG(wstring_view path, const vector<uint8_t>& buf) {
 }
 
 
-cv::Mat ImageDatabase::loadImageWinCOM(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadImageWinCOM(wstring_view path, std::span<const uint8_t> buf) {
     HRESULT hr = CoInitialize(NULL);
     if (FAILED(hr)) {
         JARK_LOG("Failed to initialize COM library.");
@@ -1476,11 +1548,13 @@ static void convertImageAssetToCV_8U(ImageAsset& imageAsset) {
 }
 
 // 已支持 gif apng png webp 动图
-ImageAsset ImageDatabase::loadAnimation(wstring_view path, const vector<uint8_t>& buf) {
+ImageAsset ImageDatabase::loadAnimation(wstring_view path, std::span<const uint8_t> buf) {
     cv::Animation animation;
     ImageAsset imageAsset;
 
-    bool success = cv::imdecodeanimation(buf, animation);
+    bool success = cv::imdecodeanimation(
+        cv::Mat(1, static_cast<int>(buf.size()), CV_8UC1, const_cast<uint8_t*>(buf.data())),
+        animation);
 
     if (!success || animation.frames.empty()) {
         imageAsset.primaryFrame = getErrorTipsMat();
@@ -1502,7 +1576,7 @@ ImageAsset ImageDatabase::loadAnimation(wstring_view path, const vector<uint8_t>
 }
 
 // tiff 多页图片
-ImageAsset ImageDatabase::loadTiff(wstring_view path, const vector<uint8_t>& buf) {
+ImageAsset ImageDatabase::loadTiff(wstring_view path, std::span<const uint8_t> buf) {
     ImageAsset imageAsset;
 
     if (buf.empty()) {
@@ -1516,7 +1590,9 @@ ImageAsset ImageDatabase::loadTiff(wstring_view path, const vector<uint8_t>& buf
     bool multiPageSuccess = false;
 
     try {
-        multiPageSuccess = cv::imdecodemulti(buf, cv::IMREAD_UNCHANGED, frames);
+        multiPageSuccess = cv::imdecodemulti(
+            cv::Mat(1, static_cast<int>(buf.size()), CV_8UC1, const_cast<uint8_t*>(buf.data())), 
+            cv::IMREAD_UNCHANGED, frames);
     }
     catch (cv::Exception e) {
         JARK_LOG("cv::imdecodemulti exception: {} [{}]", jarkUtils::wstringToUtf8(path), e.what());
@@ -1527,7 +1603,8 @@ ImageAsset ImageDatabase::loadTiff(wstring_view path, const vector<uint8_t>& buf
         JARK_LOG("cv::imdecodemulti failed, fallback to cv::imdecode: {}", jarkUtils::wstringToUtf8(path));
         cv::Mat singleFrame;
         try {
-            singleFrame = cv::imdecode(buf, cv::IMREAD_UNCHANGED);
+            singleFrame = cv::imdecode(cv::Mat(1, static_cast<int>(buf.size()), CV_8UC1, const_cast<uint8_t*>(buf.data())), 
+                cv::IMREAD_UNCHANGED);
         }
         catch (cv::Exception e) {
             JARK_LOG("cv::imdecode exception: {} [{}]", jarkUtils::wstringToUtf8(path), e.what());
@@ -1580,10 +1657,12 @@ ImageAsset ImageDatabase::loadTiff(wstring_view path, const vector<uint8_t>& buf
     return imageAsset;
 }
 
-cv::Mat ImageDatabase::loadImageOpenCV(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadImageOpenCV(wstring_view path, std::span<const uint8_t> buf) {
     cv::Mat img;
     try {
-        img = cv::imdecode(buf, cv::IMREAD_UNCHANGED);
+        img = cv::imdecode(
+            cv::Mat(1, static_cast<int>(buf.size()), CV_8UC1, const_cast<uint8_t*>(buf.data())), 
+            cv::IMREAD_UNCHANGED);
     }
     catch (cv::Exception e) {
         JARK_LOG("cvMat cannot decode: {} [{}]", jarkUtils::wstringToUtf8(path), e.what());
@@ -1610,7 +1689,7 @@ cv::Mat ImageDatabase::loadImageOpenCV(wstring_view path, const vector<uint8_t>&
 
 
 // 辅助函数，用于从 PFM 头信息中提取尺寸和比例因子
-static bool parsePFMHeader(const vector<uint8_t>& buf, int& width, int& height, float& scaleFactor, bool& isColor, size_t& dataOffset) {
+static bool parsePFMHeader(std::span<const uint8_t> buf, int& width, int& height, float& scaleFactor, bool& isColor, size_t& dataOffset) {
     string header(reinterpret_cast<const char*>(buf.data()), 2);
 
     // 判断是否是RGB（PF）或灰度（Pf）
@@ -1664,7 +1743,7 @@ static bool parsePFMHeader(const vector<uint8_t>& buf, int& width, int& height, 
 }
 
 
-cv::Mat ImageDatabase::loadPFM(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadPFM(wstring_view path, std::span<const uint8_t> buf) {
     int width, height;
     float scaleFactor;
     bool isColor;
@@ -1698,7 +1777,7 @@ cv::Mat ImageDatabase::loadPFM(wstring_view path, const vector<uint8_t>& buf) {
 }
 
 
-cv::Mat ImageDatabase::loadQOI(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadQOI(wstring_view path, std::span<const uint8_t> buf) {
     cv::Mat mat;
     qoi_desc desc;
     auto pixels = qoi_decode(buf.data(), (int)buf.size(), &desc, 0);
@@ -1769,7 +1848,7 @@ static std::vector<uint8_t> decodeRLE(const uint8_t* data, size_t dataSize, size
     return decoded;
 }
 
-cv::Mat ImageDatabase::loadPCX(wstring_view path, const vector<uint8_t>& buf) {
+cv::Mat ImageDatabase::loadPCX(wstring_view path, std::span<const uint8_t> buf) {
     if (buf.size() < sizeof(PCXHeader)) {
         JARK_LOG("文件太小，不是有效的PCX文件");
         return cv::Mat();
@@ -1893,12 +1972,12 @@ cv::Mat ImageDatabase::loadPCX(wstring_view path, const vector<uint8_t>& buf) {
     return result;
 }
 
-static std::tuple<std::vector<uint8_t>, std::vector<uint8_t>, std::string> unzipLivp(const std::vector<uint8_t>& livpFileBuff) {
+static std::tuple<std::vector<uint8_t>, std::vector<uint8_t>, std::string> unzipLivp(std::span<const uint8_t> livpFileBuff) {
     zlib_filefunc_def memory_filefunc;
     memset(&memory_filefunc, 0, sizeof(zlib_filefunc_def));
 
     struct membuf {
-        const std::vector<uint8_t>& buffer;
+        std::span<const uint8_t> buffer;
         size_t position;
     } mem = { livpFileBuff, 0 };
 
@@ -2064,7 +2143,7 @@ void ImageDatabase::handleExifOrientation(int orientation, cv::Mat& img) {
 }
 
 // 苹果实况照片
-ImageAsset ImageDatabase::loadLivp(wstring_view path, const vector<uint8_t>& fileBuf) {
+ImageAsset ImageDatabase::loadLivp(wstring_view path, std::span<const uint8_t> fileBuf) {
     auto [imageFileData, videoFileData, imageExt] = unzipLivp(fileBuf);
     if (imageFileData.empty()) {
         auto exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
@@ -2147,7 +2226,7 @@ static size_t getVideoSize(string_view exifStr) {
 }
 
 // Android 实况照片 jpg/jpeg/heic/heif
-ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, const vector<uint8_t>& fileBuf, bool isJPG = false) {
+ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uint8_t> fileBuf, bool isJPG = false) {
     auto img = isJPG ? loadImageOpenCV(path, fileBuf) : loadHeic(path, fileBuf);
     if (img.empty())
         img = loadImageWinCOM(path, fileBuf);
@@ -2189,25 +2268,13 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
         return { ImageFormat::Still, getErrorTipsMat(), {}, {}, "" };
     }
 
-    auto f = _wfopen(path.data(), L"rb");
-    if (f == nullptr) {
-        JARK_LOG("path canot open: {}", jarkUtils::wstringToUtf8(path));
+    auto fileReader = MappedFileReader(path);
+    if (fileReader.isEmpty()) {
+        JARK_LOG("File is empty: {}", jarkUtils::wstringToUtf8(path));
         return { ImageFormat::Still, getErrorTipsMat(), {}, {}, "" };
     }
 
-    fseek(f, 0, SEEK_END);
-    auto fileSize = ftell(f);
-
-    if (fileSize < 16) {
-        fclose(f);
-        JARK_LOG("path fileSize < 16: {}", jarkUtils::wstringToUtf8(path));
-        return { ImageFormat::Still, getErrorTipsMat(), {}, {}, "" };
-    }
-
-    fseek(f, 0, SEEK_SET);
-    vector<uint8_t> fileBuf(fileSize, 0);
-    fread(fileBuf.data(), 1, fileSize, f);
-    fclose(f);
+    auto fileBuf = fileReader.view();
 
     auto dotPos = path.rfind(L'.');
     auto ext = wstring((dotPos != std::wstring::npos && dotPos < path.size() - 1) ?
