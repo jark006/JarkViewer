@@ -17,7 +17,7 @@
 
 /* TODO
 1. 在鼠标光标位置缩放
-1. 配置文件位置可选：程序所在目录/用户目录
+1. 给系统提供缩略图缓存支持
 1. 调整窗口尺寸时，实时刷新
 1. 缩放策略加个线性插值
 1. LunaSVG库支持度较差，考虑更换
@@ -26,8 +26,8 @@
 */
 
 std::wstring_view appName = L"JarkViewer";
-std::wstring_view appVersion = L"v1.32";
-constinit int appVersionCode = 13200; // 主版本*10000 + 次版本*100 + 修订版本
+std::wstring_view appVersion = L"v1.33Alpha";
+constinit int appVersionCode = 13300; // 主版本*10000 + 次版本*100 + 修订版本
 
 std::wstring_view jarkLink = L"https://github.com/jark006";
 std::wstring_view RepositoryLink = L"https://github.com/jark006/JarkViewer";
