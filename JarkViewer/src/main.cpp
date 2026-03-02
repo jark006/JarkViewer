@@ -26,7 +26,7 @@
 */
 
 std::wstring_view appName = L"JarkViewer";
-std::wstring_view appVersion = L"v1.33Alpha";
+std::wstring_view appVersion = L"v1.33";
 constinit int appVersionCode = 13300; // 主版本*10000 + 次版本*100 + 修订版本
 
 std::wstring_view jarkLink = L"https://github.com/jark006";
