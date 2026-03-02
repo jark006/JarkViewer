@@ -182,15 +182,6 @@ public:
                 labelBox.rect.height };
             textDrawer.putAlignCenter(winCanvas, rect, labelBox.text.data(), cv::Scalar(0, 0, 0, 255));
         }
-
-        if (!GlobalVar::settingPath.empty()) {
-            textDrawer.putAlignLeft(
-                winCanvas,
-                { 20, winHeight - 96, winWidth - 20, winHeight },
-                jarkUtils::wstringToUtf8(wstring(getUIStringW(24)) + GlobalVar::settingPath).c_str(),
-                cv::Scalar(0, 0, 0, 255)
-            );
-        }
     }
 
     void refreshAssociateTab() {

@@ -95,7 +95,7 @@ const wchar_t* const UIStringTableW[STRING_MAX_NUM][2] = {
     {L"无法打开剪贴板", L"Unable to open clipboard"},
     {L"清空剪贴板失败", L"Clearing clipboard failed"},
     {L"保存到图像文件", L"Save to image file"},
-    {L"若不再使用本软件，请关闭软件后再手动删除配置文件:\n", L"If no longer in use this program, please close the program and then manually delete the configuration files:  "},
+    {L"XX", L"XX"},
     {L"复制EXIF信息 (&E)", L"Copy &EXIF info"},  // 25
     {L"复制文件路径 (&P)", L"Copy file &path"},
     {L"复制图像数据 (&C)", L"&Copy image data"},
