@@ -33,7 +33,7 @@ struct generalTabRadio {
 class Setting {
 private:
     static const int winWidth = 1000;
-    static const int winHeight = 800;
+    static const int winHeight = 700; // 固定UI尺寸适应任意分辨率和DPI，最大700为了照顾1366*768的屏幕
     static const int tabHeight = 50;
     static const int tabWidth = 150;
 
@@ -63,10 +63,10 @@ private:
         rc = jarkUtils::GetResource(IDB_PNG_SETTING_RES, L"PNG");
         settingRes = cv::imdecode(cv::Mat(1, (int)rc.size, CV_8UC1, (uint8_t*)rc.ptr), cv::IMREAD_UNCHANGED);
         
-        helpPage = settingRes({ 0, 0, 1000, 750 });
-        helpPageEN = settingRes({ 1000, 0, 1000, 750 });
-        aboutPage = settingRes({ 0, 750, 1000, 750 });
-        aboutPageEN = settingRes({ 1000, 750, 1000, 750 });        
+        helpPage = settingRes({ 0, 0, 1000, 650 });
+        helpPageEN = settingRes({ 1000, 0, 1000, 650 });
+        aboutPage = settingRes({ 0, 650, 1000, 650 });
+        aboutPageEN = settingRes({ 1000, 650, 1000, 650 });        
 
         // GeneralTab
         if (generalTabCheckBoxList.empty()) {
@@ -230,9 +230,9 @@ public:
 
     void refreshAboutTab() {
         jarkUtils::overlayImg(winCanvas, GlobalVar::settingParameter.UI_LANG == 0 ? aboutPage : aboutPageEN, 0, 50);
-        textDrawer.putAlignCenter(winCanvas, { 0, 580, 400, 40 }, jarkUtils::wstringToUtf8(appVersion).c_str(), { 186, 38, 60, 255 });
-        textDrawer.putAlignCenter(winCanvas, { 0, 670, 400, 40 }, getUIString(19), { 186, 38, 60, 255 });
-        textDrawer.putAlignCenter(winCanvas, { 0, 700, 400, 40 }, jarkUtils::COMPILE_DATE_TIME, { 186, 38, 60, 255 });
+        textDrawer.putAlignCenter(winCanvas, { 0, 480, 400, 40 }, jarkUtils::wstringToUtf8(appVersion).c_str(), { 186, 38, 60, 255 });
+        textDrawer.putAlignCenter(winCanvas, { 0, 570, 400, 40 }, getUIString(19), { 186, 38, 60, 255 });
+        textDrawer.putAlignCenter(winCanvas, { 0, 600, 400, 40 }, jarkUtils::COMPILE_DATE_TIME, { 186, 38, 60, 255 });
 
 #ifndef NDEBUG
         cv::rectangle(winCanvas, jarkBtnRect, cv::Scalar(40, 40, 255, 255), 1);
