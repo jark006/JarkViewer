@@ -5,8 +5,6 @@
 #include "videoDecoder.h"
 #include "SVGPreprocessor.h"
 
-// libbpg v0.9.8 End on 2018  https://bellard.org/bpg/
-#include "libbpg.h"
 
 // stb_image v2.30  https://github.com/nothings/stb
 #include "stb_image.h"
@@ -97,6 +95,148 @@
 #pragma comment(lib, "bz2.lib")
 
 
+// ffmpeg
+#pragma comment(lib, "swscale.lib")
+#pragma comment(lib, "avcodec.lib")
+#pragma comment(lib, "avdevice.lib")
+#pragma comment(lib, "avfilter.lib")
+#pragma comment(lib, "avformat.lib")
+#pragma comment(lib, "avutil.lib")
+#pragma comment(lib, "swresample.lib")
+
+// ffmpeg 相关的第三方库
+#pragma comment(lib, "snappy.lib")
+#pragma comment(lib, "speex.lib")
+#pragma comment(lib, "soxr.lib")
+#pragma comment(lib, "SDL2-static.lib")
+#pragma comment(lib, "opus.lib")
+#pragma comment(lib, "openh264.lib")
+#pragma comment(lib, "OpenCL.lib")
+#pragma comment(lib, "OpenCLExt.lib")
+#pragma comment(lib, "OpenCLUtils.lib")
+#pragma comment(lib, "OpenCLUtilsCpp.lib")
+#pragma comment(lib, "libmp3lame-static.lib")
+#pragma comment(lib, "libmpghip-static.lib")
+#pragma comment(lib, "libmfx.lib")
+#pragma comment(lib, "libxml2.lib")
+#pragma comment(lib, "vpx.lib")
+#pragma comment(lib, "theora.lib")
+#pragma comment(lib, "theoradec.lib")
+#pragma comment(lib, "theoraenc.lib")
+#pragma comment(lib, "ssh.lib")
+#pragma comment(lib, "srt.lib")
+#pragma comment(lib, "libcrypto.lib")
+#pragma comment(lib, "libssl.lib")
+#pragma comment(lib, "openmpt.lib")
+#pragma comment(lib, "mpg123.lib")
+#pragma comment(lib, "out123.lib")
+#pragma comment(lib, "syn123.lib")
+#pragma comment(lib, "yasm.lib")
+#pragma comment(lib, "vorbis.lib")
+#pragma comment(lib, "vorbisenc.lib")
+#pragma comment(lib, "vorbisfile.lib")
+#pragma comment(lib, "ogg.lib")
+#pragma comment(lib, "modplug.lib")
+#pragma comment(lib, "lzma.lib")
+#pragma comment(lib, "ilbc.lib")
+#pragma comment(lib, "ass.lib")
+#pragma comment(lib, "fribidi.lib")
+
+#pragma comment(lib, "absl_random_seed_sequences.lib")
+#pragma comment(lib, "absl_raw_hash_set.lib")
+#pragma comment(lib, "absl_raw_logging_internal.lib")
+#pragma comment(lib, "absl_scoped_set_env.lib")
+#pragma comment(lib, "absl_spinlock_wait.lib")
+#pragma comment(lib, "absl_stacktrace.lib")
+#pragma comment(lib, "absl_status.lib")
+#pragma comment(lib, "absl_statusor.lib")
+#pragma comment(lib, "absl_str_format_internal.lib")
+#pragma comment(lib, "absl_strerror.lib")
+#pragma comment(lib, "absl_string_view.lib")
+#pragma comment(lib, "absl_strings.lib")
+#pragma comment(lib, "absl_strings_internal.lib")
+#pragma comment(lib, "absl_symbolize.lib")
+#pragma comment(lib, "absl_synchronization.lib")
+#pragma comment(lib, "absl_throw_delegate.lib")
+#pragma comment(lib, "absl_time.lib")
+#pragma comment(lib, "absl_time_zone.lib")
+#pragma comment(lib, "absl_tracing_internal.lib")
+#pragma comment(lib, "absl_utf8_for_code_point.lib")
+#pragma comment(lib, "absl_vlog_config_internal.lib")
+#pragma comment(lib, "absl_bad_any_cast_impl.lib")
+#pragma comment(lib, "absl_bad_optional_access.lib")
+#pragma comment(lib, "absl_bad_variant_access.lib")
+#pragma comment(lib, "absl_base.lib")
+#pragma comment(lib, "absl_city.lib")
+#pragma comment(lib, "absl_civil_time.lib")
+#pragma comment(lib, "absl_cord.lib")
+#pragma comment(lib, "absl_cord_internal.lib")
+#pragma comment(lib, "absl_cordz_functions.lib")
+#pragma comment(lib, "absl_cordz_handle.lib")
+#pragma comment(lib, "absl_cordz_info.lib")
+#pragma comment(lib, "absl_cordz_sample_token.lib")
+#pragma comment(lib, "absl_crc_cord_state.lib")
+#pragma comment(lib, "absl_crc_cpu_detect.lib")
+#pragma comment(lib, "absl_crc_internal.lib")
+#pragma comment(lib, "absl_crc32c.lib")
+#pragma comment(lib, "absl_debugging_internal.lib")
+#pragma comment(lib, "absl_decode_rust_punycode.lib")
+#pragma comment(lib, "absl_demangle_internal.lib")
+#pragma comment(lib, "absl_demangle_rust.lib")
+#pragma comment(lib, "absl_die_if_null.lib")
+#pragma comment(lib, "absl_examine_stack.lib")
+#pragma comment(lib, "absl_exponential_biased.lib")
+#pragma comment(lib, "absl_failure_signal_handler.lib")
+#pragma comment(lib, "absl_flags_commandlineflag.lib")
+#pragma comment(lib, "absl_flags_commandlineflag_internal.lib")
+#pragma comment(lib, "absl_flags_config.lib")
+#pragma comment(lib, "absl_flags_internal.lib")
+#pragma comment(lib, "absl_flags_marshalling.lib")
+#pragma comment(lib, "absl_flags_parse.lib")
+#pragma comment(lib, "absl_flags_private_handle_accessor.lib")
+#pragma comment(lib, "absl_flags_program_name.lib")
+#pragma comment(lib, "absl_flags_reflection.lib")
+#pragma comment(lib, "absl_flags_usage.lib")
+#pragma comment(lib, "absl_flags_usage_internal.lib")
+#pragma comment(lib, "absl_graphcycles_internal.lib")
+#pragma comment(lib, "absl_hash.lib")
+#pragma comment(lib, "absl_hashtablez_sampler.lib")
+#pragma comment(lib, "absl_int128.lib")
+#pragma comment(lib, "absl_kernel_timeout_internal.lib")
+#pragma comment(lib, "absl_leak_check.lib")
+#pragma comment(lib, "absl_log_entry.lib")
+#pragma comment(lib, "absl_log_flags.lib")
+#pragma comment(lib, "absl_log_globals.lib")
+#pragma comment(lib, "absl_log_initialize.lib")
+#pragma comment(lib, "absl_log_internal_check_op.lib")
+#pragma comment(lib, "absl_log_internal_conditions.lib")
+#pragma comment(lib, "absl_log_internal_fnmatch.lib")
+#pragma comment(lib, "absl_log_internal_format.lib")
+#pragma comment(lib, "absl_log_internal_globals.lib")
+#pragma comment(lib, "absl_log_internal_log_sink_set.lib")
+#pragma comment(lib, "absl_log_internal_message.lib")
+#pragma comment(lib, "absl_log_internal_nullguard.lib")
+#pragma comment(lib, "absl_log_internal_proto.lib")
+#pragma comment(lib, "absl_log_internal_structured_proto.lib")
+#pragma comment(lib, "absl_log_severity.lib")
+#pragma comment(lib, "absl_log_sink.lib")
+#pragma comment(lib, "absl_low_level_hash.lib")
+#pragma comment(lib, "absl_malloc_internal.lib")
+#pragma comment(lib, "absl_periodic_sampler.lib")
+#pragma comment(lib, "absl_poison.lib")
+#pragma comment(lib, "absl_random_distributions.lib")
+#pragma comment(lib, "absl_random_internal_distribution_test_util.lib")
+#pragma comment(lib, "absl_random_internal_platform.lib")
+#pragma comment(lib, "absl_random_internal_pool_urbg.lib")
+#pragma comment(lib, "absl_random_internal_randen.lib")
+#pragma comment(lib, "absl_random_internal_randen_hwaes.lib")
+#pragma comment(lib, "absl_random_internal_randen_hwaes_impl.lib")
+#pragma comment(lib, "absl_random_internal_randen_slow.lib")
+#pragma comment(lib, "absl_random_internal_seed_material.lib")
+#pragma comment(lib, "absl_random_seed_gen_exception.lib")
+
+
+
 class ImageDatabase :public LRU<wstring, ImageAsset> {
 public:
 
@@ -111,7 +251,7 @@ public:
         L"exr", L"tiff", L"tif", L"webp", L"hdr", L"pic",
         L"heic", L"heif", L"avif", L"avifs", L"gif", L"jxl",
         L"ico", L"icon", L"psd", L"tga", L"svg", L"jfif",
-        L"jxr", L"wp2", L"pfm", L"bpg", L"livp", L"qoi",
+        L"jxr", L"wp2", L"pfm", L"livp", L"qoi",
         L"pcx", 
     };
 
@@ -347,7 +487,6 @@ public:
     ImageAsset loadAvif(wstring_view path, std::span<const uint8_t> buf);
     ImageAsset loadJXL(wstring_view path, std::span<const uint8_t> buf);
     ImageAsset loadWP2(wstring_view path, std::span<const uint8_t> buf);
-    ImageAsset loadBPG(wstring_view path, std::span<const uint8_t> buf);
     ImageAsset loadLivp(wstring_view path, std::span<const uint8_t> buf);
     ImageAsset loadMotionPhoto(wstring_view path, std::span<const uint8_t> buf, bool isJPG);
     ImageAsset loadAnimation(wstring_view path, std::span<const uint8_t> buf);

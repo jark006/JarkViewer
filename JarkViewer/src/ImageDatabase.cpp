@@ -419,75 +419,6 @@ ImageAsset ImageDatabase::loadWP2(wstring_view path, std::span<const uint8_t> bu
 }
 
 
-ImageAsset ImageDatabase::loadBPG(wstring_view path, std::span<const uint8_t> buf) {
-    auto decoderContext = bpg_decoder_open();
-    if (bpg_decoder_decode(decoderContext, buf.data(), (int)buf.size()) < 0) {
-        JARK_LOG("cvMat cannot decode: {}", jarkUtils::wstringToUtf8(path));
-        return {};
-    }
-
-    ImageAsset imageAsset;
-    BPGImageInfo img_info{};
-    bpg_decoder_get_info(decoderContext, &img_info);
-
-    auto width = img_info.width;
-    auto height = img_info.height;
-
-    cv::Mat frame(height, width, CV_8UC4);
-
-    if (img_info.has_animation) {
-        while (true) {
-            if (bpg_decoder_start(decoderContext, BPG_OUTPUT_FORMAT_RGBA32) == 0) {
-                for (uint32_t y = 0; y < height; y++) {
-                    bpg_decoder_get_line(decoderContext, frame.ptr<uchar>(y));
-                }
-                cv::cvtColor(frame, frame, cv::COLOR_RGBA2BGRA);
-
-                int num, den;
-                bpg_decoder_get_frame_duration(decoderContext, &num, &den);
-                imageAsset.frames.emplace_back(frame.clone());
-                imageAsset.frameDurations.emplace_back(den == 0 ? 100 : (num * 1000 / den));
-            }
-            else {
-                break;
-            }
-        }
-
-        if (imageAsset.frames.empty()) {
-            imageAsset.format = ImageFormat::None;
-            imageAsset.primaryFrame = getErrorTipsMat();
-        }
-        else if (imageAsset.frames.size() == 1) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = std::move(imageAsset.frames[0]);
-            imageAsset.frames.clear();
-            imageAsset.frameDurations.clear();
-        }
-        else {
-            imageAsset.format = ImageFormat::Animated;
-        }
-    }
-    else {
-        if (bpg_decoder_start(decoderContext, BPG_OUTPUT_FORMAT_RGBA32) == 0) {
-            for (uint32_t y = 0; y < height; y++) {
-                bpg_decoder_get_line(decoderContext, frame.ptr<uchar>(y));
-            }
-            cv::cvtColor(frame, frame, cv::COLOR_RGBA2BGRA);
-
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = std::move(frame);
-        }
-        else {
-            imageAsset.format = ImageFormat::None;
-            imageAsset.primaryFrame = getErrorTipsMat();
-        }
-    }
-
-    bpg_decoder_close(decoderContext);
-    return imageAsset;
-}
-
-
 // https://github.com/strukturag/libheif
 // vcpkg install libheif:x64-windows-static
 // vcpkg install libheif[hevc]:x64-windows-static
@@ -2171,7 +2102,7 @@ ImageAsset ImageDatabase::loadLivp(wstring_view path, std::span<const uint8_t> f
         return { ImageFormat::Still, img, {}, {}, exifInfo };
     }
 
-    auto frames = VideoDecoder::DecodeVideoFrames(videoFileData.data(), videoFileData.size());
+    auto frames = DecodeVideoFrames(videoFileData.data(), videoFileData.size());
 
     if (frames.empty()) {
         return { ImageFormat::Still, img, {}, {}, exifInfo };
@@ -2251,7 +2182,7 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
         return { ImageFormat::Still, img, {}, {}, exifInfo };
     }
 
-    auto frames = VideoDecoder::DecodeVideoFrames(fileBuf.data() + fileBuf.size() - videoSize, videoSize);
+    auto frames = DecodeVideoFrames(fileBuf.data() + fileBuf.size() - videoSize, videoSize);
     if (frames.empty()) {
         return { ImageFormat::Still, img, {}, {}, exifInfo };
     }
@@ -2301,25 +2232,6 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
         // 以下情况是动图
         if (ext == L"gif") {
             imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size());
-        }
-        else {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        return imageAsset;
-    }
-    else if (ext == L"bpg") { //静态或动画
-        auto imageAsset = loadBPG(path, fileBuf);
-
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = getErrorTipsMat();
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        }
-        else if (imageAsset.format == ImageFormat::Still) {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
-                fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
         }
         else {
             imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())

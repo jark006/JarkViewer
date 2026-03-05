@@ -56,6 +56,10 @@ using std::endl;
 #include <wmcodecdsp.h>
 #include <shlobj.h>
 #include <commctrl.h>
+#include <strmif.h>
+
+#define SECURITY_WIN32
+#include <sspi.h>
 
 #pragma comment(lib, "Psapi.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -78,7 +82,13 @@ using std::endl;
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "uxtheme.lib")
-
+#pragma comment(lib, "Secur32.lib")
+#pragma comment(lib, "Crypt32.lib")
+#pragma comment(lib, "Cfgmgr32.lib")
+#pragma comment(lib, "Iphlpapi.lib")
+#pragma comment(lib, "Bcrypt.lib")
+#pragma comment(lib, "Strmiids.lib")
+#pragma comment(lib, "ws2_32.lib")
 
 #include <opencv2/core.hpp>
 #include <opencv2/opencv.hpp>
@@ -100,7 +110,7 @@ inline constexpr ThemeColor lightTheme{ 0xEE, 0xFFDDDDDD, 0xFFFFFFFF };
 struct SettingParameter {
     // 常见格式
     static inline std::string_view defaultExtList{ 
-        "apng,avif,bmp,bpg,gif,heic,heif,ico,jfif,jp2,jpe,jpeg,jpg,jxl,jxr,livp,pbm,pfm,pgm,png,pnm,ppm,qoi,svg,tga,tif,tiff,webp,wp2" };
+        "apng,avif,bmp,gif,heic,heif,ico,jfif,jp2,jpe,jpeg,jpg,jxl,jxr,livp,pbm,pfm,pgm,png,pnm,ppm,qoi,svg,tga,tif,tiff,webp,wp2" };
 
     uint8_t header[32];
     RECT rect{};                           // 窗口大小位置
