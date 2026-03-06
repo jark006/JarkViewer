@@ -1,4 +1,4 @@
-# 🌟 JarkViewer看图
+# 🖼 JarkViewer 看图
 
 [![Version](https://img.shields.io/github/v/release/jark006/JarkViewer)](https://github.com/jark006/JarkViewer/releases/latest)
 [![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total)](https://github.com/jark006/JarkViewer/releases)
@@ -8,7 +8,7 @@
 
 中文 | [English](README_EN.md)
 
-*一款轻量、飞快且强大的图像查看器，支持从 JPEG 到 AVIF、HEIC 和 JPEG XL 等最新格式的超多图像格式！即使是 iOS 和 Android 的实况照片也能流畅浏览。*
+*一款轻量且飞快的看图软件，支持从 JPEG 到 AVIF、HEIC 和 JPEG XL 等最新格式的超多图像格式！即使是 iOS 和 Android 的实况照片也能流畅浏览。*
 
 ![Preview](preview.png)
 
@@ -50,7 +50,7 @@
 
 - **静态**：`apng avif avifs bmp dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr livp pbm pfm pgm pic png pnm ppm psd pxm qoi ras sr svg tga tif tiff webp wp2`
 - **动态**：`gif webp png apng jxl avif`
-- **实况**：`livp(IOS LivePhoto) jpg/heic/heif(Android MicroVideo/MotionPhoto)` *⚠ 暂不支持播放音频*
+- **实况**：`livp(IOS LivePhoto) jpg/heic/heif(Android MicroVideo/MotionPhoto)` *⚠ 暂不支持播放声音*
 - **RAW**：`3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
 
 ## 👋 快速上手
@@ -107,6 +107,7 @@ vcpkg install libjxl:x64-windows-static
 vcpkg install libheif[core,hevc]:x64-windows-static
 vcpkg install libraw[core,dng-lossy,openmp]:x64-windows-static
 vcpkg install lunasvg:x64-windows-static
+vcpkg install ffmpeg:x64-windows-static
 vcpkg install opencv4[core,contrib,freetype,ipp,jasper,jpeg,jpegxl,nonfree,openexr,opengl,openjpeg,png,tiff,webp,world]:x64-windows-static
 ```
 

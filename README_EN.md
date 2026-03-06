@@ -1,4 +1,4 @@
-# 🌟 JarkViewer
+# 🖼 JarkViewer
 
 [![Version](https://img.shields.io/github/v/release/jark006/JarkViewer)](https://github.com/jark006/JarkViewer/releases/latest)
 [![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total)](https://github.com/jark006/JarkViewer/releases)
@@ -8,7 +8,7 @@
 
 [中文](README.md) | English
 
-*A lightweight, lightning-fast, and powerful image viewer that supports a vast array of image formats—from JPEG to the latest ones such as AVIF, HEIC, and JPEG XL! It even smoothly displays iOS Live Photos and Android Motion Photos.*
+*A lightweight and lightning-fast image viewer that supports a vast array of image formats — from JPEG to the latest ones such as AVIF, HEIC, and JPEG XL! It even smoothly displays iOS Live Photos and Android Motion Photos.*
 
 ![Preview](preview.png)
 
@@ -106,6 +106,7 @@ vcpkg install libjxl:x64-windows-static
 vcpkg install libheif[core,hevc]:x64-windows-static
 vcpkg install libraw[core,dng-lossy,openmp]:x64-windows-static
 vcpkg install lunasvg:x64-windows-static
+vcpkg install ffmpeg:x64-windows-static
 vcpkg install opencv4[core,contrib,freetype,ipp,jasper,jpeg,jpegxl,nonfree,openexr,opengl,openjpeg,png,tiff,webp,world]:x64-windows-static
 ```
 
