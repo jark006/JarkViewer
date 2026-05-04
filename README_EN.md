@@ -1,15 +1,27 @@
-# 🖼 JarkViewer
+<p align="center">
+    <picture>
+        <img src="ico.png" alt="JarkViewer" width="100">
+    </picture>
+</p>
 
-[![Version](https://img.shields.io/github/v/release/jark006/JarkViewer)](https://github.com/jark006/JarkViewer/releases/latest)
-[![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total)](https://github.com/jark006/JarkViewer/releases)
-[![SourceForge](https://img.shields.io/badge/SourceForge-Download-orange)](https://sourceforge.net/projects/jarkviewer.mirror/)
-![License](https://img.shields.io/github/license/jark006/JarkViewer)
-![Platform](https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jark006/JarkViewer)
+<h1 align="center">
+  <strong>JarkViewer</strong>
+</h1>
 
-[中文](README.md) | English
+<p align="center">
+  <a href="https://github.com/jark006/JarkViewer/releases"><img src="https://img.shields.io/github/v/release/jark006/JarkViewer" alt="GitHub release"></a>
+  <a href="https://github.com/jark006/JarkViewer/releases"><img src="https://img.shields.io/github/downloads/jark006/jarkviewer/total" alt="Download"></a>
+  <a href="https://sourceforge.net/projects/jarkviewer.mirror/"><img src="https://img.shields.io/badge/SourceForge-Download-orange" alt="Sourceforge"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/jark006/JarkViewer" alt="License"></a>
+  <a><img src="https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg" alt="Platform"></a>
+  <a href="https://deepwiki.com/jark006/JarkViewer"><img src="https://deepwiki.com/badge.svg" alt="DeepWiki"></a>
+</p>
 
-*A minimalist and lightning-fast image viewer that supports a vast array of image formats — from JPEG to the latest ones such as AVIF, HEIC, and JPEG XL! It even smoothly displays iOS Live Photos and Android Motion Photos.*
+<p align="center">
+<a href="README.md">中文</a> | English
+</p>
+
+**JarkViewer** is a minimalist and lightning-fast image viewer that supports a vast array of image formats — from JPEG to the latest ones such as AVIF, HEIC, and JPEG XL! It even smoothly displays iOS Live Photos and Android Motion Photos.
 
 ![Preview](preview.png)
 
@@ -43,9 +55,9 @@ You can also select color modes: `Color`, `Gray`, `Document`, `Dithering`.
 ## 🗃️ Features
 
 1.  🍀 Fully static linking compilation, native portable single file
-1.  ✅ Automatically remembers last window position/size
-1.  ♟️ Chessboard background for image transparent areas
-1.  📖 Supports reading prompt parameter information from open-source AI-generated images. Images output by StableDiffusion WebUI and ComfyUI typically contain embedded prompt parameters or workflow JSON. However. ⚠ if the images are re-encoded through circulation on various online platforms, this information may be removed.
+2.  ✅ Automatically remembers last window position/size
+3.  ♟️ Chessboard background for image transparent areas
+4.  📖 Supports reading prompt parameter information from open-source AI-generated images. Images output by StableDiffusion WebUI and ComfyUI typically contain embedded prompt parameters or workflow JSON. However. ⚠ if the images are re-encoded through circulation on various online platforms, this information may be removed.
 
 ## 📂 Format Support
 

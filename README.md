@@ -1,31 +1,43 @@
-# 🖼 JarkViewer 看图
+<p align="center">
+    <picture>
+        <img src="ico.png" alt="JarkViewer" width="100">
+    </picture>
+</p>
 
-[![Version](https://img.shields.io/github/v/release/jark006/JarkViewer)](https://github.com/jark006/JarkViewer/releases/latest)
-[![Download](https://img.shields.io/github/downloads/jark006/jarkviewer/total)](https://github.com/jark006/JarkViewer/releases)
-[![SourceForge](https://img.shields.io/badge/SourceForge-Download-orange)](https://sourceforge.net/projects/jarkviewer.mirror/)
-![License](https://img.shields.io/github/license/jark006/JarkViewer)
-![Platform](https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jark006/JarkViewer)
+<h1 align="center">
+  <strong>JarkViewer 看图</strong>
+</h1>
 
-中文 | [English](README_EN.md)
+<p align="center">
+  <a href="https://github.com/jark006/JarkViewer/releases"><img src="https://img.shields.io/github/v/release/jark006/JarkViewer" alt="GitHub release"></a>
+  <a href="https://github.com/jark006/JarkViewer/releases"><img src="https://img.shields.io/github/downloads/jark006/jarkviewer/total" alt="Download"></a>
+  <a href="https://sourceforge.net/projects/jarkviewer.mirror/"><img src="https://img.shields.io/badge/SourceForge-Download-orange" alt="Sourceforge"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/jark006/JarkViewer" alt="License"></a>
+  <a><img src="https://img.shields.io/badge/OS-Windows%2010/11%2064%20bit-00adef.svg" alt="Platform"></a>
+  <a href="https://deepwiki.com/jark006/JarkViewer"><img src="https://deepwiki.com/badge.svg" alt="DeepWiki"></a>
+</p>
 
-*一款简约且飞快的看图软件，支持从 JPEG 到 AVIF、HEIC 和 JPEG XL 等最新格式的超多图像格式！即使是 iOS 和 Android 的实况照片也能流畅浏览。*
+<p align="center">
+中文 | <a href="README_EN.md">English</a>
+</p>
+
+**JarkViewer** 是一款简约且飞快的看图软件，支持从 JPEG 到 AVIF、HEIC 和 JPEG XL 等最新格式的超多图像格式！即使是 iOS 和 Android 的实况照片也能流畅浏览。
 
 ![Preview](preview.png)
 
 ## ✨ 操作方式
 
 1. **⏭ 切换图片**：窗口左右边缘 `单击/滚轮` / `左/右` 方向键
-1. **🔍 放大缩小**：窗口中间滚轮 / `上/下`方向键
-1. **🔄 旋转图片**：窗口左上角或右上角 `单击/滚轮` / `Q/E` 键
-1. **🖱️ 平移图片**：鼠标拖动 / `W/A/S/D` 键
-1. **ℹ️ 图像信息**：点击滚轮 / `TAB / I` 键
-1. **🖥️ 切换全屏**：双击窗口 / `F` 键 / `F11` 键
-1. **📋 复制图像**：`Ctrl + C`
-1. **🖨 打印图像**：窗口左下角 `单击` / `Ctrl + P`
-1. **🎞️ 逐帧浏览**：窗口顶部控制栏 / `J:上帧` `K:暂停/继续` `L:下帧`
-1. **⌨️ 空格按键**：若当前是静态图则切换下一张，若是动图则暂停/播放
-1. **✂️ 分解动图**：`Ctrl + S` 将动图每一帧另存为单独的静态图像文件
+2. **🔍 放大缩小**：窗口中间滚轮 / `上/下`方向键
+3. **🔄 旋转图片**：窗口左上角或右上角 `单击/滚轮` / `Q/E` 键
+4. **🖱️ 平移图片**：鼠标拖动 / `W/A/S/D` 键
+5. **ℹ️ 图像信息**：点击滚轮 / `TAB / I` 键
+6. **🖥️ 切换全屏**：双击窗口 / `F` 键 / `F11` 键
+7. **📋 复制图像**：`Ctrl + C`
+8. **🖨 打印图像**：窗口左下角 `单击` / `Ctrl + P`
+9. **🎞️ 逐帧浏览**：窗口顶部控制栏 / `J:上帧` `K:暂停/继续` `L:下帧`
+10. **⌨️ 空格按键**：若当前是静态图则切换下一张，若是动图则暂停/播放
+11. **✂️ 分解动图**：`Ctrl + S` 将动图每一帧另存为单独的静态图像文件
 
 ---
 
@@ -36,16 +48,16 @@
 还可以选择颜色模式：`彩色`、`黑白`、`黑白文档`、`黑白抖动`。
 
 1. **黑白文档**: 均衡全图亮度，突出字迹，避免局部阴影的观感影响，适合打印拍摄的文字纸张图像。
-1. **黑白抖动**: 使用纯黑像素的分布密度模拟像素灰度值。此模式适合针式打印机和热敏打印机，也能打印出较好的图像效果。
+2. **黑白抖动**: 使用纯黑像素的分布密度模拟像素灰度值。此模式适合针式打印机和热敏打印机，也能打印出较好的图像效果。
 
 ![printerPreview](printerPreview.png)
 
 ## 🗃️ 特性
 
 1. 🍀 全静态链接编译，原生绿色单文件
-1. ✅ 自动记忆上次窗口位置/尺寸
-1. ♟️ 图片透明区域使用国际象棋棋盘背景
-1. 📖 支持读取开源AI生成图像的提示词信息【StableDiffusion WebUI、ComfyUI输出的图像一般都会内嵌提示词参数或工作流JSON，⚠ 若图像经过各大网络平台传播重新编码，该信息可能会被移除】
+2. ✅ 自动记忆上次窗口位置/尺寸
+3. ♟️ 图片透明区域使用国际象棋棋盘背景
+4. 📖 支持读取开源AI生成图像的提示词信息【StableDiffusion WebUI、ComfyUI输出的图像一般都会内嵌提示词参数或工作流JSON，⚠ 若图像经过各大网络平台传播重新编码，该信息可能会被移除】
 
 ## 📂 格式支持
 
@@ -58,12 +70,12 @@
 
 1. 下载最新版 [Releases](https://github.com/jark006/JarkViewer/releases)、[蓝奏网盘](https://jark006.lanzout.com/b0ko7mczg)、[百度云盘](https://pan.baidu.com/s/1ka7p__WVw2du3mnOfqWceQ?pwd=6666)，提取码：6666
 
-1. 使用 `winget` 安装
+2. 使用 `winget` 安装
 ```sh
 winget install jark006.jarkviewer
 ```
 
-2. 使用 `scoop` 安装
+3. 使用 `scoop` 安装
 ```sh
 scoop bucket add extras
 scoop install extras/jarkviewer
@@ -73,7 +85,7 @@ scoop install extras/jarkviewer
 
 ## ⚠ 最低系统支持
 
-仅支持 `64位` 的 `Windows 10/11` 操作系统。
+仅支持 `64位` `Windows 10/11` 操作系统。
 
 ---
 
@@ -92,7 +104,7 @@ git clone git@github.com:jark006/JarkViewer.git --depth=50
 
 以上静态库除 `OpenCV` 外，均使用vcpkg安装的静态库复制而来。OpenCV有以下2个修改：
 1. 在源码 `opencv-4.13.0\modules\imgcodecs\src\loadsave.cpp` #68-79 移除图像分辨率限制。
-1. 在源码 `opencv-4.13.0\modules\highgui\src\window_w32.cpp` #337 将 `IDC_CROSS` 改为 `IDC_ARROW`，即在 `cv::imshow()` 窗口内不使用十字光标。
+2. 在源码 `opencv-4.13.0\modules\highgui\src\window_w32.cpp` #337 将 `IDC_CROSS` 改为 `IDC_ARROW`，即在 `cv::imshow()` 窗口内不使用十字光标。
 
 
 若不要以上静态库，可在项目属性页开启`vcpkg`支持，然后手动安装第三方库 (后续若有新增，此列表可能更新不及时，需开发者自行根据编译缺失信息补充安装)
