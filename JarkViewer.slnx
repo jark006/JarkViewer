@@ -1,18 +1,14 @@
 <Solution>
   <Configurations>
     <Platform Name="x64" />
-    <Platform Name="x86" />
   </Configurations>
-  <Folder Name="/解决方案项/">
+  <Folder Name="/ProjectFile/">
     <File Path="AGENTS.md" />
     <File Path="CLAUDE.md" />
     <File Path="README.md" />
     <File Path="README_EN.md" />
   </Folder>
   <Project Path="JarkViewer/JarkViewer.vcxproj" Id="b0d84475-f869-46b6-bb98-40e788cb86d9">
-    <BuildType Solution="Release|x86" Project="Debug" />
-    <Platform Project="x64" />
-    <Build Solution="*|x86" Project="false" />
-    <Deploy Solution="*|x64" />
+    <Deploy />
   </Project>
 </Solution>
