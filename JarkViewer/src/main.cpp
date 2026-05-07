@@ -6,7 +6,8 @@
 #include "Setting.h"
 
 #include "D3D11App.h"
-#include "omp.h"
+#include <ppl.h>
+#include <concrt.h>
 
 /* TODO
 1. 在鼠标光标位置缩放
@@ -1132,8 +1133,7 @@ public:
 
         switch (srcImg.type()) {
         case CV_8UC4: {
-#pragma omp parallel for num_threads(4)
-            for (int y = yStart; y < yEnd; y++) {
+            concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * curPar.ZOOM_BASE / curPar.zoomCur); // 2K屏 50%缩放一帧34ms 100%缩放一帧14ms
                 int srcY = (int)((y - deltaH) * zoomInvert); // 快一点  2K屏 50%缩放一帧28ms 100%缩放一帧14ms
@@ -1170,12 +1170,11 @@ public:
                     }
                     break;
                 }
-            }
+            });
         }break;
 
         case CV_8UC3: {
-#pragma omp parallel for num_threads(4)
-            for (int y = yStart; y < yEnd; y++) {
+            concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * curPar.ZOOM_BASE / curPar.zoomCur);
                 int srcY = (int)((y - deltaH) * zoomInvert);
@@ -1212,12 +1211,11 @@ public:
                     }
                     break;
                 }
-            }
+            });
         }break;
 
         case CV_8UC1: {
-#pragma omp parallel for num_threads(4)
-            for (int y = yStart; y < yEnd; y++) {
+            concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * curPar.ZOOM_BASE / curPar.zoomCur);
                 int srcY = (int)((y - deltaH) * zoomInvert);
@@ -1254,7 +1252,7 @@ public:
                     }
                     break;
                 }
-            }
+            });
         }break;
         }
     }
@@ -2107,6 +2105,14 @@ int WINAPI wWinMain(
 #endif
 
     //test();
+
+    // 限制 PPL 默认调度器最多 4 线程, 必须在任何 concurrency::parallel_* 调用之前设置。
+    {
+        concurrency::SchedulerPolicy policy(2,
+            concurrency::MinConcurrency, 1,
+            concurrency::MaxConcurrency, 4);
+        concurrency::Scheduler::SetDefaultSchedulerPolicy(policy);
+    }
 
     Exiv2::enableBMFF();
     ::ImmDisableIME(GetCurrentThreadId()); // 禁用输入法，防止干扰按键操作
