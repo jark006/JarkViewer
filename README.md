@@ -81,11 +81,12 @@ scoop bucket add extras
 scoop install extras/jarkviewer
 ```
 
-> ⚠ 注意：若启动时提示缺失 `MSVCP140.dll` 等，请下载并安装 VC++运行库: [Microsoft Visual C++ 2015-2022 Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+> ⚠ 注意：若启动时提示缺失 `VCOMP140.DLL` 等，请下载并安装 VC++运行库: [vc_redist.x64.exe](https://aka.ms/vs/18/release/vc_redist.x64.exe)
+。自 `v1.35` 起，**不再依赖** `VC++运行库`，且可在 `PE` 环境直接运行。如果仍遇到相关错误，请确保下载了正确版本的程序。
 
 ## ⚠ 最低系统支持
 
-仅支持 `64位` `Windows 10/11` 操作系统。
+仅支持 `64位` `Windows 8 ~ 11` 操作系统。
 
 ---
 

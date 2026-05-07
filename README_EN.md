@@ -68,7 +68,7 @@ You can also select color modes: `Color`, `Gray`, `Document`, `Dithering`.
 
 ## 👋 Quick Start
 
-1. Download the latest version at [Releases](https://github.com/jark006/JarkViewer/releases).
+1. Download the latest version at [Releases](https://github.com/jark006/JarkViewer/releases), [Lanzou Cloud](https://jark006.lanzout.com/b0ko7mczg), or [Baidu Cloud](https://pan.baidu.com/s/1ka7p__WVw2du3mnOfqWceQ?pwd=6666) (extraction code: 6666).
 
 2. Install by `winget`
 ```sh
@@ -81,11 +81,12 @@ scoop bucket add extras
 scoop install extras/jarkviewer
 ```
 
-> ⚠ Note: If encounter a missing `MSVCP140.dll` error during startup, please download and install the VC++ runtime: [Microsoft Visual C++ 2015-2022 Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+> ⚠ Note: If startup reports missing `VCOMP140.DLL` or similar, please download and install the VC++ runtime: [vc_redist.x64.exe](https://aka.ms/vs/18/release/vc_redist.x64.exe).
+Since `v1.35`, JarkViewer **no longer depends** on the `VC++ Runtime` and can run directly in `PE` environments. If you still encounter related errors, please make sure you downloaded the correct version of the program.
 
 ## ⚠ Minimum System Support
 
-Only `64-bit` `Windows 10/11` are supported.
+Only `64-bit` `Windows 8 ~ 11` are supported.
 
 ---
 
