@@ -122,8 +122,8 @@ static int get_rotation_angle(AVStream* stream) {
 std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size) {
     std::vector<cv::Mat> frames;
 
-    if (!videoBuffer || size < 65536) {
-        JARK_LOG("Invalid video buffer or size");
+    if (!videoBuffer || size < MIN_VIDEO_BUFF_SIZE) {
+        JARK_LOG("Invalid video buffer: 0x{:X} or size: {} bytes", reinterpret_cast<const size_t>(videoBuffer), size);
         return frames;
     }
 

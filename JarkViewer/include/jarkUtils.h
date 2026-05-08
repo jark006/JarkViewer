@@ -89,6 +89,8 @@ using std::unordered_map;
 
 #include "stringRes.h"
 
+inline int MIN_VIDEO_BUFF_SIZE = 65536; // 64KiB 视频数据最小尺寸，过小可能是无效数据
+
 struct ThemeColor {
     uint32_t FG_LIGHT;   // 文字颜色 浅
     uint32_t FG;         // 文字颜色

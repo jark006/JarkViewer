@@ -29,14 +29,14 @@ public:
         );
 
         if (hFile == INVALID_HANDLE_VALUE) {
-            JARK_LOG("Failed to open file");
+            JARK_LOG("Failed to open file: {}", jarkUtils::wstringToUtf8(path));
             return;
         }
 
         hMapping = CreateFileMappingW(hFile, nullptr, PAGE_READONLY, 0, 0, nullptr);
         if (!hMapping) {
             CloseHandle(hFile);
-            JARK_LOG("Failed to create file mapping");
+            JARK_LOG("Failed to create file mapping: {}", jarkUtils::wstringToUtf8(path));
             return;
         }
 
@@ -44,7 +44,7 @@ public:
         if (!view) {
             CloseHandle(hMapping);
             CloseHandle(hFile);
-            JARK_LOG("Failed to map view of file");
+            JARK_LOG("Failed to map view of file: {}", jarkUtils::wstringToUtf8(path));
             return;
         }
 
@@ -53,7 +53,7 @@ public:
             UnmapViewOfFile(view);
             CloseHandle(hMapping);
             CloseHandle(hFile);
-            JARK_LOG("Failed to get file size");
+            JARK_LOG("Failed to get file size: {}", jarkUtils::wstringToUtf8(path));
             return;
         }
 
@@ -2335,6 +2335,35 @@ static size_t getVideoSize(string_view exifStr) {
     return value;
 }
 
+static std::vector<std::wstring> getVideoCandidatePaths(std::wstring_view imagePath) {
+    const std::wstring fullPath(imagePath);
+    const auto lastDot = fullPath.find_last_of(L'.');
+    const bool hasExtension = (lastDot != std::wstring::npos) && (lastDot + 1 < fullPath.size());
+    const std::wstring pathWithoutExtension = hasExtension ? fullPath.substr(0, lastDot) : fullPath;
+
+    return {
+        pathWithoutExtension + L".mov",
+        pathWithoutExtension + L".mp4",
+    };
+}
+
+static std::vector<cv::Mat> decodeMotionPhotoSidecarVideo(wstring_view path) {
+    for (const auto& videoPath : getVideoCandidatePaths(path)) {
+        auto fileReader = MappedFileReader(videoPath);
+        if (fileReader.isEmpty()) {
+            continue;
+        }
+
+        const auto videoBuf = fileReader.view();
+        auto frames = DecodeVideoFrames(videoBuf.data(), videoBuf.size());
+        if (!frames.empty()) {
+            return frames;
+        }
+    }
+
+    return {};
+}
+
 // Android 实况照片 jpg/jpeg/heic/heif
 ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uint8_t> fileBuf, bool isJPG = false) {
     auto img = isJPG ? loadImageOpenCV(path, fileBuf) : loadHeic(path, fileBuf);
@@ -2357,11 +2386,14 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
     }
 
     auto videoSize = getVideoSize(exifInfo);
-    if (videoSize == 0 || videoSize >= fileBuf.size()) {
-        return { ImageFormat::Still, img, {}, {}, exifInfo };
+    std::vector<cv::Mat> frames;
+    if (videoSize >= MIN_VIDEO_BUFF_SIZE && videoSize < fileBuf.size()) {
+        frames = DecodeVideoFrames(fileBuf.data() + fileBuf.size() - videoSize, videoSize);
+    }
+    else {
+        frames = decodeMotionPhotoSidecarVideo(path); // 苹果/VIVO等 独立视频文件的实况照片，尝试从同目录下的同名视频文件解码
     }
 
-    auto frames = DecodeVideoFrames(fileBuf.data() + fileBuf.size() - videoSize, videoSize);
     if (frames.empty()) {
         return { ImageFormat::Still, img, {}, {}, exifInfo };
     }
@@ -2606,7 +2638,7 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
     }
     else if (ext == L"psd" || ext == L"psdt") {
         img = loadSTB(path, fileBuf);
-		if (img.empty())
+        if (img.empty())
             img = loadPSD(path, fileBuf);
         if (img.empty())
             img = getErrorTipsMat();
