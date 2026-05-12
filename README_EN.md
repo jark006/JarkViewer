@@ -63,7 +63,7 @@ You can also select color modes: `Color`, `Gray`, `Document`, `Dithering`.
 
 -   **Static**: `apng avif avifs blp bmp dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr livp pbm pfm pgm pic png pnm ppm psd pxm qoi ras sr svg tga tif tiff webp wp2`
 -   **Animated**: `gif webp png apng jxl avif`
--   **Live**: `livp (IOS LivePhoto) jpg/heic/heif (Android MicroVideo/MotionPhoto)` *⚠ Audio not supported yet*
+-   **Live**: `livp (IOS LivePhoto) jpg/heic/heif (Android MicroVideo/MotionPhoto)` *⚠️ Audio not supported yet*
 -   **RAW**: `3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
 
 ## 👋 Quick Start
@@ -81,12 +81,16 @@ scoop bucket add extras
 scoop install extras/jarkviewer
 ```
 
-> ⚠ Note: If startup reports missing `VCOMP140.DLL` or similar, please download and install the VC++ runtime: [vc_redist.x64.exe](https://aka.ms/vs/18/release/vc_redist.x64.exe).
+> ⚠️ Note: If startup reports missing `VCOMP140.DLL` or similar, please download and install the VC++ runtime: [vc_redist.x64.exe](https://aka.ms/vs/18/release/vc_redist.x64.exe).
 Since `v1.35`, JarkViewer **no longer depends** on the `VC++ Runtime` and can run directly in `PE` environments. If you still encounter related errors, please make sure you downloaded the correct version of the program.
 
-## ⚠ Minimum System Support
+## 🖥️ System Compatibility
 
-Only `64-bit` `Windows 8 ~ 11` are supported.
+✅ Supports `64-bit` `Windows 10 ~ 11`. (The project uses `MSVC v145` toolset and only guarantees compatibility with `Win 10+`)
+
+⚠️ Currently tested to run stably on `64-bit` `Win 8/8.1`, but future versions are not guaranteed to remain compatible.
+
+❌ Not compatible with `32-bit` `Win 7` and earlier systems.
 
 ---
 

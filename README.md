@@ -63,7 +63,7 @@
 
 - **静态**：`apng avif avifs blp bmp dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr livp pbm pfm pgm pic png pnm ppm psd pxm qoi ras sr svg tga tif tiff webp wp2`
 - **动态**：`gif webp png apng jxl avif`
-- **实况**：`livp(IOS LivePhoto) jpg/heic/heif(Android MicroVideo/MotionPhoto)` *⚠ 暂不支持播放声音*
+- **实况**：`livp(IOS LivePhoto) jpg/heic/heif(Android MicroVideo/MotionPhoto)` *⚠️ 暂不支持播放声音*
 - **RAW**：`3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
 
 ## 👋 快速上手
@@ -81,12 +81,16 @@ scoop bucket add extras
 scoop install extras/jarkviewer
 ```
 
-> ⚠ 注意：若启动时提示缺失 `VCOMP140.DLL` 等，请下载并安装 VC++运行库: [vc_redist.x64.exe](https://aka.ms/vs/18/release/vc_redist.x64.exe)
+> ⚠️ 注意：若启动时提示缺失 `VCOMP140.DLL` 等，请下载并安装 VC++运行库: [vc_redist.x64.exe](https://aka.ms/vs/18/release/vc_redist.x64.exe)
 。自 `v1.35` 起，**不再依赖** `VC++运行库`，且可在 `PE` 环境直接运行。如果仍遇到相关错误，请确保下载了正确版本的程序。
 
-## ⚠ 最低系统支持
+## 🖥️ 系统兼容
 
-仅支持 `64位` `Windows 8 ~ 11` 操作系统。
+✅ 支持 `64位` `Windows 10 ~ 11` 系统。（项目使用 `MSVC v145` 生成工具只保证兼容 `Win 10+`）
+
+⚠️ 目前实测可以在 `64位` `Win 8/8.1` 稳定运行，但不保证未来版本也能继续兼容。
+
+❌ 不兼容 `32位` `Win 7` 及以下系统。
 
 ---
 
