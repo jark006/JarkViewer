@@ -8,6 +8,7 @@ JarkViewer 是 Windows 10/11 x64 原生图片查看器，使用 C++23、Win32、
 
 ## 常用命令
 
+本项目优先使用 PowerShell 执行Shell命令，因为它在参数传递和路径处理上更接近 Windows 原生环境。只有在PowerShell执行失败、或者更适合使用Bash的情况下才使用Bash。
 在 Visual Studio Developer Command Prompt、Developer PowerShell，或已加载 MSBuild 环境的终端中执行：
 
 ```powershell
@@ -36,7 +37,7 @@ MSBuild.exe JarkViewer.slnx /t:Clean /p:Configuration=Release /p:Platform=x64
 MSBuild.exe JarkViewer/JarkViewer.vcxproj -m -p:Configuration=Release -p:Platform=x64
 ```
 
-## 普通终端环境需要使用 MSBuild.exe 的绝对路径
+## 在没有MSBuild命令的普通终端环境下，需要使用它的绝对路径
 "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe"
 
 当前仓库没有检测到自动化测试、lint 或格式化配置。每次修改后至少保证 `Release|x64` 能干净编译；行为变更需手动冒烟验证静态图加载、动图播放、EXIF 显示、打印预览和导出流程。
