@@ -579,7 +579,7 @@ std::pair<std::wstring, bool> jarkUtils::saveImageDialogW(wstring_view title) {
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = NULL;
     ofn.lpstrFile = szFile;
-    ofn.nMaxFile = sizeof(szFile);
+    ofn.nMaxFile = ARRAYSIZE(szFile);  // 使用字符数而非字节数
     ofn.lpstrFilter = L"JPG\0*.jpg\0PNG\0*.png\0All\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.lpstrTitle = title.data();
