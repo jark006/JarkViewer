@@ -722,16 +722,41 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEn
     }
 
     // 使用目录条目中的实际尺寸
-    int32_t realWidth = (entry.width == 0) ? 256 : entry.width;
-    int32_t realHeight = (entry.height == 0) ? 256 : entry.height;
+    // 注意：entry.width/height 是 uint8_t，0 表示 256，但对于更大的尺寸（如 512），
+    // 必须从 DIB 头部读取实际尺寸
+    int32_t absDibHeight = std::abs(dibHeight);
+    int32_t realWidth, realHeight;
+    bool hasAndMaskInImageData;
 
-    // 判断 AND 掩码位置
-    bool hasAndMaskInImageData = (dibHeight == 2 * realHeight);
-    int32_t pixelRows = hasAndMaskInImageData ? realHeight : dibHeight;
-    if (!hasAndMaskInImageData && dibHeight != realHeight) {
-        JARK_LOG("DIB height ({}) does not match entry height ({}), using entry", dibHeight, realHeight);
-        pixelRows = realHeight;
+    // 如果 entry.width/height 为 0，说明尺寸 >= 256，必须从 DIB 头部读取
+    if (entry.width == 0 || entry.height == 0) {
+        // ICO 的 DIB 可能将 AND 掩码包含在高度中（高度 = 像素高度 * 2）
+        // 判断方法：如果 dibHeight 是偶数且 dibWidth 看起来合理，尝试除以 2
+        if (absDibHeight % 2 == 0 && dibWidth > 0) {
+            // 假设包含 AND 掩码
+            realWidth = dibWidth;
+            realHeight = absDibHeight / 2;
+            hasAndMaskInImageData = true;
+        } else if (dibWidth > 0) {
+            // 不包含 AND 掩码
+            realWidth = dibWidth;
+            realHeight = absDibHeight;
+            hasAndMaskInImageData = false;
+        } else {
+            // dibWidth 为 0 是异常情况，回退到 256
+            JARK_LOG("Warning: dibWidth is 0, falling back to 256");
+            realWidth = 256;
+            realHeight = (absDibHeight % 2 == 0) ? (absDibHeight / 2) : absDibHeight;
+            hasAndMaskInImageData = (absDibHeight % 2 == 0);
+        }
+    } else {
+        // entry 中有明确尺寸，使用它
+        realWidth = entry.width;
+        realHeight = entry.height;
+        hasAndMaskInImageData = (absDibHeight == 2 * realHeight);
     }
+
+    int32_t pixelRows = hasAndMaskInImageData ? realHeight : absDibHeight;
 
     // 调色板
     int numColors = 0;
@@ -752,15 +777,18 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEn
     std::vector<cv::Vec4b> palette(numColors);
     if (numColors > 0) {
         if (headerSize == 12) {
-            // 3字节 RGB
+            // 3字节 RGB，转换为 BGRA
             for (int i = 0; i < numColors; ++i) {
-                palette[i] = cv::Vec4b(paletteData[i * 3 + 2], paletteData[i * 3 + 1], paletteData[i * 3 + 0], 255);
+                uint8_t r = paletteData[i * 3 + 0];
+                uint8_t g = paletteData[i * 3 + 1];
+                uint8_t b = paletteData[i * 3 + 2];
+                palette[i] = cv::Vec4b(b, g, r, 255);
             }
         }
         else {
-            // 4字节 BGR?
+            // 4字节 BGRA 或 BGRX
             for (int i = 0; i < numColors; ++i) {
-                palette[i] = cv::Vec4b(paletteData[i * 4 + 2], paletteData[i * 4 + 1], paletteData[i * 4 + 0], 255);
+                palette[i] = cv::Vec4b(paletteData[i * 4 + 0], paletteData[i * 4 + 1], paletteData[i * 4 + 2], 255);
             }
         }
     }
