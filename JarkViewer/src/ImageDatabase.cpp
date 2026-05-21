@@ -677,6 +677,11 @@ ImageAsset ImageDatabase::loadLEP(wstring_view path, std::span<const uint8_t> bu
         buf.size()) +
         ExifParse::getExif(path, jpeg_data, jpeg_size);
 
+    const size_t idx = imageAsset.exifInfo.find(getUIString(53));
+    if (idx != string::npos) {
+        handleExifOrientation(imageAsset.exifInfo[idx + strlen(getUIString(53))] - '0', imageAsset.primaryFrame);
+    }
+
     free_lepton_buffer(jpeg_data, jpeg_size);
     return imageAsset;
 }
