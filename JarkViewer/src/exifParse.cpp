@@ -10,47 +10,67 @@ std::string ExifParse::getSimpleInfo(wstring_view path, int width, int height, c
             getUIString(39), jarkUtils::wstringToUtf8(path), getUIString(40), jarkUtils::size2Str(fileSize), getUIString(41), width, height);
 }
 
-std::string ExifParse::handleMathDiv(string_view str) {
-    if (str.empty())return "";
+std::string ExifParse::handleMathDiv(std::string_view str) {
+    if (str.empty())
+        return "";
 
-    int divIdx = -1;
-    bool isNegative = (str[0] == '-');
-    for (int i = isNegative ? 1 : 0; i < str.length(); i++) {
-        int c = str[i];
-        if ('0' <= c && c <= '9') {
+    // 处理可能的前导负号，并确定数字部分的起始位置
+    bool negative = false;
+    size_t pos = 0;
+    if (str[0] == '-') {
+        negative = true;
+        pos = 1;
+        if (str.size() == 1)   // 单独的“-”无效
+            return "";
+    }
+
+    // 遍历字符：只允许数字和恰好一个'/'，'/'前后都必须有数字
+    size_t slashPos = std::string_view::npos;
+    for (size_t i = pos; i < str.size(); ++i) {
+        char c = str[i];
+        if (c >= '0' && c <= '9') {
             continue;
         }
         else if (c == '/') {
-            if (divIdx == -1) {
-                divIdx = i;
-                continue;
+            if (slashPos == std::string_view::npos) {
+                slashPos = i;
             }
-            else {
-                divIdx = -1;
-                break;
+            else {            // 出现第二个'/'，非法
+                return "";
             }
         }
-        else {
-            divIdx = -1;
-            break;
+        else {                // 非法字符
+            return "";
         }
     }
 
-    if (divIdx > 0) {
-        auto a = std::stoll(string(str.substr(0, divIdx)));
-        auto b = std::stoll(string(str.substr((size_t)divIdx + 1)));
-
-        if (isNegative)
-            a = 0 - a;
-
-        auto resStr = std::format("{:.2f}", (double)a / b);
-
-        if (resStr.ends_with(".00"))
-            resStr = resStr.substr(0, resStr.size() - 3);
-
-        return resStr;
+    // 必须恰好有一个'/'，且分子和分母均非空
+    if (slashPos == std::string_view::npos ||
+        slashPos == pos || slashPos == str.size() - 1) {
+        return "";
     }
-    return "";
+
+    // 解析分子和分母
+    try {
+        long long numerator = std::stoll(std::string(str.substr(pos, slashPos - pos)));
+        long long denominator = std::stoll(std::string(str.substr(slashPos + 1)));
+
+        if (denominator == 0)
+            denominator = 1;
+
+        double value = static_cast<double>(numerator) / denominator;
+        if (negative)
+            value = -value;      // 仅应用一次负号
+
+        std::string result = std::format("{:.2f}", value);
+        if (result.size() >= 3 && result.compare(result.size() - 3, 3, ".00") == 0) {
+            result.erase(result.size() - 3);
+        }
+        return result;
+    }
+    catch (const std::exception&) {
+        return "";
+    }
 }
 
 std::string ExifParse::exifDataToString(wstring_view path, const Exiv2::ExifData& exifData) {
@@ -329,15 +349,34 @@ std::string ExifParse::parseAiPrompt(wstring_view path, const uint8_t* buf, size
     if (fileSize < 1024) // AI生图信息一般不会出现在特别小的图片中
         return "";
 
+    // 安全读取 uint32_t（大端）
+    auto safeReadU32BE = [](const uint8_t* ptr) -> uint32_t {
+        return (static_cast<uint32_t>(ptr[0]) << 24) |
+               (static_cast<uint32_t>(ptr[1]) << 16) |
+               (static_cast<uint32_t>(ptr[2]) << 8) |
+               static_cast<uint32_t>(ptr[3]);
+    };
+
+    // 安全构造字符串
+    auto safeSubstring = [&](size_t offset, size_t len) -> std::optional<string> {
+        if (offset > fileSize || len > fileSize - offset) {
+            return std::nullopt;
+        }
+        return string(reinterpret_cast<const char*>(buf + offset), len);
+    };
+
     if (!strncmp((const char*)buf + 0x25, "tEXtparameters", 14)) {
-        int length = (buf[0x21] << 24) + (buf[0x22] << 16) + (buf[0x23] << 8) + buf[0x24]; // 大端 int
-        if ((length + 64ULL) > fileSize) {
+        uint32_t length = safeReadU32BE(buf + 0x21);
+
+        // 检查长度合理性（PNG chunk length 最大 2^31-1）
+        if (length > 0x7FFFFFFF || length + 64ULL > fileSize) {
             return "";
         }
 
-        string prompt((const char*)buf + 0x29, length); // format: Windows-1252  ISO/IEC 8859-1（Latin-1）
+        auto promptOpt = safeSubstring(0x29, length);
+        if (!promptOpt) return "";
 
-        prompt = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(prompt));
+        string prompt = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(*promptOpt));
 
         auto idx = prompt.find("parameters");
         if (idx != string::npos) {
@@ -357,7 +396,7 @@ std::string ExifParse::parseAiPrompt(wstring_view path, const uint8_t* buf, size
             prompt.replace(idx, 7, getUIString(45));
         }
 
-        if (prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
+        if (!prompt.empty() && prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
             prompt = getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt);
         }
         else {
@@ -365,16 +404,23 @@ std::string ExifParse::parseAiPrompt(wstring_view path, const uint8_t* buf, size
         }
 
         // 有些图片会同时包含 parameters 和 prompt 信息
-        if (!strncmp((const char*)buf + 0x31 + length, "tEXtprompt", 10)) {
-            int length2 = (buf[0x2d + length] << 24) + (buf[0x2e + length] << 16) + (buf[0x2f + length] << 8) + buf[0x30 + length];
-            if ((length + 128ULL + length2) < fileSize) {
-                string prompt2((const char*)buf + 0x3c + length, length2-7); // format: Windows-1252  ISO/IEC 8859-1（Latin-1）
-                prompt2 = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(prompt2));
-                if (prompt2.front() == '{' && prompt2.back() == '}') { // ComfyUI JSON format
-                    prompt += getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt2);
-                }
-                else {
-                    prompt += getUIString(46) + prompt2;
+        size_t offset2 = 0x31ULL + length;
+        if (offset2 + 10 <= fileSize && !strncmp((const char*)buf + offset2, "tEXtprompt", 10)) {
+            size_t lengthOffset = 0x2dULL + length;
+            if (lengthOffset + 4 <= fileSize) {
+                uint32_t length2 = safeReadU32BE(buf + lengthOffset);
+
+                if (length2 > 7 && length2 <= 0x7FFFFFFF && length + 128ULL + length2 <= fileSize) {
+                    auto prompt2Opt = safeSubstring(0x3c + length, length2 - 7);
+                    if (prompt2Opt) {
+                        string prompt2 = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(*prompt2Opt));
+                        if (!prompt2.empty() && prompt2.front() == '{' && prompt2.back() == '}') { // ComfyUI JSON format
+                            prompt += getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt2);
+                        }
+                        else {
+                            prompt += getUIString(46) + prompt2;
+                        }
+                    }
                 }
             }
         }
@@ -382,14 +428,16 @@ std::string ExifParse::parseAiPrompt(wstring_view path, const uint8_t* buf, size
         return prompt;
     }
     else if (!strncmp((const char*)buf + 0x25, "iTXtparameters", 14)) {
-        int length = (buf[0x21] << 24) + (buf[0x22] << 16) + (buf[0x23] << 8) + buf[0x24];
-        if ((length + 64ULL) > fileSize) {
+        uint32_t length = safeReadU32BE(buf + 0x21);
+
+        if (length < 15 || length > 0x7FFFFFFF || length + 64ULL > fileSize) {
             return "";
         }
 
-        string prompt((const char*)buf + 0x38, length - 15); // format: Windows-1252  ISO/IEC 8859-1（Latin-1）
+        auto promptOpt = safeSubstring(0x38, length - 15);
+        if (!promptOpt) return "";
 
-        prompt = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(prompt));
+        string prompt = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(*promptOpt));
 
         auto idx = prompt.find("parameters");
         if (idx != string::npos) {
@@ -409,23 +457,24 @@ std::string ExifParse::parseAiPrompt(wstring_view path, const uint8_t* buf, size
             prompt.replace(idx, 7, getUIString(45));
         }
 
-        if (prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
+        if (!prompt.empty() && prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
             return getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt);
         }
         return getUIString(46) + prompt;
     }
     else if (!strncmp((const char*)buf + 0x25, "tEXtprompt", 10)) {
+        uint32_t length = safeReadU32BE(buf + 0x21);
 
-        int length = (buf[0x21] << 24) + (buf[0x22] << 16) + (buf[0x23] << 8) + buf[0x24];
-        if ((length + 64ULL) > fileSize) {
+        if (length < 7 || length > 0x7FFFFFFF || length + 64ULL > fileSize) {
             return "";
         }
 
-        string prompt((const char*)buf + 0x29 + 7, length - 7); // format: Windows-1252  ISO/IEC 8859-1（Latin-1）
+        auto promptOpt = safeSubstring(0x29 + 7, length - 7);
+        if (!promptOpt) return "";
 
-        prompt = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(prompt));
+        string prompt = jarkUtils::wstringToUtf8(jarkUtils::latin1ToWstring(*promptOpt));
 
-        if (prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
+        if (!prompt.empty() && prompt.front() == '{' && prompt.back() == '}') { // ComfyUI JSON format
             return getUIString(52) + jarkUtils::convertUnicodeEscapesToUTF8(prompt);
         }
         return getUIString(46) + prompt;
