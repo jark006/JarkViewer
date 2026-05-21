@@ -253,6 +253,15 @@ public:
         imgFileList.clear();
         imgDB.clear();
 
+        if (filePath.empty()) {
+            imgFileList.emplace_back(m_wndCaption);
+            curFileIdx = 0;
+            imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32) });
+            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[curFileIdx]);
+            curPar.Init(winWidth, winHeight);
+            return;
+        }
+
         fs::path fullPath = fs::absolute(filePath);
         wstring openFileName = fullPath.filename().wstring();
 
