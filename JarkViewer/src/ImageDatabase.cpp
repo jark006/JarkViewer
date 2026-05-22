@@ -13,8 +13,96 @@
 #include "blpDecoder.h"
 
 #include <intrin.h>
+#include <limits>
 #include <memory>
 #pragma intrinsic(_BitScanForward)
+
+class ScopedComApartment {
+public:
+    ScopedComApartment() noexcept {
+        hr_ = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        ownsApartment_ = SUCCEEDED(hr_);
+    }
+
+    ~ScopedComApartment() {
+        if (ownsApartment_) {
+            CoUninitialize();
+        }
+    }
+
+    ScopedComApartment(const ScopedComApartment&) = delete;
+    ScopedComApartment& operator=(const ScopedComApartment&) = delete;
+
+    bool isUsable() const noexcept {
+        return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE;
+    }
+
+    HRESULT result() const noexcept {
+        return hr_;
+    }
+
+private:
+    HRESULT hr_ = E_FAIL;
+    bool ownsApartment_ = false;
+};
+
+template <typename T>
+class ComPtr {
+public:
+    ComPtr() = default;
+
+    ~ComPtr() {
+        reset();
+    }
+
+    ComPtr(const ComPtr&) = delete;
+    ComPtr& operator=(const ComPtr&) = delete;
+
+    ComPtr(ComPtr&& other) noexcept : ptr_(other.release()) {}
+
+    ComPtr& operator=(ComPtr&& other) noexcept {
+        if (this != &other) {
+            reset(other.release());
+        }
+        return *this;
+    }
+
+    T* get() const noexcept {
+        return ptr_;
+    }
+
+    T** put() noexcept {
+        reset();
+        return &ptr_;
+    }
+
+    T* release() noexcept {
+        T* ptr = ptr_;
+        ptr_ = nullptr;
+        return ptr;
+    }
+
+    void reset(T* ptr = nullptr) noexcept {
+        if (ptr_ == ptr) {
+            return;
+        }
+        if (ptr_) {
+            ptr_->Release();
+        }
+        ptr_ = ptr;
+    }
+
+    T* operator->() const noexcept {
+        return ptr_;
+    }
+
+    explicit operator bool() const noexcept {
+        return ptr_ != nullptr;
+    }
+
+private:
+    T* ptr_ = nullptr;
+};
 
 class UniqueHandle {
 public:
@@ -1590,125 +1678,128 @@ cv::Mat ImageDatabase::loadSVG(wstring_view path, std::span<const uint8_t> buf) 
 
 
 cv::Mat ImageDatabase::loadImageWinCOM(wstring_view path, std::span<const uint8_t> buf) {
-    HRESULT hr = CoInitialize(NULL);
+    if (buf.empty()) {
+        JARK_LOG("WIC buffer is empty: {}", jarkUtils::wstringToUtf8(path));
+        return {};
+    }
+
+    if (buf.size() > std::numeric_limits<DWORD>::max()) {
+        JARK_LOG("WIC buffer is too large: {} bytes {}", buf.size(), jarkUtils::wstringToUtf8(path));
+        return {};
+    }
+
+    ScopedComApartment com;
+    if (!com.isUsable()) {
+        JARK_LOG("Failed to initialize COM library for WIC: 0x{:X}", static_cast<unsigned long>(com.result()));
+        return {};
+    }
+
+    ComPtr<IWICImagingFactory> factory;
+    HRESULT hr = CoCreateInstance(
+        CLSID_WICImagingFactory,
+        nullptr,
+        CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(factory.put()));
     if (FAILED(hr)) {
-        JARK_LOG("Failed to initialize COM library.");
+        JARK_LOG("Failed to create WIC Imaging Factory: 0x{:X}", static_cast<unsigned long>(hr));
         return {};
     }
 
-    IWICImagingFactory* pFactory = NULL;
-    hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (LPVOID*)&pFactory);
+    ComPtr<IWICStream> stream;
+    hr = factory->CreateStream(stream.put());
     if (FAILED(hr)) {
-        JARK_LOG("Failed to create WIC Imaging Factory.");
-        CoUninitialize();
+        JARK_LOG("Failed to create WIC stream: 0x{:X}", static_cast<unsigned long>(hr));
         return {};
     }
 
-    IStream* pStream = NULL;
-    hr = CreateStreamOnHGlobal(NULL, TRUE, &pStream);
+    hr = stream->InitializeFromMemory(
+        const_cast<BYTE*>(buf.data()),
+        static_cast<DWORD>(buf.size()));
     if (FAILED(hr)) {
-        JARK_LOG("Failed to create stream.");
-        pFactory->Release();
-        CoUninitialize();
+        JARK_LOG("Failed to initialize WIC memory stream: 0x{:X}", static_cast<unsigned long>(hr));
         return {};
     }
 
-    ULONG bytesWritten;
-    hr = pStream->Write(buf.data(), (ULONG)buf.size(), &bytesWritten);
-    if (FAILED(hr) || bytesWritten != buf.size()) {
-        JARK_LOG("Failed to write to stream.");
-        pStream->Release();
-        pFactory->Release();
-        CoUninitialize();
-        return {};
-    }
-
-    LARGE_INTEGER li = { 0 };
-    hr = pStream->Seek(li, STREAM_SEEK_SET, NULL);
+    ComPtr<IWICBitmapDecoder> decoder;
+    hr = factory->CreateDecoderFromStream(stream.get(), nullptr, WICDecodeMetadataCacheOnDemand, decoder.put());
     if (FAILED(hr)) {
-        JARK_LOG("Failed to seek stream.");
-        pStream->Release();
-        pFactory->Release();
-        CoUninitialize();
+        JARK_LOG("Failed to create WIC decoder from stream: 0x{:X}", static_cast<unsigned long>(hr));
         return {};
     }
 
-    IWICBitmapDecoder* pDecoder = NULL;
-    hr = pFactory->CreateDecoderFromStream(pStream, NULL, WICDecodeMetadataCacheOnDemand, &pDecoder);
+    ComPtr<IWICBitmapFrameDecode> frame;
+    hr = decoder->GetFrame(0, frame.put());
     if (FAILED(hr)) {
-        JARK_LOG("Failed to create decoder from stream.");
-        pStream->Release();
-        pFactory->Release();
-        CoUninitialize();
+        JARK_LOG("Failed to get WIC frame: 0x{:X}", static_cast<unsigned long>(hr));
         return {};
     }
 
-    IWICBitmapFrameDecode* pFrame = NULL;
-    hr = pDecoder->GetFrame(0, &pFrame);
+    UINT width = 0;
+    UINT height = 0;
+    hr = frame->GetSize(&width, &height);
     if (FAILED(hr)) {
-        JARK_LOG("Failed to get frame from decoder.");
-        pDecoder->Release();
-        pStream->Release();
-        pFactory->Release();
-        CoUninitialize();
+        JARK_LOG("Failed to get WIC image size: 0x{:X}", static_cast<unsigned long>(hr));
+        return {};
+    }
+    if (width == 0 || height == 0 ||
+        width > static_cast<UINT>(std::numeric_limits<int>::max()) ||
+        height > static_cast<UINT>(std::numeric_limits<int>::max())) {
+        JARK_LOG("Invalid WIC image size: {}x{} {}", width, height, jarkUtils::wstringToUtf8(path));
         return {};
     }
 
-    UINT width, height;
-    hr = pFrame->GetSize(&width, &height);
+    constexpr size_t bytesPerPixel = 4;
+    const size_t widthBytes = static_cast<size_t>(width) * bytesPerPixel;
+    const size_t pixelCount = static_cast<size_t>(width) * static_cast<size_t>(height);
+    if (widthBytes > std::numeric_limits<UINT>::max() ||
+        pixelCount > std::numeric_limits<size_t>::max() / bytesPerPixel) {
+        JARK_LOG("WIC image size overflows: {}x{} {}", width, height, jarkUtils::wstringToUtf8(path));
+        return {};
+    }
+
+    const size_t bufferBytes = pixelCount * bytesPerPixel;
+    if (bufferBytes > std::numeric_limits<UINT>::max()) {
+        JARK_LOG("WIC pixel buffer is too large: {} bytes {}", bufferBytes, jarkUtils::wstringToUtf8(path));
+        return {};
+    }
+
+    ComPtr<IWICFormatConverter> converter;
+    hr = factory->CreateFormatConverter(converter.put());
     if (FAILED(hr)) {
-        JARK_LOG("Failed to get image size.");
-        pFrame->Release();
-        pDecoder->Release();
-        pStream->Release();
-        pFactory->Release();
-        CoUninitialize();
+        JARK_LOG("Failed to create WIC format converter: 0x{:X}", static_cast<unsigned long>(hr));
         return {};
     }
 
-    IWICFormatConverter* pConverter = NULL;
-    hr = pFactory->CreateFormatConverter(&pConverter);
+    hr = converter->Initialize(
+        frame.get(),
+        GUID_WICPixelFormat32bppBGRA,
+        WICBitmapDitherTypeNone,
+        nullptr,
+        0.0,
+        WICBitmapPaletteTypeCustom);
     if (FAILED(hr)) {
-        JARK_LOG("Failed to create format converter.");
-        pFrame->Release();
-        pDecoder->Release();
-        pStream->Release();
-        pFactory->Release();
-        CoUninitialize();
+        JARK_LOG("Failed to initialize WIC format converter: 0x{:X}", static_cast<unsigned long>(hr));
         return {};
     }
 
-    hr = pConverter->Initialize(pFrame, GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, NULL, 0.0, WICBitmapPaletteTypeCustom);
+    cv::Mat mat;
+    try {
+        mat = cv::Mat(static_cast<int>(height), static_cast<int>(width), CV_8UC4);
+    }
+    catch ([[maybe_unused]] const std::exception& e) {
+        JARK_LOG("Failed to allocate WIC image buffer: {} [{}]", jarkUtils::wstringToUtf8(path), e.what());
+        return {};
+    }
+
+    hr = converter->CopyPixels(
+        nullptr,
+        static_cast<UINT>(widthBytes),
+        static_cast<UINT>(bufferBytes),
+        mat.data);
     if (FAILED(hr)) {
-        JARK_LOG("Failed to initialize format converter.");
-        pConverter->Release();
-        pFrame->Release();
-        pDecoder->Release();
-        pStream->Release();
-        pFactory->Release();
-        CoUninitialize();
+        JARK_LOG("Failed to copy WIC pixels: 0x{:X}", static_cast<unsigned long>(hr));
         return {};
     }
-
-    cv::Mat mat(height, width, CV_8UC4);
-    hr = pConverter->CopyPixels(NULL, width * 4, width * height * 4, mat.data);
-    if (FAILED(hr)) {
-        JARK_LOG("Failed to copy pixels.");
-        pConverter->Release();
-        pFrame->Release();
-        pDecoder->Release();
-        pStream->Release();
-        pFactory->Release();
-        CoUninitialize();
-        return {};
-    }
-
-    pConverter->Release();
-    pFrame->Release();
-    pDecoder->Release();
-    pStream->Release();
-    pFactory->Release();
-    CoUninitialize();
 
     return mat;
 }
