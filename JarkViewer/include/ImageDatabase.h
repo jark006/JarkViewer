@@ -94,8 +94,13 @@
 #pragma comment(lib, "minizip.lib")
 #pragma comment(lib, "bz2.lib")
 
+// lepton  https://github.com/jark006/liblepton
 #include "liblepton.h"
 #pragma comment(lib, "liblepton.lib")
+
+// DirectXTex https://github.com/microsoft/DirectXTex
+#include "DirectXTex.h"
+#pragma comment(lib, "DirectXTex.lib")
 
 // ffmpeg
 #pragma comment(lib, "swscale.lib")
@@ -253,12 +258,12 @@ public:
     };
 
     static inline const unordered_set<wstring_view> supportExt{
-        L"apng", L"avif", L"avifs", L"blp", L"bmp", L"dib", L"exr", L"gif", 
-        L"hdr", L"heic", L"heif", L"ico", L"icon", L"jfif", L"jp2", L"jpe", 
-        L"jpeg", L"jpg", L"jxl", L"jxr", L"livp", L"pbm", L"pcx", L"pfm", 
-        L"pgm", L"pic", L"png", L"pnm", L"ppm", L"psd", L"psdt", L"pxm", 
-        L"qoi", L"ras", L"sr", L"svg", L"tga", L"tif", L"tiff", L"webm",
-        L"webp", L"wp2", L"lep",
+        L"apng", L"avif", L"avifs", L"blp", L"bmp", L"dds", L"dib", L"exr",
+        L"gif", L"hdr", L"heic", L"heif", L"ico", L"icon", L"jfif", L"jp2",
+        L"jpe", L"jpeg", L"jpg", L"jxl", L"jxr", L"lep", L"livp", L"pbm",
+        L"pcx", L"pfm", L"pgm", L"pic", L"png", L"pnm", L"ppm", L"psd",
+        L"psdt", L"pxm", L"qoi", L"ras", L"sr", L"svg", L"tga", L"tif",
+        L"tiff", L"webm", L"webp", L"wp2",
     };
 
     static inline const unordered_set<wstring_view> supportRaw{
@@ -485,6 +490,7 @@ public:
     ImageAsset loadAnimation(wstring_view path, std::span<const uint8_t> buf);
     ImageAsset loadTiff(wstring_view path, std::span<const uint8_t> buf);
     ImageAsset loadLEP(wstring_view path, std::span<const uint8_t> buf);
+    ImageAsset loadDDS(wstring_view path, std::span<const uint8_t> buf);
 
     void handleExifOrientation(int orientation, cv::Mat& img);
     ImageAsset myLoader(const wstring& path);

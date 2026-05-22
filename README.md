@@ -124,6 +124,7 @@ vcpkg install libjxl:x64-windows-static
 vcpkg install libheif[core,hevc]:x64-windows-static
 vcpkg install libraw[core,dng-lossy,openmp]:x64-windows-static
 vcpkg install lunasvg:x64-windows-static
+vcpkg install directxtex:x64-windows-static
 vcpkg install ffmpeg:x64-windows-static
 vcpkg install opencv4[core,contrib,freetype,ipp,jasper,jpeg,jpegxl,nonfree,openexr,opengl,openjpeg,png,tiff,webp,world]:x64-windows-static
 ```

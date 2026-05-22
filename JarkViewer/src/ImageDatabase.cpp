@@ -687,6 +687,84 @@ ImageAsset ImageDatabase::loadLEP(wstring_view path, std::span<const uint8_t> bu
 }
 
 
+// DDS (DirectXTex)
+static cv::Mat directXTexImageToMat(const DirectX::Image& img) {
+    if (!img.pixels || img.width == 0 || img.height == 0) return {};
+
+    const int w = static_cast<int>(img.width);
+    const int h = static_cast<int>(img.height);
+    const size_t rowBytes = w * 4;
+
+    cv::Mat mat(h, w, CV_8UC4);
+
+    if (img.rowPitch == rowBytes) {
+        std::memcpy(mat.data, img.pixels, rowBytes * h);
+    }
+    else {
+        for (int y = 0; y < h; ++y) {
+            std::memcpy(mat.ptr(y), img.pixels + y * img.rowPitch, rowBytes);
+        }
+    }
+
+    return mat;
+}
+
+ImageAsset ImageDatabase::loadDDS(wstring_view path, std::span<const uint8_t> buf) {
+    using namespace DirectX;
+
+    if (buf.empty()) {
+        JARK_LOG("Empty input buffer for DDS: {}", jarkUtils::wstringToUtf8(path));
+        return { ImageFormat::Still, getErrorTipsMat() };
+    }
+
+    TexMetadata metadata{};
+    ScratchImage scratchImage;
+
+    HRESULT hr = LoadFromDDSMemory(buf.data(), buf.size(), DDS_FLAGS_NONE, &metadata, scratchImage);
+    if (FAILED(hr)) {
+        JARK_LOG("LoadFromDDSMemory failed: {:08X} for {}", static_cast<unsigned>(hr), jarkUtils::wstringToUtf8(path));
+        return { ImageFormat::Still, getErrorTipsMat() };
+    }
+
+    // Get the first image (mip 0, array slice 0, depth slice 0)
+    const Image* srcImg = scratchImage.GetImage(0, 0, 0);
+    if (!srcImg || !srcImg->pixels) {
+        JARK_LOG("DDS: failed to get image data");
+        return { ImageFormat::Still, getErrorTipsMat() };
+    }
+
+    // Decompress BC formats or convert to BGRA
+    const Image* finalImg = srcImg;
+    ScratchImage converted;
+
+    if (IsCompressed(srcImg->format)) {
+        hr = Decompress(*srcImg, DXGI_FORMAT_B8G8R8A8_UNORM, converted);
+        if (FAILED(hr)) {
+            JARK_LOG("DDS Decompress failed: {:08X}", static_cast<unsigned>(hr));
+            return { ImageFormat::Still, getErrorTipsMat() };
+        }
+        finalImg = converted.GetImage(0, 0, 0);
+    }
+    else if (srcImg->format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+        hr = Convert(*srcImg, DXGI_FORMAT_B8G8R8A8_UNORM, TEX_FILTER_DEFAULT, 0.f, converted);
+        if (FAILED(hr)) {
+            JARK_LOG("DDS Convert failed: {:08X} for format {}", static_cast<unsigned>(hr), static_cast<int>(srcImg->format));
+            return { ImageFormat::Still, getErrorTipsMat() };
+        }
+        finalImg = converted.GetImage(0, 0, 0);
+    }
+
+    auto mat = directXTexImageToMat(*finalImg);
+    if (mat.empty()) {
+        JARK_LOG("DDS: failed to create Mat");
+        return { ImageFormat::Still, getErrorTipsMat() };
+    }
+
+    auto exifInfo = ExifParse::getSimpleInfo(path, static_cast<int>(metadata.width), static_cast<int>(metadata.height), buf.data(), buf.size());
+    return { ImageFormat::Still, std::move(mat), {}, {}, std::move(exifInfo) };
+}
+
+
 static int getTrailingZeros(uint32_t value) {
     unsigned long index = 0;
     return _BitScanForward(&index, value) ? static_cast<int>(index) : 0;
@@ -2765,6 +2843,9 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
     }
     else if (ext == L"lep") {
         return loadLEP(path, fileBuf);
+    }
+    else if (ext == L"dds") {
+        return loadDDS(path, fileBuf);
     }
 
     // 实况照片 包含一张图片和一段简短视频
