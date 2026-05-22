@@ -376,7 +376,7 @@ public:
     ActionENUM lastAction = ActionENUM::none;
 
     void push(Action action) {
-        std::unique_lock<std::mutex> lock(mtx);
+        std::lock_guard<std::mutex> lock(mtx);
 
         if (!queue.empty() && action.action == ActionENUM::slide) {
             Action& back = queue.back();
@@ -395,7 +395,7 @@ public:
     }
 
     Action get() {
-        std::unique_lock<std::mutex> lock(mtx);
+        std::lock_guard<std::mutex> lock(mtx);
 
         if (queue.empty())
             return { ActionENUM::none };
@@ -407,7 +407,7 @@ public:
     }
 
     bool isNext(const ActionENUM actionEnum) {
-        std::unique_lock<std::mutex> lock(mtx);
+        std::lock_guard<std::mutex> lock(mtx);
 
         if (queue.empty())
             return false;
