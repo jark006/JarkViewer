@@ -1,5 +1,9 @@
 #include "videoDecoder.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <mutex>
 #include <vector>
 #include <memory>
 #include <stdexcept>
@@ -14,6 +18,7 @@ extern "C" {
 #include <libavutil/imgutils.h>
 #include <libavutil/display.h>
 #include <libavutil/error.h>
+#include <libavutil/mem.h>
 }
 
 // OpenCV Headers
@@ -21,6 +26,21 @@ extern "C" {
 
 
 // 自定义删除器，用于 RAII 管理 FFmpeg 资源
+struct AvMallocDeleter {
+    void operator()(void* ptr) const {
+        av_free(ptr);
+    }
+};
+
+struct AvioContextDeleter {
+    void operator()(AVIOContext* ctx) const {
+        if (ctx) {
+            av_freep(&ctx->buffer);
+            avio_context_free(&ctx);
+        }
+    }
+};
+
 struct AvFormatContextDeleter {
     void operator()(AVFormatContext* ctx) const {
         if (ctx) avformat_close_input(&ctx);
@@ -58,9 +78,33 @@ struct BufferContext {
     size_t offset;
 };
 
+constexpr int AVIO_BUFFER_SIZE = 4096;
+constexpr size_t MAX_RGB_FRAME_BUFFER_BYTES = 1024ULL * 1024ULL * 1024ULL;
+
+static bool checked_add_i64(int64_t lhs, int64_t rhs, int64_t& result) {
+    if ((rhs > 0 && lhs > std::numeric_limits<int64_t>::max() - rhs) ||
+        (rhs < 0 && lhs < std::numeric_limits<int64_t>::min() - rhs)) {
+        return false;
+    }
+
+    result = lhs + rhs;
+    return true;
+}
+
+static void init_ffmpeg_network_once() {
+    static std::once_flag initFlag;
+    std::call_once(initFlag, []() {
+        avformat_network_init();
+    });
+}
+
 // AVIO 读取回调
 static int io_read_packet(void* opaque, uint8_t* buf, int buf_size) {
     BufferContext* ctx = static_cast<BufferContext*>(opaque);
+    if (!ctx || !buf || buf_size <= 0 || ctx->offset > ctx->size) {
+        return AVERROR(EINVAL);
+    }
+
     size_t remaining = ctx->size - ctx->offset;
     size_t to_copy = std::min(static_cast<size_t>(buf_size), remaining);
 
@@ -74,27 +118,37 @@ static int io_read_packet(void* opaque, uint8_t* buf, int buf_size) {
 // AVIO 寻址回调
 static int64_t io_seek(void* opaque, int64_t offset, int whence) {
     BufferContext* ctx = static_cast<BufferContext*>(opaque);
-    int64_t new_offset;
+    if (!ctx || ctx->size > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+        return AVERROR(EINVAL);
+    }
+
+    int64_t new_offset = 0;
+    const int64_t size = static_cast<int64_t>(ctx->size);
+    const int64_t current = static_cast<int64_t>(ctx->offset);
 
     if (whence == AVSEEK_SIZE) {
-        return static_cast<int64_t>(ctx->size);
+        return size;
     }
 
     if (whence == SEEK_SET) {
         new_offset = offset;
     }
     else if (whence == SEEK_CUR) {
-        new_offset = static_cast<int64_t>(ctx->offset) + offset;
+        if (!checked_add_i64(current, offset, new_offset)) {
+            return AVERROR(EINVAL);
+        }
     }
     else if (whence == SEEK_END) {
-        new_offset = static_cast<int64_t>(ctx->size) + offset;
+        if (!checked_add_i64(size, offset, new_offset)) {
+            return AVERROR(EINVAL);
+        }
     }
     else {
-        return -1;
+        return AVERROR(EINVAL);
     }
 
-    if (new_offset < 0 || new_offset > static_cast<int64_t>(ctx->size)) {
-        return -1;
+    if (new_offset < 0 || new_offset > size) {
+        return AVERROR(EINVAL);
     }
 
     ctx->offset = static_cast<size_t>(new_offset);
@@ -123,46 +177,60 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
     std::vector<cv::Mat> frames;
 
     if (!videoBuffer || size < MIN_VIDEO_BUFF_SIZE) {
-        JARK_LOG("Invalid video buffer: 0x{:X} or size: {} bytes", reinterpret_cast<const size_t>(videoBuffer), size);
+        JARK_LOG("Invalid video buffer: 0x{:X} or size: {} bytes", reinterpret_cast<std::uintptr_t>(videoBuffer), size);
+        return frames;
+    }
+    if (size > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+        JARK_LOG("Video buffer is too large: {} bytes", size);
         return frames;
     }
 
     // 1. 初始化 FFmpeg (通常应用程序启动时调用一次即可，这里确保安全性)
-    avformat_network_init();
+    init_ffmpeg_network_once();
 
     // 2. 准备自定义 IO 上下文
     BufferContext bufferCtx{ videoBuffer, size, 0 };
-    unsigned char* ioBuffer = static_cast<unsigned char*>(av_malloc(4096));
+    std::unique_ptr<uint8_t, AvMallocDeleter> ioBuffer(static_cast<uint8_t*>(av_malloc(AVIO_BUFFER_SIZE)));
     if (!ioBuffer) {
         JARK_LOG("bad_alloc");
         return frames;
     }
 
-    AVIOContext* avioCtx = avio_alloc_context(ioBuffer, 4096, 0, &bufferCtx, io_read_packet, nullptr, io_seek);
+    std::unique_ptr<AVIOContext, AvioContextDeleter> avioCtx(avio_alloc_context(
+        ioBuffer.get(), AVIO_BUFFER_SIZE, 0, &bufferCtx, io_read_packet, nullptr, io_seek
+    ));
     if (!avioCtx) {
-        av_free(ioBuffer);
         JARK_LOG("Failed to allocate AVIOContext");
         return frames;
     }
+    // avio_alloc_context() takes ownership of the current buffer pointer.
+    ioBuffer.release();
 
     // 3. 打开输入格式上下文
     std::unique_ptr<AVFormatContext, AvFormatContextDeleter> formatCtx(avformat_alloc_context());
     if (!formatCtx) {
-        avio_context_free(&avioCtx);
         JARK_LOG("Failed to allocate AVFormatContext");
         return frames;
     }
 
-    formatCtx->pb = avioCtx;
+    formatCtx->pb = avioCtx.get();
+    // Keep custom IO ownership with avioCtx; formatCtx is destroyed first.
+    formatCtx->flags |= AVFMT_FLAG_CUSTOM_IO;
+
     // 文件名设为空，因为我们是流式输入
-    auto ptr = formatCtx.get();
-    if (ptr == nullptr || avformat_open_input(&ptr, "", nullptr, nullptr) < 0) {
-        JARK_LOG("Failed to open input stream");
+    auto rawFormatCtx = formatCtx.release();
+    int result = avformat_open_input(&rawFormatCtx, "", nullptr, nullptr);
+    if (result < 0) {
+        char errStr[AV_ERROR_MAX_STRING_SIZE] = { 0 };
+        JARK_LOG("Failed to open input stream: {}", av_make_error_string(errStr, sizeof(errStr), result));
         return frames;
     }
+    formatCtx.reset(rawFormatCtx);
 
-    if (avformat_find_stream_info(formatCtx.get(), nullptr) < 0) {
-        JARK_LOG("Failed to find stream info");
+    result = avformat_find_stream_info(formatCtx.get(), nullptr);
+    if (result < 0) {
+        char errStr[AV_ERROR_MAX_STRING_SIZE] = { 0 };
+        JARK_LOG("Failed to find stream info: {}", av_make_error_string(errStr, sizeof(errStr), result));
         return frames;
     }
 
@@ -208,6 +276,23 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
         return frames;
     }
 
+    if (codecCtx->width <= 0 || codecCtx->height <= 0 ||
+        av_image_check_size(static_cast<unsigned int>(codecCtx->width), static_cast<unsigned int>(codecCtx->height), 0, nullptr) < 0) {
+        JARK_LOG("Invalid video frame size: {}x{}", codecCtx->width, codecCtx->height);
+        return frames;
+    }
+
+    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_BGR24, codecCtx->width, codecCtx->height, 1);
+    if (numBytes <= 0) {
+        char errStr[AV_ERROR_MAX_STRING_SIZE] = { 0 };
+        JARK_LOG("Invalid RGB frame buffer size: {} ({})", numBytes, av_make_error_string(errStr, sizeof(errStr), numBytes));
+        return frames;
+    }
+    if (static_cast<size_t>(numBytes) > MAX_RGB_FRAME_BUFFER_BYTES) {
+        JARK_LOG("RGB frame buffer is too large: {} bytes", numBytes);
+        return frames;
+    }
+
     // 6. 准备颜色空间转换上下文 (YUV -> BGR)
     std::unique_ptr<SwsContext, SwsContextDeleter> swsCtx(sws_getContext(
         codecCtx->width, codecCtx->height, codecCtx->pix_fmt,
@@ -231,16 +316,20 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
     }
 
     // 为 rgbFrame 分配缓冲区
-    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_BGR24, codecCtx->width, codecCtx->height, 1);
-    uint8_t* rgbBuffer = static_cast<uint8_t*>(av_malloc(numBytes * sizeof(uint8_t)));
+    std::unique_ptr<uint8_t, AvMallocDeleter> rgbBuffer(static_cast<uint8_t*>(av_malloc(static_cast<size_t>(numBytes))));
     if (!rgbBuffer) {
         JARK_LOG("bad_alloc");
         return frames;
     }
 
     // 将 rgbBuffer 关联到 rgbFrame
-    av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, rgbBuffer,
+    result = av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, rgbBuffer.get(),
         AV_PIX_FMT_BGR24, codecCtx->width, codecCtx->height, 1);
+    if (result < 0) {
+        char errStr[AV_ERROR_MAX_STRING_SIZE] = { 0 };
+        JARK_LOG("Failed to fill RGB frame arrays: {}", av_make_error_string(errStr, sizeof(errStr), result));
+        return frames;
+    }
 
     // 获取旋转信息
     int rotation = get_rotation_angle(videoStream);
@@ -248,27 +337,31 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
     // 8. 解码循环
     while (av_read_frame(formatCtx.get(), packet.get()) >= 0) {
         if (packet->stream_index == videoStreamIndex) {
-            int ret = avcodec_send_packet(codecCtx.get(), packet.get());
-            if (ret < 0) {
-                char errStr[64] = { 0 };
-                JARK_LOG("Error sending packet: {}", av_make_error_string(errStr, sizeof(errStr), ret));
+            int sendResult = avcodec_send_packet(codecCtx.get(), packet.get());
+            if (sendResult < 0) {
+                char errStr[AV_ERROR_MAX_STRING_SIZE] = { 0 };
+                JARK_LOG("Error sending packet: {}", av_make_error_string(errStr, sizeof(errStr), sendResult));
                 break;
             }
 
-            while (ret >= 0) {
-                ret = avcodec_receive_frame(codecCtx.get(), frame.get());
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            while (true) {
+                int receiveResult = avcodec_receive_frame(codecCtx.get(), frame.get());
+                if (receiveResult == AVERROR(EAGAIN) || receiveResult == AVERROR_EOF) {
                     break;
                 }
-                else if (ret < 0) {
-                    char errStr[64] = { 0 };
-                    JARK_LOG("Error decoding frame: {}", av_make_error_string(errStr, sizeof(errStr), ret));
+                else if (receiveResult < 0) {
+                    char errStr[AV_ERROR_MAX_STRING_SIZE] = { 0 };
+                    JARK_LOG("Error decoding frame: {}", av_make_error_string(errStr, sizeof(errStr), receiveResult));
                     break;
                 }
 
                 // 9. 颜色转换 (YUV -> BGR)
-                sws_scale(swsCtx.get(), frame->data, frame->linesize, 0, codecCtx->height,
+                int scaledRows = sws_scale(swsCtx.get(), frame->data, frame->linesize, 0, codecCtx->height,
                     rgbFrame->data, rgbFrame->linesize);
+                if (scaledRows <= 0) {
+                    JARK_LOG("Failed to convert video frame: {} rows scaled", scaledRows);
+                    continue;
+                }
 
                 // 10. 创建 cv::Mat (注意：OpenCV 使用 BGR)
                 // 数据是连续的，直接封装
@@ -306,9 +399,6 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
             break;
         }
     }
-
-    // av_free 会自动在 formatCtx 关闭时处理 ioBuffer，但为了清晰，这里主要依赖 unique_ptr 清理
-    // 注意：avformat_close_input 会释放 avioCtx 和 ioBuffer
 
     return frames;
 }
