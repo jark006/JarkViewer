@@ -103,7 +103,8 @@ struct CurImageParameter {
 
             //适应显示窗口宽高的缩放比例
             int64_t zoomFitWindow = std::min(winWidth * ZOOM_BASE / width, winHeight * ZOOM_BASE / height);
-            zoomTarget = (height > winHeight || width > winWidth) ? zoomFitWindow : ZOOM_BASE;
+            zoomTarget = (height > winHeight || width > winWidth) ? zoomFitWindow :
+                (GlobalVar::settingParameter.isOneToOnePreferred ? ZOOM_BASE : zoomFitWindow);
             zoomCur = zoomTarget;
 
             zoomList = std::vector<int64_t>(ZOOM_LIST.begin(), ZOOM_LIST.end());

@@ -137,7 +137,7 @@ struct SettingParameter {
     bool printerInvertColors = false;      // 是否反相
     bool printerBalancedBrightness = false;// 是否均衡亮度 文档优化
 
-    bool reserve1 = false;
+    bool isOneToOnePreferred = false;      // 打开图片时优先1:1
     bool reserve2 = false;
 
     bool isAllowRotateAnimation = true;

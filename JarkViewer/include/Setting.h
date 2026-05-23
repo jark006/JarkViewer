@@ -78,18 +78,19 @@ private:
         // GeneralTab
         if (generalTabCheckBoxList.empty()) {
             generalTabCheckBoxList = {
-                { {50, 100, 760, 50}, 12, &GlobalVar::settingParameter.isAllowRotateAnimation },
-                { {50, 150, 760, 50}, 13, &GlobalVar::settingParameter.isAllowZoomAnimation },
-                { {50, 200, 760, 50}, 14, &GlobalVar::settingParameter.isNoteBeforeDelete },
-                { {50, 250, 760, 50}, 15, &GlobalVar::settingParameter.enableColorManagement },
+                { {50, 100, 450, 50}, 12, &GlobalVar::settingParameter.isAllowRotateAnimation },
+                { {50, 150, 450, 50}, 13, &GlobalVar::settingParameter.isAllowZoomAnimation },
+                { {50, 200, 450, 50}, 14, &GlobalVar::settingParameter.isNoteBeforeDelete },
+                { {50, 250, 450, 50}, 15, &GlobalVar::settingParameter.enableColorManagement },
+                { {50, 300, 450, 50}, 54, &GlobalVar::settingParameter.isOneToOnePreferred },
             };
         }
         if (generalTabRadioList.empty()) {
             generalTabRadioList = {
-                {{50, 350, 600, 50}, {20, 21, 22, 23}, &GlobalVar::settingParameter.switchImageAnimationMode },
-                {{50, 400, 600, 50}, {24, 25, 26, 27}, &GlobalVar::settingParameter.UI_Mode },
-                {{50, 450, 450, 50}, {28, 30, 31}, &GlobalVar::settingParameter.UI_LANG },
-                {{50, 500, 450, 50}, {36, 37, 38}, &GlobalVar::settingParameter.rightClickAction },
+                {{50, 400, 600, 50}, {20, 21, 22, 23}, &GlobalVar::settingParameter.switchImageAnimationMode },
+                {{50, 450, 600, 50}, {24, 25, 26, 27}, &GlobalVar::settingParameter.UI_Mode },
+                {{50, 500, 450, 50}, {28, 30, 31}, &GlobalVar::settingParameter.UI_LANG },
+                {{50, 550, 450, 50}, {36, 37, 38}, &GlobalVar::settingParameter.rightClickAction },
             };
         }
 

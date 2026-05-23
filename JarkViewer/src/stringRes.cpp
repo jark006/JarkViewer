@@ -61,7 +61,7 @@ std::string_view UIStringTable[STRING_MAX_NUM][2] = {
     {"子图数量", "Number of subImage"},
     {"\n\nAI生图提示词 ComfyUI工作流.json\n", "\n\nAI-generated image prompt ComfyUI_workflow.json\n"},
     {"\n方向: ", "\nExif.Image.Orientation: "},
-    {"XX", "XX"},
+    {"优先1:1显示", "Prefer 1:1 Display"},
     {"XX", "XX"},
     {"XX", "XX"},
     {"XX", "XX"},
