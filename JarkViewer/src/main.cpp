@@ -243,6 +243,8 @@ public:
         if (m_pD3DDevice == nullptr)
             return S_FALSE;
 
+        imgDB.setColorManagementWindow(m_hWnd);
+
         return S_OK;
     }
 
@@ -1640,6 +1642,26 @@ public:
             BOOL themeMode = GlobalVar::isCurrentUIDarkMode;
             DwmSetWindowAttribute(m_hWnd, 20, &themeMode, sizeof(BOOL));
             operateQueue.push({ ActionENUM::refresh });
+        }
+
+        if (GlobalVar::isNeedReloadImageCache) {
+            GlobalVar::isNeedReloadImageCache = false;
+            if (curFileIdx >= 0 && curFileIdx < (int)imgFileList.size()) {
+                const auto currentPath = imgFileList[curFileIdx];
+                imgDB.clear();
+
+                if (currentPath == m_wndCaption) {
+                    imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32) });
+                    curPar.imageAssetPtr = imgDB.getSafePtr(currentPath, currentPath);
+                }
+                else {
+                    const auto& nextPath = imgFileList[(curFileIdx + 1) % imgFileList.size()];
+                    curPar.imageAssetPtr = imgDB.getSafePtr(currentPath, nextPath);
+                }
+
+                curPar.Init(winWidth, winHeight);
+                operateQueue.push({ ActionENUM::refresh });
+            }
         }
 
         auto operateAction = operateQueue.get();

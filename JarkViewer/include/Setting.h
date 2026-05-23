@@ -80,7 +80,8 @@ private:
             generalTabCheckBoxList = {
                 { {50, 100, 760, 50}, 12, &GlobalVar::settingParameter.isAllowRotateAnimation },
                 { {50, 150, 760, 50}, 13, &GlobalVar::settingParameter.isAllowZoomAnimation },
-                { {50, 200, 760, 50}, 15, &GlobalVar::settingParameter.isNoteBeforeDelete },
+                { {50, 200, 760, 50}, 14, &GlobalVar::settingParameter.isNoteBeforeDelete },
+                { {50, 250, 760, 50}, 15, &GlobalVar::settingParameter.enableColorManagement },
             };
         }
         if (generalTabRadioList.empty()) {
@@ -313,6 +314,8 @@ public:
             for (auto& cbox : generalTabCheckBoxList) {
                 if (isInside(x, y, cbox.rect)) {
                     *cbox.valuePtr = !(*cbox.valuePtr);
+                    if (cbox.valuePtr == &GlobalVar::settingParameter.enableColorManagement)
+                        GlobalVar::isNeedReloadImageCache = true;
                     isNeedRefreshUI = true;
                 }
             }

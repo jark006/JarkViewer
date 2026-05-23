@@ -1,6 +1,7 @@
 #pragma once
 #include "jarkUtils.h"
 #include "LRU.h"
+#include "ColorManager.h"
 
 #include "videoDecoder.h"
 #include "SVGPreprocessor.h"
@@ -304,7 +305,12 @@ public:
 
     ImageDatabase() = default;
 
+    void setColorManagementWindow(HWND hwnd) {
+        colorManager.setWindow(hwnd);
+    }
+
     cv::Mat errorTipsMatDeep, errorTipsMatLight, homeMatDeep, homeMatLight;
+    ColorManager colorManager;
 
     cv::Mat getErrorTipsMat() {
         if (errorTipsMatDeep.empty()) {

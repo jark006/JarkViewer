@@ -60,6 +60,9 @@
     <ClInclude Include="include\blpDecoder.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="include\ColorManager.h">
+      <Filter>include</Filter>
+    </ClInclude>
     <ClInclude Include="include\videoDecoder.h">
       <Filter>include</Filter>
     </ClInclude>
@@ -93,6 +96,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="src\blpDecoder.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ColorManager.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>

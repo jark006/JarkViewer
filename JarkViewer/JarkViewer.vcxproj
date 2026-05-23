@@ -157,6 +157,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="include\blpDecoder.h" />
+    <ClInclude Include="include\ColorManager.h" />
     <ClInclude Include="include\D3D11App.h" />
     <ClInclude Include="include\exifParse.h" />
     <ClInclude Include="include\FileAssociationNaming.h" />
@@ -175,6 +176,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\blpDecoder.cpp" />
+    <ClCompile Include="src\ColorManager.cpp" />
     <ClCompile Include="src\D3D11App.cpp" />
     <ClCompile Include="src\exifParse.cpp" />
     <ClCompile Include="src\ImageDatabase.cpp" />

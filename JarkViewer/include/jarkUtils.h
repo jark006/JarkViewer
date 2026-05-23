@@ -142,7 +142,7 @@ struct SettingParameter {
 
     bool isAllowRotateAnimation = true;
     bool isAllowZoomAnimation = true;
-    bool reserve3 = false;
+    bool enableColorManagement = true;      // ICC色彩管理
     bool isNoteBeforeDelete = true;         // 删除前提示
     uint32_t switchImageAnimationMode = 0;  // 0: 无动画  1:上下滑动  2:左右滑动
 
@@ -332,6 +332,7 @@ struct ImageAsset {
     std::vector<cv::Mat> frames;             // 动态图或实况的视频
     std::vector<int> frameDurations;         // 每帧时长
     string exifInfo;                         // 图像EXIF等信息
+    std::vector<uint8_t> iccProfile;         // 图像内嵌ICC配置文件
 };
 
 enum class ActionENUM:int64_t {
@@ -443,6 +444,7 @@ struct MatPack {
 
 struct GlobalVar {
     static inline bool isNeedUpdateTheme = false;
+    static inline bool isNeedReloadImageCache = false;
 
     static inline bool isSystemDarkMode = false;    // 系统界面主题：深色/浅色
     static inline bool isCurrentUIDarkMode = false; // 应用实时界面主题：深色/浅色

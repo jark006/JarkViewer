@@ -239,6 +239,40 @@ using HeifContextPtr = std::unique_ptr<heif_context, HeifContextDeleter>;
 using HeifImageHandlePtr = std::unique_ptr<heif_image_handle, HeifImageHandleDeleter>;
 using HeifImagePtr = std::unique_ptr<heif_image, HeifImageDeleter>;
 
+static std::vector<uint8_t> readHeifIccProfile(std::span<const uint8_t> buf) {
+    if (buf.size() < 12)
+        return {};
+
+    auto filetype_check = heif_check_filetype(buf.data(), 12);
+    if (filetype_check == heif_filetype_no || filetype_check == heif_filetype_yes_unsupported)
+        return {};
+
+    HeifContextPtr ctx(heif_context_alloc());
+    if (!ctx)
+        return {};
+
+    auto err = heif_context_read_from_memory_without_copy(ctx.get(), buf.data(), buf.size(), nullptr);
+    if (err.code)
+        return {};
+
+    heif_image_handle* rawHandle = nullptr;
+    err = heif_context_get_primary_image_handle(ctx.get(), &rawHandle);
+    if (err.code)
+        return {};
+
+    HeifImageHandlePtr handle(rawHandle);
+    const size_t profileSize = heif_image_handle_get_raw_color_profile_size(handle.get());
+    if (profileSize == 0)
+        return {};
+
+    std::vector<uint8_t> profile(profileSize);
+    err = heif_image_handle_get_raw_color_profile(handle.get(), profile.data());
+    if (err.code)
+        return {};
+
+    return profile;
+}
+
 
 static std::string jxlStatusCode2String(JxlDecoderStatus status) {
     switch (status) {
@@ -285,8 +319,11 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, std::span<const uint8_t> bu
     auto runner = JxlResizableParallelRunnerMake(nullptr);
 
     auto decoder = JxlDecoderMake(nullptr);
-    JxlDecoderStatus status = JxlDecoderSubscribeEvents(decoder.get(),
-        JXL_DEC_BASIC_INFO | JXL_DEC_FRAME | JXL_DEC_FULL_IMAGE);
+    int events = JXL_DEC_BASIC_INFO | JXL_DEC_FRAME | JXL_DEC_FULL_IMAGE;
+    if (GlobalVar::settingParameter.enableColorManagement)
+        events |= JXL_DEC_COLOR_ENCODING;
+
+    JxlDecoderStatus status = JxlDecoderSubscribeEvents(decoder.get(), events);
     if (JXL_DEC_SUCCESS != status) {
         JARK_LOG("JxlDecoderSubscribeEvents failed\n{}\n{}",
             jarkUtils::wstringToUtf8(path),
@@ -339,6 +376,20 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, std::span<const uint8_t> bu
             JxlResizableParallelRunnerSetThreads(
                 runner.get(),
                 JxlResizableParallelRunnerSuggestThreads(basic_info.xsize, basic_info.ysize));
+        }
+        else if (status == JXL_DEC_COLOR_ENCODING) {
+            size_t iccSize = 0;
+            if (JxlDecoderGetICCProfileSize(decoder.get(), JXL_COLOR_PROFILE_TARGET_DATA, &iccSize) == JXL_DEC_SUCCESS &&
+                iccSize > 0) {
+                imageAsset.iccProfile.resize(iccSize);
+                if (JxlDecoderGetColorAsICCProfile(
+                    decoder.get(),
+                    JXL_COLOR_PROFILE_TARGET_DATA,
+                    imageAsset.iccProfile.data(),
+                    imageAsset.iccProfile.size()) != JXL_DEC_SUCCESS) {
+                    imageAsset.iccProfile.clear();
+                }
+            }
         }
         else if (status == JXL_DEC_FRAME) {
             JxlFrameHeader frame_header{};
@@ -690,6 +741,15 @@ ImageAsset ImageDatabase::loadAvif(wstring_view path, std::span<const uint8_t> f
     avifRGBImageSetDefaults(&rgb, decoder->image);
 
     while (avifDecoderNextImage(decoder) == AVIF_RESULT_OK) {
+        if (GlobalVar::settingParameter.enableColorManagement &&
+            imageAsset.iccProfile.empty() &&
+            decoder->image->icc.data &&
+            decoder->image->icc.size > 0) {
+            imageAsset.iccProfile.assign(
+                decoder->image->icc.data,
+                decoder->image->icc.data + decoder->image->icc.size);
+        }
+
         bool hasAlpha = decoder->image->alphaPlane != nullptr &&
             decoder->image->alphaRowBytes > 0;
 
@@ -830,6 +890,11 @@ ImageAsset ImageDatabase::loadLEP(wstring_view path, std::span<const uint8_t> bu
         buf.data(),
         buf.size()) +
         ExifParse::getExif(path, jpeg_data, jpeg_size);
+    if (GlobalVar::settingParameter.enableColorManagement) {
+        imageAsset.iccProfile = ColorManager::readEmbeddedIccProfile(
+            path,
+            std::span<const uint8_t>(jpeg_data, static_cast<size_t>(jpeg_size)));
+    }
 
     const size_t idx = imageAsset.exifInfo.find(getUIString(53));
     if (idx != string::npos) {
@@ -2691,10 +2756,22 @@ ImageAsset ImageDatabase::loadLivp(wstring_view path, std::span<const uint8_t> f
     auto frames = DecodeVideoFrames(videoFileData.data(), videoFileData.size());
 
     if (frames.empty()) {
-        return { ImageFormat::Still, img, {}, {}, exifInfo };
+        ImageAsset imageAsset{ ImageFormat::Still, img, {}, {}, exifInfo };
+        if (GlobalVar::settingParameter.enableColorManagement) {
+            imageAsset.iccProfile = (imageExt == "heic" || imageExt == "heif") ?
+                readHeifIccProfile(imageFileData) :
+                ColorManager::readEmbeddedIccProfile(path, imageFileData);
+        }
+        return imageAsset;
     }
 
-    return { ImageFormat::Animated, img, frames, std::vector<int>(frames.size(), 33),  exifInfo };
+    ImageAsset imageAsset{ ImageFormat::Animated, img, frames, std::vector<int>(frames.size(), 33), exifInfo };
+    if (GlobalVar::settingParameter.enableColorManagement) {
+        imageAsset.iccProfile = (imageExt == "heic" || imageExt == "heif") ?
+            readHeifIccProfile(imageFileData) :
+            ColorManager::readEmbeddedIccProfile(path, imageFileData);
+    }
+    return imageAsset;
 }
 
 // 从xmp获取视频数据大小  https://developer.android.com/media/platform/motion-photo-format?hl=zh-cn
@@ -2802,10 +2879,16 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
     }
 
     if (frames.empty()) {
-        return { ImageFormat::Still, img, {}, {}, exifInfo };
+        ImageAsset imageAsset{ ImageFormat::Still, img, {}, {}, exifInfo };
+        if (GlobalVar::settingParameter.enableColorManagement && !isJPG)
+            imageAsset.iccProfile = readHeifIccProfile(fileBuf);
+        return imageAsset;
     }
 
-    return { ImageFormat::Animated, img, frames, std::vector<int>(frames.size(), 33),  exifInfo };
+    ImageAsset imageAsset{ ImageFormat::Animated, img, frames, std::vector<int>(frames.size(), 33), exifInfo };
+    if (GlobalVar::settingParameter.enableColorManagement && !isJPG)
+        imageAsset.iccProfile = readHeifIccProfile(fileBuf);
+    return imageAsset;
 }
 
 ImageAsset ImageDatabase::myLoader(const wstring& path) {
@@ -3121,5 +3204,15 @@ ImageAsset ImageDatabase::loader(const wstring& path) {
     auto imageAsset = myLoader(path);
     JARK_LOG("{}", parseImageAssetInfo(path, imageAsset));
     convertImageAssetToCV_8U(imageAsset);
+
+    if (GlobalVar::settingParameter.enableColorManagement) {
+        if (imageAsset.iccProfile.empty()) {
+            auto fileReader = MappedFileReader(path);
+            if (!fileReader.isEmpty())
+                imageAsset.iccProfile = ColorManager::readEmbeddedIccProfile(path, fileReader.view());
+        }
+        colorManager.applyToImageAsset(imageAsset);
+    }
+
     return imageAsset;
 }
