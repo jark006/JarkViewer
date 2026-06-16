@@ -269,7 +269,7 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
     }
 
     // 设置多线程解码 (可选，小视频单线程也够)
-    codecCtx->thread_count = 4;
+    codecCtx->thread_count = 8;
 
     if (avcodec_open2(codecCtx.get(), codec, nullptr) < 0) {
         JARK_LOG("Failed to open codec");
@@ -282,7 +282,28 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
         return frames;
     }
 
-    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_BGR24, codecCtx->width, codecCtx->height, 1);
+    // 计算目标尺寸：如果宽或高大于 1920，缩放到最长边为 1920
+    int srcWidth = codecCtx->width;
+    int srcHeight = codecCtx->height;
+    int dstWidth = srcWidth;
+    int dstHeight = srcHeight;
+
+    if (srcWidth > 1920 || srcHeight > 1920) {
+        if (srcWidth >= srcHeight) {
+            // 宽边更长或相等
+            dstWidth = 1920;
+            dstHeight = static_cast<int>(srcHeight * 1920.0 / srcWidth + 0.5); // 四舍五入
+        } else {
+            // 高边更长
+            dstHeight = 1920;
+            dstWidth = static_cast<int>(srcWidth * 1920.0 / srcHeight + 0.5); // 四舍五入
+        }
+        // 确保尺寸至少为 1
+        if (dstWidth < 1) dstWidth = 1;
+        if (dstHeight < 1) dstHeight = 1;
+    }
+
+    int numBytes = av_image_get_buffer_size(AV_PIX_FMT_BGR24, dstWidth, dstHeight, 1);
     if (numBytes <= 0) {
         char errStr[AV_ERROR_MAX_STRING_SIZE] = { 0 };
         JARK_LOG("Invalid RGB frame buffer size: {} ({})", numBytes, av_make_error_string(errStr, sizeof(errStr), numBytes));
@@ -293,10 +314,10 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
         return frames;
     }
 
-    // 6. 准备颜色空间转换上下文 (YUV -> BGR)
+    // 6. 准备颜色空间转换上下文 (YUV -> BGR)，并应用缩放
     std::unique_ptr<SwsContext, SwsContextDeleter> swsCtx(sws_getContext(
-        codecCtx->width, codecCtx->height, codecCtx->pix_fmt,
-        codecCtx->width, codecCtx->height, AV_PIX_FMT_BGR24,
+        srcWidth, srcHeight, codecCtx->pix_fmt,
+        dstWidth, dstHeight, AV_PIX_FMT_BGR24,
         SWS_BILINEAR, nullptr, nullptr, nullptr
     ));
 
@@ -324,7 +345,7 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
 
     // 将 rgbBuffer 关联到 rgbFrame
     result = av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, rgbBuffer.get(),
-        AV_PIX_FMT_BGR24, codecCtx->width, codecCtx->height, 1);
+        AV_PIX_FMT_BGR24, dstWidth, dstHeight, 1);
     if (result < 0) {
         char errStr[AV_ERROR_MAX_STRING_SIZE] = { 0 };
         JARK_LOG("Failed to fill RGB frame arrays: {}", av_make_error_string(errStr, sizeof(errStr), result));
@@ -355,8 +376,8 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
                     break;
                 }
 
-                // 9. 颜色转换 (YUV -> BGR)
-                int scaledRows = sws_scale(swsCtx.get(), frame->data, frame->linesize, 0, codecCtx->height,
+                // 9. 颜色转换 (YUV -> BGR) 并缩放
+                int scaledRows = sws_scale(swsCtx.get(), frame->data, frame->linesize, 0, srcHeight,
                     rgbFrame->data, rgbFrame->linesize);
                 if (scaledRows <= 0) {
                     JARK_LOG("Failed to convert video frame: {} rows scaled", scaledRows);
@@ -365,7 +386,7 @@ std::vector<cv::Mat> DecodeVideoFrames(const uint8_t* videoBuffer, size_t size, 
 
                 // 10. 创建 cv::Mat (注意：OpenCV 使用 BGR)
                 // 数据是连续的，直接封装
-                cv::Mat decodedMat(codecCtx->height, codecCtx->width, CV_8UC3, rgbFrame->data[0]);
+                cv::Mat decodedMat(dstHeight, dstWidth, CV_8UC3, rgbFrame->data[0]);
 
                 // 深拷贝数据，因为 rgbBuffer 会在下一帧被覆盖
                 cv::Mat finalMat = decodedMat.clone();

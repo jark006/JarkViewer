@@ -3071,7 +3071,7 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
         path.substr(dotPos + 1) : path);
     for (auto& c : ext)	c = std::tolower(c);
     
-    if (videoExt.contains(ext)) { // 默认不会打开视频，若强行打开则最多解码300帧
+    if (videoExt.contains(ext)) { // 默认不会打开视频，若强行打开则最多解码 MAX_VIDEO_FRAMES 帧
         ImageAsset imageAsset;
         auto frames = DecodeVideoFrames(fileBuf.data(), fileBuf.size(), MAX_VIDEO_FRAMES);
 

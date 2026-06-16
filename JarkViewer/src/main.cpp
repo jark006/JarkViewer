@@ -316,7 +316,7 @@ public:
                     filePath.substr(dotPos + 1) : filePath);
                 for (auto& c : ext)	c = std::tolower(c);
 
-                if (!ImageDatabase::videoExt.contains(ext)) // 非视频文件直接提示错误。若是视频文件则尝试当做动态照片处理(仅解码前300帧)
+                if (!ImageDatabase::videoExt.contains(ext)) // 非视频文件直接提示错误。若是视频文件则尝试当做动态照片处理(仅解码前 MAX_VIDEO_FRAMES 帧)
                     imgDB.put(fullPath.wstring(), { ImageFormat::Still, imgDB.getErrorTipsMat(), {}, {}, getUIString(33) });
             }
         }
@@ -1911,7 +1911,7 @@ public:
 
         case ActionENUM::zoomOut: {
             // 不宜缩太小
-            if (curPar.zoomTarget <= curPar.ZOOM_BASE && (curPar.zoomTarget * std::min(curPar.width, curPar.height) / curPar.ZOOM_BASE) < 50)
+            if (curPar.zoomTarget <= curPar.ZOOM_BASE && (curPar.zoomTarget * std::min(curPar.width, curPar.height) / curPar.ZOOM_BASE) < 4)
                 break;
 
             if (curPar.zoomIndex > 0) {

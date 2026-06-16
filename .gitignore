@@ -1,5 +1,6 @@
 .vs
 .vscode
 .claude
+.codegraph
 build
 x64

@@ -154,6 +154,17 @@ std::vector<uint8_t> ColorManager::readMonitorIccProfile() const {
     return readFileBytes(profilePath);
 }
 
+std::vector<uint8_t>& ColorManager::readMonitorIccProfileCached() {
+    static std::mutex mutex;
+    static std::vector<uint8_t> cachedProfile;
+
+    std::lock_guard<std::mutex> lock(mutex);
+    if (cachedProfile.empty()) {
+        cachedProfile = readMonitorIccProfile();
+    }
+    return cachedProfile;
+}
+
 bool ColorManager::applyToMat(cv::Mat& mat, const std::vector<uint8_t>& sourceIcc, const std::vector<uint8_t>& monitorIcc) {
     if (mat.empty() || isInternalTipsImage(mat))
         return false;
@@ -199,13 +210,10 @@ bool ColorManager::applyToMat(cv::Mat& mat, const std::vector<uint8_t>& sourceIc
     return true;
 }
 
-void ColorManager::applyToImageAsset(ImageAsset& imageAsset) const {
+void ColorManager::applyToImageAsset(ImageAsset& imageAsset) {
     if (!GlobalVar::settingParameter.enableColorManagement)
         return;
 
-    const std::vector<uint8_t> monitorIcc = readMonitorIccProfile();
+    std::vector<uint8_t>& monitorIcc = readMonitorIccProfileCached();
     applyToMat(imageAsset.primaryFrame, imageAsset.iccProfile, monitorIcc);
-
-    for (auto& frame : imageAsset.frames)
-        applyToMat(frame, imageAsset.iccProfile, monitorIcc);
 }
