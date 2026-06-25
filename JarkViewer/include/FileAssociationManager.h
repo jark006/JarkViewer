@@ -8,6 +8,11 @@
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "shell32.lib")
 
+struct FileAssociationResult {
+    bool associationSucceeded = true;
+    bool thumbnailOperationFailed = false;
+};
+
 class FileAssociationManager {
 private:
     std::wstring m_appPath;
@@ -106,8 +111,14 @@ private:
         return true;
     }
 
+    static void MergeThumbnailResult(FileAssociationResult& result, ThumbnailRegistrationResult thumbnailResult) {
+        if (thumbnailResult == ThumbnailRegistrationResult::Failed) {
+            result.thumbnailOperationFailed = true;
+        }
+    }
+
     // 关联文件扩展名
-    bool AssociateExtension(const std::wstring& extension) {
+    bool AssociateExtension(const std::wstring& extension, FileAssociationResult& result) {
         const std::wstring progId = GetExpectedProgId(extension);
         const std::wstring extKey = FileAssociationNaming::BuildExtensionKey(extension);
 
@@ -120,17 +131,18 @@ private:
             return false;
         }
 
-        return m_thumbnailRegistrar.AssociateExtension(extension);
+        MergeThumbnailResult(result, m_thumbnailRegistrar.AssociateExtension(extension));
+        return true;
     }
 
     // 取消关联文件扩展名
-    bool UnassociateExtension(const std::wstring& extension) {
-        const bool thumbnailUnregistered = m_thumbnailRegistrar.UnassociateExtension(extension);
+    bool UnassociateExtension(const std::wstring& extension, FileAssociationResult& result) {
+        MergeThumbnailResult(result, m_thumbnailRegistrar.UnassociateExtension(extension));
         const std::wstring associatedProgId = GetAssociatedProgId(extension);
 
         // 检查是否关联到当前程序
         if (!IsManagedProgId(associatedProgId, extension)) {
-            return thumbnailUnregistered; // 如果没有关联到当前程序，只清理缩略图挂接
+            return true; // 如果没有关联到当前程序，只清理缩略图挂接
         }
 
         // 删除类关联
@@ -139,7 +151,7 @@ private:
         DeleteRegistryValue(HKEY_CURRENT_USER, extKey, L"");
         DeleteRegistryKey(HKEY_CURRENT_USER, progIdKey);
 
-        return thumbnailUnregistered;
+        return true;
     }
 
     void CleanupLegacyProgIdIfUnused(const std::vector<std::wstring>& extChecked,
@@ -173,33 +185,31 @@ public:
     }
 
     // 管理文件关联的主函数
-    bool ManageFileAssociations(const std::vector<std::wstring>& extChecked,
+    FileAssociationResult ManageFileAssociations(const std::vector<std::wstring>& extChecked,
         const std::vector<std::wstring>& extUnchecked) {
 
-        bool allSucceeded = true;
+        FileAssociationResult result;
 
         // 关联需要的扩展名
         for (const auto& ext : extChecked) {
-            if (!AssociateExtension(ext)) {
-                allSucceeded = false;
+            if (!AssociateExtension(ext, result)) {
+                result.associationSucceeded = false;
             }
         }
 
         // 取消不需要的扩展名关联
         for (const auto& ext : extUnchecked) {
-            if (!UnassociateExtension(ext)) {
-                allSucceeded = false;
+            if (!UnassociateExtension(ext, result)) {
+                result.associationSucceeded = false;
             }
         }
 
         CleanupLegacyProgIdIfUnused(extChecked, extUnchecked);
-        if (!m_thumbnailRegistrar.CleanupProviderClsidIfUnused()) {
-            allSucceeded = false;
-        }
+        MergeThumbnailResult(result, m_thumbnailRegistrar.CleanupProviderClsidIfUnused());
 
         // 通知系统更改
         NotifySystemChange();
 
-        return allSucceeded;
+        return result;
     }
 };

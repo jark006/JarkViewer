@@ -62,11 +62,6 @@ std::string_view UIStringTable[STRING_MAX_NUM][2] = {
     {"\n\nAI生图提示词 ComfyUI工作流.json\n", "\n\nAI-generated image prompt ComfyUI_workflow.json\n"},
     {"\n方向: ", "\nExif.Image.Orientation: "},
     {"优先1:1显示", "Prefer 1:1 Display"},
-    {"XX", "XX"},
-    {"XX", "XX"},
-    {"XX", "XX"},
-    {"XX", "XX"},
-
 };
 
 
@@ -112,9 +107,7 @@ std::wstring_view UIStringTableW[STRING_MAX_NUM][2] = {
     {L"全屏 (&F)", L"&FullScreen"},
     {L"设置", L"Settings"},
     {L"打印", L"Print"},  // 40
-    {L"XX", L"XX"},
-    {L"XX", L"XX"},
-
+    {L"文件关联已完成，但缩略图扩展注册失败。部分格式可能无法在资源管理器中显示 JarkViewer 缩略图。", L"Association completed, but thumbnail extension registration failed. Some formats may not show JarkViewer thumbnails in File Explorer."},
 };
 
 // 获取字符串

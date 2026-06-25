@@ -379,7 +379,7 @@ public:
         }
     }
 
-    bool SetupFileAssociations(const std::vector<std::wstring>& extChecked,
+    FileAssociationResult SetupFileAssociations(const std::vector<std::wstring>& extChecked,
         const std::vector<std::wstring>& extUnchecked) {
 
         FileAssociationManager manager;
@@ -443,11 +443,15 @@ public:
                         unCheckedExtW.emplace_back(jarkUtils::utf8ToWstring(ext));
                 }
 
-                if (SetupFileAssociations(checkedExtW, unCheckedExtW)) {
-                    MessageBoxW(nullptr, getUIStringW(2), getUIStringW(1), MB_OK | MB_ICONINFORMATION);
+                const auto associationResult = SetupFileAssociations(checkedExtW, unCheckedExtW);
+                if (!associationResult.associationSucceeded) {
+                    MessageBoxW(nullptr, getUIStringW(3), getUIStringW(1), MB_OK | MB_ICONERROR);
+                }
+                else if (associationResult.thumbnailOperationFailed) {
+                    MessageBoxW(nullptr, getUIStringW(41), getUIStringW(1), MB_OK | MB_ICONWARNING);
                 }
                 else {
-                    MessageBoxW(nullptr, getUIStringW(3), getUIStringW(1), MB_OK | MB_ICONERROR);
+                    MessageBoxW(nullptr, getUIStringW(2), getUIStringW(1), MB_OK | MB_ICONINFORMATION);
                 }
             }
         }

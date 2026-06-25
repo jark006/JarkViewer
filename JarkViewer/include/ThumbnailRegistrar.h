@@ -13,9 +13,17 @@
 
 #pragma comment(lib, "shlwapi.lib")
 
+enum class ThumbnailRegistrationResult {
+    Succeeded,
+    SkippedProviderMissing,
+    Failed
+};
+
 class ThumbnailRegistrar {
 public:
-    ThumbnailRegistrar() = default;
+    ThumbnailRegistrar()
+        : m_providerDllPath(BuildProviderDllPathFromAppPath({})) {
+    }
 
     explicit ThumbnailRegistrar(std::wstring appPath)
         : m_providerDllPath(BuildProviderDllPathFromAppPath(appPath)) {
@@ -52,33 +60,60 @@ public:
         });
     }
 
-    bool AssociateExtension(std::wstring_view extension) const {
-        if (!IsThumbnailEligibleExtension(extension)) {
-            return true;
-        }
+    ThumbnailRegistrationResult AssociateExtension(std::wstring_view extension) const {
+        try {
+            if (!IsThumbnailEligibleExtension(extension)) {
+                return ThumbnailRegistrationResult::Succeeded;
+            }
 
-        if (!EnsureProviderClsidRegistered()) {
-            return false;
-        }
+            if (!ProviderDllExists()) {
+                return DeleteShellExtensionKeyIfOwned(extension) ?
+                    ThumbnailRegistrationResult::SkippedProviderMissing :
+                    ThumbnailRegistrationResult::Failed;
+            }
 
-        const auto shellExtKey = BuildShellExtensionKey(extension);
-        return SetRegistryValue(HKEY_CURRENT_USER, shellExtKey, L"", std::wstring(ProviderClsidString()));
+            if (!EnsureProviderClsidRegistered()) {
+                return ThumbnailRegistrationResult::Failed;
+            }
+
+            const auto shellExtKey = BuildShellExtensionKey(extension);
+            return SetRegistryValue(HKEY_CURRENT_USER, shellExtKey, L"", std::wstring(ProviderClsidString())) ?
+                ThumbnailRegistrationResult::Succeeded :
+                ThumbnailRegistrationResult::Failed;
+        }
+        catch (...) {
+            return ThumbnailRegistrationResult::Failed;
+        }
     }
 
-    bool UnassociateExtension(std::wstring_view extension) const {
-        if (!IsThumbnailEligibleExtension(extension)) {
-            return true;
-        }
+    ThumbnailRegistrationResult UnassociateExtension(std::wstring_view extension) const {
+        try {
+            if (!IsThumbnailEligibleExtension(extension)) {
+                return ThumbnailRegistrationResult::Succeeded;
+            }
 
-        return DeleteRegistryKey(HKEY_CURRENT_USER, BuildShellExtensionKey(extension));
+            return DeleteShellExtensionKeyIfOwned(extension) ?
+                ThumbnailRegistrationResult::Succeeded :
+                ThumbnailRegistrationResult::Failed;
+        }
+        catch (...) {
+            return ThumbnailRegistrationResult::Failed;
+        }
     }
 
-    bool CleanupProviderClsidIfUnused() const {
-        if (HasAnyRegisteredEligibleExtension()) {
-            return true;
-        }
+    ThumbnailRegistrationResult CleanupProviderClsidIfUnused() const {
+        try {
+            if (HasAnyRegisteredEligibleExtension()) {
+                return ThumbnailRegistrationResult::Succeeded;
+            }
 
-        return DeleteRegistryKey(HKEY_CURRENT_USER, BuildProviderClsidKey());
+            return DeleteRegistryKey(HKEY_CURRENT_USER, BuildProviderClsidKey()) ?
+                ThumbnailRegistrationResult::Succeeded :
+                ThumbnailRegistrationResult::Failed;
+        }
+        catch (...) {
+            return ThumbnailRegistrationResult::Failed;
+        }
     }
 
 private:
@@ -144,6 +179,10 @@ private:
         return result == ERROR_SUCCESS ? std::wstring(value) : std::wstring{};
     }
 
+    static bool IsProviderClsid(std::wstring_view value) {
+        return !value.empty() && _wcsicmp(value.data(), ProviderClsidString().data()) == 0;
+    }
+
     bool EnsureProviderClsidRegistered() const {
         const auto clsidKey = BuildProviderClsidKey();
         const auto inprocKey = clsidKey + L"\\InprocServer32";
@@ -159,10 +198,25 @@ private:
         return SetRegistryValue(HKEY_CURRENT_USER, inprocKey, L"ThreadingModel", L"Apartment");
     }
 
+    bool ProviderDllExists() const {
+        const DWORD attributes = GetFileAttributesW(m_providerDllPath.c_str());
+        return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+    }
+
+    static bool DeleteShellExtensionKeyIfOwned(std::wstring_view extension) {
+        const auto shellExtKey = BuildShellExtensionKey(extension);
+        const auto value = QueryDefaultValue(HKEY_CURRENT_USER, shellExtKey);
+        if (!IsProviderClsid(value)) {
+            return true;
+        }
+
+        return DeleteRegistryKey(HKEY_CURRENT_USER, shellExtKey);
+    }
+
     bool HasAnyRegisteredEligibleExtension() const {
         for (const auto ext : kThumbnailEligibleExtensions) {
             const auto value = QueryDefaultValue(HKEY_CURRENT_USER, BuildShellExtensionKey(ext));
-            if (_wcsicmp(value.c_str(), ProviderClsidString().data()) == 0) {
+            if (IsProviderClsid(value)) {
                 return true;
             }
         }
