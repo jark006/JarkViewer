@@ -1,5 +1,6 @@
 #pragma once
 #include "FileAssociationNaming.h"
+#include "ThumbnailRegistrar.h"
 #include "jarkUtils.h"
 #include <shlwapi.h>
 #include <shlobj.h>
@@ -11,6 +12,7 @@ class FileAssociationManager {
 private:
     std::wstring m_appPath;
     std::wstring m_legacyProgId;
+    ThumbnailRegistrar m_thumbnailRegistrar;
 
     // 设置注册表值
     bool SetRegistryValue(HKEY hKey, const std::wstring& subKey, const std::wstring& valueName, const std::wstring& value) {
@@ -118,16 +120,17 @@ private:
             return false;
         }
 
-        return true;
+        return m_thumbnailRegistrar.AssociateExtension(extension);
     }
 
     // 取消关联文件扩展名
     bool UnassociateExtension(const std::wstring& extension) {
+        const bool thumbnailUnregistered = m_thumbnailRegistrar.UnassociateExtension(extension);
         const std::wstring associatedProgId = GetAssociatedProgId(extension);
 
         // 检查是否关联到当前程序
         if (!IsManagedProgId(associatedProgId, extension)) {
-            return true; // 如果没有关联到当前程序，直接返回成功
+            return thumbnailUnregistered; // 如果没有关联到当前程序，只清理缩略图挂接
         }
 
         // 删除类关联
@@ -136,7 +139,7 @@ private:
         DeleteRegistryValue(HKEY_CURRENT_USER, extKey, L"");
         DeleteRegistryKey(HKEY_CURRENT_USER, progIdKey);
 
-        return true;
+        return thumbnailUnregistered;
     }
 
     void CleanupLegacyProgIdIfUnused(const std::vector<std::wstring>& extChecked,
@@ -163,9 +166,10 @@ private:
     }
 
 public:
-    FileAssociationManager() {
-        m_appPath = jarkUtils::getCurrentAppPath();
-        m_legacyProgId = L"JarkViewer.ImageFile";
+    FileAssociationManager()
+        : m_appPath(jarkUtils::getCurrentAppPath()),
+        m_legacyProgId(L"JarkViewer.ImageFile"),
+        m_thumbnailRegistrar(m_appPath) {
     }
 
     // 管理文件关联的主函数
@@ -189,6 +193,9 @@ public:
         }
 
         CleanupLegacyProgIdIfUnused(extChecked, extUnchecked);
+        if (!m_thumbnailRegistrar.CleanupProviderClsidIfUnused()) {
+            allSucceeded = false;
+        }
 
         // 通知系统更改
         NotifySystemChange();
@@ -196,4 +203,3 @@ public:
         return allSucceeded;
     }
 };
-

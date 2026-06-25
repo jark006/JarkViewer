@@ -11,4 +11,5 @@
   <Project Path="JarkViewer/JarkViewer.vcxproj" Id="b0d84475-f869-46b6-bb98-40e788cb86d9">
     <Deploy />
   </Project>
+  <Project Path="JarkThumbnailProvider/JarkThumbnailProvider.vcxproj" Id="2d3868b1-7500-43ad-9d08-a43f3a433236" />
 </Solution>

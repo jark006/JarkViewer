@@ -48,6 +48,12 @@
     <ClInclude Include="include\FileAssociationManager.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="include\ThumbnailProviderGuids.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ThumbnailRegistrar.h">
+      <Filter>include</Filter>
+    </ClInclude>
     <ClInclude Include="include\tinyxml2.h">
       <Filter>include</Filter>
     </ClInclude>

@@ -169,6 +169,8 @@
     <ClInclude Include="include\stringRes.h" />
     <ClInclude Include="include\SVGPreprocessor.h" />
     <ClInclude Include="include\TextDrawer.h" />
+    <ClInclude Include="include\ThumbnailProviderGuids.h" />
+    <ClInclude Include="include\ThumbnailRegistrar.h" />
     <ClInclude Include="include\jarkUtils.h" />
     <ClInclude Include="include\tinyxml2.h" />
     <ClInclude Include="include\videoDecoder.h" />

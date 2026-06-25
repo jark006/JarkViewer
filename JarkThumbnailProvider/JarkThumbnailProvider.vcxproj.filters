@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="include">
+      <UniqueIdentifier>{93995380-89bd-4b04-88eb-625fbe52ebfb}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{4fc737f1-c7a5-4376-a066-2a32d752a2ff}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\BitmapOut.h"><Filter>include</Filter></ClInclude>
+    <ClInclude Include="include\ClassFactory.h"><Filter>include</Filter></ClInclude>
+    <ClInclude Include="include\FormatSniffer.h"><Filter>include</Filter></ClInclude>
+    <ClInclude Include="include\ThumbDecoders.h"><Filter>include</Filter></ClInclude>
+    <ClInclude Include="include\ThumbnailProvider.h"><Filter>include</Filter></ClInclude>
+    <ClInclude Include="include\ThumbTypes.h"><Filter>include</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\BitmapOut.cpp"><Filter>src</Filter></ClCompile>
+    <ClCompile Include="src\ClassFactory.cpp"><Filter>src</Filter></ClCompile>
+    <ClCompile Include="src\dllmain.cpp"><Filter>src</Filter></ClCompile>
+    <ClCompile Include="src\FormatSniffer.cpp"><Filter>src</Filter></ClCompile>
+    <ClCompile Include="src\ThumbDecoders.cpp"><Filter>src</Filter></ClCompile>
+    <ClCompile Include="src\ThumbnailProvider.cpp"><Filter>src</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="JarkThumbnailProvider.def" />
+  </ItemGroup>
+</Project>
