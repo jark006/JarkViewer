@@ -1102,13 +1102,15 @@ public:
         //if (xEnd > canvasW) xEnd = canvasW;
         //if (yEnd > canvasH) yEnd = canvasH;
 
-        const int deltaW = curPar.slideCur.x + (int)((canvasW - srcW * curPar.zoomCur / curPar.ZOOM_BASE) / 2);
-        const int deltaH = curPar.slideCur.y + (int)((canvasH - srcH * curPar.zoomCur / curPar.ZOOM_BASE) / 2);
+        const double renderedW = (double)srcW * curPar.zoomCur / curPar.ZOOM_BASE;
+        const double renderedH = (double)srcH * curPar.zoomCur / curPar.ZOOM_BASE;
+        const int deltaW = curPar.slideCur.x + (int)std::round((canvasW - renderedW) / 2.0);
+        const int deltaH = curPar.slideCur.y + (int)std::round((canvasH - renderedH) / 2.0);
 
         int xStart = deltaW < 0 ? 0 : deltaW;
         int yStart = deltaH < 0 ? 0 : deltaH;
-        int xEnd = (int)(srcW * curPar.zoomCur / curPar.ZOOM_BASE + deltaW);
-        int yEnd = (int)(srcH * curPar.zoomCur / curPar.ZOOM_BASE + deltaH);
+        int xEnd = (int)std::round(renderedW) + deltaW;
+        int yEnd = (int)std::round(renderedH) + deltaH;
         if (xEnd > canvasW) xEnd = canvasW;
         if (yEnd > canvasH) yEnd = canvasH;
 
@@ -1121,7 +1123,7 @@ public:
             // 内置的用于提示的图像
         }
         else { // 普通图像  画边框
-            const uint32_t lineColor = GlobalVar::isCurrentUIDarkMode ? 0xFF888888 : 0xFF000000;
+            const uint32_t lineColor = GlobalVar::isCurrentUIDarkMode ? 0xFF333333 : 0xFF000000;
             if (0 < xStart and xStart < canvasW) {
                 const int yMax = std::min(yEnd + 1, canvasH);
                 for (int y = std::max(yStart - 1, 0); y < yMax; y++) {
@@ -1728,6 +1730,30 @@ public:
         }
 
         // 以下action均需要刷新画面
+        auto computeZoomSlide = [&](int64_t zoomNext) {
+            const int srcW = (curPar.rotation == 0 || curPar.rotation == 2) ? curPar.width : curPar.height;
+            const int srcH = (curPar.rotation == 0 || curPar.rotation == 2) ? curPar.height : curPar.width;
+            const double halfDiffW_old = (winWidth - (double)srcW * curPar.zoomCur / curPar.ZOOM_BASE) / 2.0;
+            const double halfDiffH_old = (winHeight - (double)srcH * curPar.zoomCur / curPar.ZOOM_BASE) / 2.0;
+
+            const int imgLeft = (int)std::round(curPar.slideCur.x + halfDiffW_old);
+            const int imgTop = (int)std::round(curPar.slideCur.y + halfDiffH_old);
+            const int imgRight = (int)std::round(imgLeft + (double)srcW * curPar.zoomCur / curPar.ZOOM_BASE);
+            const int imgBottom = (int)std::round(imgTop + (double)srcH * curPar.zoomCur / curPar.ZOOM_BASE);
+
+            if (mousePos.x >= imgLeft && mousePos.x < imgRight && mousePos.y >= imgTop && mousePos.y < imgBottom) {
+                const double halfDiffW_new = (winWidth - (double)srcW * zoomNext / curPar.ZOOM_BASE) / 2.0;
+                const double halfDiffH_new = (winHeight - (double)srcH * zoomNext / curPar.ZOOM_BASE) / 2.0;
+                const double srcX = ((double)mousePos.x - curPar.slideCur.x - halfDiffW_old) * curPar.ZOOM_BASE / curPar.zoomCur;
+                const double srcY = ((double)mousePos.y - curPar.slideCur.y - halfDiffH_old) * curPar.ZOOM_BASE / curPar.zoomCur;
+                curPar.slideTarget.x = (int)std::round(mousePos.x - halfDiffW_new - srcX * zoomNext / curPar.ZOOM_BASE);
+                curPar.slideTarget.y = (int)std::round(mousePos.y - halfDiffH_new - srcY * zoomNext / curPar.ZOOM_BASE);
+            } else {
+                curPar.slideTarget.x = 0;
+                curPar.slideTarget.y = 0;
+            }
+        };
+
         switch (operateAction.action) {
         case ActionENUM::preImg: {
             if (imgFileList.size() <= 1)
@@ -1901,8 +1927,7 @@ public:
 
                 auto zoomNext = curPar.zoomList[curPar.zoomIndex];
                 if (curPar.zoomTarget && zoomNext != curPar.zoomTarget) {
-                    curPar.slideTarget.x = (int)(zoomNext * curPar.slideTarget.x / curPar.zoomTarget);
-                    curPar.slideTarget.y = (int)(zoomNext * curPar.slideTarget.y / curPar.zoomTarget);
+                    computeZoomSlide(zoomNext);
                 }
                 curPar.zoomTarget = zoomNext;
                 smoothShift = true;
@@ -1919,8 +1944,7 @@ public:
 
                 auto zoomNext = curPar.zoomList[curPar.zoomIndex];
                 if (curPar.zoomTarget && zoomNext != curPar.zoomTarget) {
-                    curPar.slideTarget.x = (int)(zoomNext * curPar.slideTarget.x / curPar.zoomTarget);
-                    curPar.slideTarget.y = (int)(zoomNext * curPar.slideTarget.y / curPar.zoomTarget);
+                    computeZoomSlide(zoomNext);
                 }
                 curPar.zoomTarget = zoomNext;
                 smoothShift = true;
@@ -1935,8 +1959,7 @@ public:
 
             auto zoomNext = curPar.zoomList[curPar.zoomIndex];
             if (curPar.zoomTarget && zoomNext != curPar.zoomTarget) {
-                curPar.slideTarget.x = (int)(zoomNext * curPar.slideTarget.x / curPar.zoomTarget);
-                curPar.slideTarget.y = (int)(zoomNext * curPar.slideTarget.y / curPar.zoomTarget);
+                computeZoomSlide(zoomNext);
             }
             curPar.zoomTarget = zoomNext;
             smoothShift = true;
@@ -2044,7 +2067,9 @@ public:
                     else {
                         progressCnt += addDelta;
                         curPar.zoomCur = zoomInit + (curPar.zoomTarget - zoomInit) * progressCnt / progressMax;
-                        curPar.slideCur = slideInit + (curPar.slideTarget - slideInit) * progressCnt / progressMax;
+                        const double t = (double)progressCnt / progressMax;
+                        curPar.slideCur.x = (int)std::round(slideInit.x + (curPar.slideTarget.x - slideInit.x) * t);
+                        curPar.slideCur.y = (int)std::round(slideInit.y + (curPar.slideTarget.y - slideInit.y) * t);
                     }
                 }
             }
