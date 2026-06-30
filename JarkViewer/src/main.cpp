@@ -1091,17 +1091,6 @@ public:
         // x = canvasW / 2.0 - (srcW / 2.0 - srcX - slide * srcW) * zoom
         // srcX = srcW / 2.0 - ((canvasW / 2.0 - x) / zoom + slide * srcW)
 
-        //SlideParameter slideVal;// 偏移比例，窗口中心落在源图的点与源图中心距离占边长的比例，slideVal.x = delta.x/srcWidth
-        //int xStart = std::round(canvasW / 2.0 - (srcW / 2.0 - curPar.slideVal.x * srcW) * curPar.zoomDouble);
-        //int xEnd = std::round(canvasW / 2.0 - (-srcW / 2.0 - curPar.slideVal.x * srcW) * curPar.zoomDouble);
-        //int yStart = std::round(canvasH / 2.0 - (srcH / 2.0 - curPar.slideVal.y * srcH) * curPar.zoomDouble);
-        //int yEnd = std::round(canvasH / 2.0 - (-srcH / 2.0 - curPar.slideVal.y * srcH) * curPar.zoomDouble);
-
-        //if (xStart < 0) xStart = 0;
-        //if (yStart < 0) yStart = 0;
-        //if (xEnd > canvasW) xEnd = canvasW;
-        //if (yEnd > canvasH) yEnd = canvasH;
-
         const double renderedW = (double)srcW * curPar.zoomCur / curPar.ZOOM_BASE;
         const double renderedH = (double)srcH * curPar.zoomCur / curPar.ZOOM_BASE;
         const int deltaW = curPar.slideCur.x + (int)std::round((canvasW - renderedW) / 2.0);
@@ -1123,7 +1112,7 @@ public:
             // 内置的用于提示的图像
         }
         else { // 普通图像  画边框
-            const uint32_t lineColor = GlobalVar::isCurrentUIDarkMode ? 0xFF333333 : 0xFF000000;
+            const uint32_t lineColor = 0xFF808080;
             if (0 < xStart and xStart < canvasW) {
                 const int yMax = std::min(yEnd + 1, canvasH);
                 for (int y = std::max(yStart - 1, 0); y < yMax; y++) {
@@ -1730,6 +1719,17 @@ public:
         }
 
         // 以下action均需要刷新画面
+        auto clampSlideForZoom = [&](Cood slide, int64_t zoom) {
+            const int srcW = (curPar.rotation == 0 || curPar.rotation == 2) ? curPar.width : curPar.height;
+            const int srcH = (curPar.rotation == 0 || curPar.rotation == 2) ? curPar.height : curPar.width;
+            const int slideXMax = (int)(srcW * zoom / 2 / curPar.ZOOM_BASE);
+            const int slideYMax = (int)(srcH * zoom / 2 / curPar.ZOOM_BASE);
+
+            slide.x = std::clamp(slide.x, -slideXMax, slideXMax);
+            slide.y = std::clamp(slide.y, -slideYMax, slideYMax);
+            return slide;
+        };
+
         auto computeZoomSlide = [&](int64_t zoomNext) {
             const int srcW = (curPar.rotation == 0 || curPar.rotation == 2) ? curPar.width : curPar.height;
             const int srcH = (curPar.rotation == 0 || curPar.rotation == 2) ? curPar.height : curPar.width;
@@ -1741,17 +1741,16 @@ public:
             const int imgRight = (int)std::round(imgLeft + (double)srcW * curPar.zoomCur / curPar.ZOOM_BASE);
             const int imgBottom = (int)std::round(imgTop + (double)srcH * curPar.zoomCur / curPar.ZOOM_BASE);
 
+            Cood slideNext = curPar.slideCur;
             if (mousePos.x >= imgLeft && mousePos.x < imgRight && mousePos.y >= imgTop && mousePos.y < imgBottom) {
                 const double halfDiffW_new = (winWidth - (double)srcW * zoomNext / curPar.ZOOM_BASE) / 2.0;
                 const double halfDiffH_new = (winHeight - (double)srcH * zoomNext / curPar.ZOOM_BASE) / 2.0;
                 const double srcX = ((double)mousePos.x - curPar.slideCur.x - halfDiffW_old) * curPar.ZOOM_BASE / curPar.zoomCur;
                 const double srcY = ((double)mousePos.y - curPar.slideCur.y - halfDiffH_old) * curPar.ZOOM_BASE / curPar.zoomCur;
-                curPar.slideTarget.x = (int)std::round(mousePos.x - halfDiffW_new - srcX * zoomNext / curPar.ZOOM_BASE);
-                curPar.slideTarget.y = (int)std::round(mousePos.y - halfDiffH_new - srcY * zoomNext / curPar.ZOOM_BASE);
-            } else {
-                curPar.slideTarget.x = 0;
-                curPar.slideTarget.y = 0;
+                slideNext.x = (int)std::round(mousePos.x - halfDiffW_new - srcX * zoomNext / curPar.ZOOM_BASE);
+                slideNext.y = (int)std::round(mousePos.y - halfDiffH_new - srcY * zoomNext / curPar.ZOOM_BASE);
             }
+            curPar.slideTarget = clampSlideForZoom(slideNext, zoomNext);
         };
 
         switch (operateAction.action) {
@@ -1890,31 +1889,10 @@ public:
         } break;
 
         case ActionENUM::slide: {
-            // slideVal: -0.5 ~ 0.5
-            //if (curPar.rotation == 0 || curPar.rotation == 2) {
-            //    curPar.slideVal.x += operateAction.x / (curPar.width * curPar.zoomDouble);
-            //    curPar.slideVal.y += operateAction.y / (curPar.height * curPar.zoomDouble);
-            //}
-            //else {
-            //    curPar.slideVal.x += operateAction.x / (curPar.height * curPar.zoomDouble);
-            //    curPar.slideVal.y += operateAction.y / (curPar.width * curPar.zoomDouble);
-            //}
-            // curPar.slideVal.x = std::clamp(curPar.slideVal.x, -0.5, 0.5);
-            // curPar.slideVal.y = std::clamp(curPar.slideVal.y, -0.5, 0.5);
-
-            int newTargetX = curPar.slideTarget.x + operateAction.x;
-            int newTargetY = curPar.slideTarget.y + operateAction.y;
-
-            const int newTargetXMax = (int)(((curPar.rotation == 0 || curPar.rotation == 2) ?
-                curPar.width : curPar.height) * curPar.zoomTarget / 2 / curPar.ZOOM_BASE);
-            newTargetX = std::clamp(newTargetX, -newTargetXMax, newTargetXMax);
-
-            const int newTargetYMax = (int)(((curPar.rotation == 0 or curPar.rotation == 2) ?
-                curPar.height : curPar.width) * curPar.zoomTarget / 2 / curPar.ZOOM_BASE);
-            newTargetY = std::clamp(newTargetY, -newTargetYMax, newTargetYMax);
-
-            curPar.slideTarget.x = newTargetX;
-            curPar.slideTarget.y = newTargetY;
+            curPar.slideTarget = clampSlideForZoom({
+                curPar.slideTarget.x + operateAction.x,
+                curPar.slideTarget.y + operateAction.y
+                }, curPar.zoomTarget);
         } break;
 
         case ActionENUM::toggleExif: {
