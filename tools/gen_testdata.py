@@ -58,18 +58,62 @@ def frames(count=4):
     return out
 
 
-def run_ffmpeg(out_dir, name, args, source="testsrc=size=480x360:rate=25:duration=3"):
+def run_ffmpeg(out_dir, name, args, source="testsrc=size=480x360:rate=25:duration=3",
+               audio=None):
     if not FFMPEG:
         failed.append(f"{name}: ffmpeg not found")
         return
     path = os.path.join(out_dir, name)
     # 视频需大于 MIN_VIDEO_BUFF_SIZE(64KiB) 才会被解码，故生成足够长的素材
-    cmd = [FFMPEG, "-y", "-loglevel", "error", "-f", "lavfi", "-i", source] + args + [path]
+    cmd = [FFMPEG, "-y", "-loglevel", "error", "-f", "lavfi", "-i", source]
+    if audio:
+        cmd += ["-f", "lavfi", "-i", audio, "-shortest"]
+    cmd += args + [path]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
         record(name)
     except subprocess.CalledProcessError as exc:
         failed.append(f"{name}: {exc.stderr.decode('utf-8', 'replace').strip()[:120]}")
+
+
+def _make_motion_photo(out_dir, name, image, video_path):
+    """构造 Google MotionPhoto JPEG：JPEG + XMP(MicroVideoOffset) + 追加在尾部的 MP4。"""
+    import io
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=90)
+    jpeg = buffer.getvalue()
+
+    with open(video_path, "rb") as handle:
+        video = handle.read()
+
+    xmp = ('<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF '
+           'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" '
+           'xmlns:GCamera="http://ns.google.com/photos/1.0/camera/" GCamera:MicroVideo="1" '
+           'GCamera:MicroVideoVersion="1" '
+           f'GCamera:MicroVideoOffset="{len(video)}" '
+           'GCamera:MicroVideoPresentationTimestampUs="1500000"/></rdf:RDF></x:xmpmeta>')
+    payload = b"http://ns.adobe.com/xap/1.0/\x00" + xmp.encode("utf-8")
+    segment = b"\xff\xe1" + struct.pack(">H", len(payload) + 2) + payload
+
+    with open(os.path.join(out_dir, name), "wb") as handle:
+        handle.write(jpeg[:2] + segment + jpeg[2:] + video)
+    record(name)
+
+
+def _make_livp(out_dir, name, image, video_path):
+    """构造 iOS 实况照片：zip 内含一张静态图 + 一段 mov。"""
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=90)
+
+    with zipfile.ZipFile(os.path.join(out_dir, name), "w", zipfile.ZIP_STORED) as archive:
+        archive.writestr("image.jpg", buffer.getvalue())
+        with open(video_path, "rb") as handle:
+            archive.writestr("video.mov", handle.read())
+    record(name)
 
 
 def _png_text(entries):
@@ -248,6 +292,25 @@ def main():
     run_ffmpeg(out_dir, "tiny.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p"],
                source="testsrc=size=64x48:rate=5:duration=1")  # 期望被拒绝（小于 64KiB 阈值）
     run_ffmpeg(out_dir, "still.avif", ["-frames:v", "1", "-c:v", "libaom-av1", "-f", "avif"])
+
+    # 带音轨的视频（AAC / Opus），用于验证音频解码与实况照片播放
+    run_ffmpeg(out_dir, "sound.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", "2000k",
+                                      "-c:a", "aac", "-b:a", "128k"],
+               audio="sine=frequency=440:sample_rate=48000:duration=3")
+    run_ffmpeg(out_dir, "sound.webm", ["-c:v", "libvpx-vp9", "-b:v", "2000k",
+                                       "-c:a", "libopus", "-b:a", "96k"],
+               audio="sine=frequency=660:sample_rate=48000:duration=3")
+
+    # 实况照片：Android MotionPhoto（JPEG+尾部MP4）与 iOS LIVP（zip 内含 jpg+mov）
+    sound_path = os.path.join(out_dir, "sound.mp4")
+    if os.path.exists(sound_path):
+        _make_motion_photo(out_dir, "motionphoto.jpg", img, sound_path)
+        run_ffmpeg(out_dir, "livp_video.mov", ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", "2000k",
+                                               "-c:a", "aac", "-b:a", "128k"],
+                   audio="sine=frequency=520:sample_rate=48000:duration=3")
+        mov_path = os.path.join(out_dir, "livp_video.mov")
+        if os.path.exists(mov_path):
+            _make_livp(out_dir, "live.livp", img, mov_path)
 
     print(f"generated {len(made)} files in {out_dir}")
     if failed:

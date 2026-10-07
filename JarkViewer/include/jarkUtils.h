@@ -322,7 +322,8 @@ struct std::formatter<Cood> {
 };
 
 namespace jark {
-    struct VectorImage; // 矢量图源，定义见 VectorImage.h
+    struct VectorImage;  // 矢量图源，定义见 VectorImage.h
+    struct VideoSource;  // 内存中的视频源，定义见 MediaPlayer.h
 }
 
 enum class ImageFormat {
@@ -340,6 +341,7 @@ struct ImageAsset {
     string exifInfo;                         // 图像EXIF等信息（显示用文本）
     std::vector<uint8_t> iccProfile;         // 图像内嵌ICC配置文件
     std::shared_ptr<jark::VectorImage> vectorSource; // 矢量图源（SVG），按需重新光栅化
+    std::shared_ptr<jark::VideoSource> videoSource;  // 视频源（实况照片/视频文件），用于实时播放
     int orientation = 1;                     // EXIF 方向（1~8），解码器已按此旋转像素
 };
 

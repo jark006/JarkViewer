@@ -2,11 +2,14 @@
 
 #include "FormatSniffer.h"
 #include "ImageDatabase.h"
+#include "AudioOutput.h"
+#include "MediaDecoder.h"
 #include "VectorImage.h"
 #include "jarkUtils.h"
 
 #include <algorithm>
 #include <chrono>
+#include <thread>
 #include <cstdio>
 #include <filesystem>
 #include <format>
@@ -35,6 +38,7 @@ namespace {
         std::string firstExifLine;
         std::string exifText;
         std::string vectorReport;
+        std::string mediaReport;
     };
 
     std::string utf8(std::wstring_view text) {
@@ -67,6 +71,60 @@ namespace {
         while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
             line.pop_back();
         return line;
+    }
+
+    // 视频/音频自检：打开 MediaDecoder 并统计能解出的视频帧与音频样本
+    std::string buildMediaReport(const std::wstring& path, jark::FileFormat sniffed) {
+        if (sniffed != jark::FileFormat::Video)
+            return {};
+
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file.is_open())
+            return {};
+
+        const auto size = static_cast<size_t>(file.tellg());
+        file.seekg(0);
+        std::vector<uint8_t> data(size);
+        file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
+
+        auto decoder = MediaDecoder::open(data);
+        if (!decoder)
+            return "\n            | media: 无法打开";
+
+        const auto& info = decoder->info();
+        std::string report = std::format(
+            "\n            | media: video={} {}x{} rot={} fps={:.1f} | audio={} {}Hz {}ch | dur={}ms",
+            info.hasVideo, info.width, info.height, info.rotationDegrees, info.frameRate,
+            info.hasAudio, info.audioSampleRate, info.audioChannels, info.durationMs);
+
+        const auto begin = std::chrono::steady_clock::now();
+        size_t videoFrames = 0;
+        size_t audioSamples = 0;
+        size_t audioChunks = 0;
+        int64_t lastVideoPts = 0;
+        int64_t lastAudioPts = 0;
+
+        MediaDecoder::Chunk chunk;
+        while (decoder->readNext(chunk)) {
+            if (chunk.type == MediaDecoder::Chunk::Type::Video) {
+                ++videoFrames;
+                lastVideoPts = chunk.ptsMs;
+            }
+            else if (chunk.type == MediaDecoder::Chunk::Type::Audio) {
+                ++audioChunks;
+                audioSamples += chunk.audio.size() / MediaDecoder::kOutputChannels;
+                lastAudioPts = chunk.ptsMs;
+            }
+        }
+
+        const auto elapsedMs = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - begin).count();
+
+        report += std::format(
+            "\n            | decoded: {} frames (last {}ms), {} audio samples in {} chunks (last {}ms, {:.0f}ms)",
+            videoFrames, lastVideoPts, audioSamples, audioChunks, lastAudioPts, elapsedMs);
+
+        return report;
     }
 
     // 模拟不同缩放级别，验证矢量图的按需光栅化（目标分辨率、滞后策略、耗时）
@@ -140,8 +198,81 @@ namespace {
             imageAsset.primaryFrame.data == tipsMat.data;
 
         result.vectorReport = buildVectorReport(imageAsset);
+        result.mediaReport = buildMediaReport(path, result.sniffed);
 
         return result;
+    }
+
+} // namespace
+
+namespace {
+
+    // 音频输出自检：把文件的音频提交给 XAudio2（音量 0，不发声），
+    // 观察播放时钟是否按采样率推进——用于无人耳参与时验证音频链路。
+    std::string runAudioTest(const std::wstring& path) {
+        std::string report;
+
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file.is_open())
+            return std::format("cannot open {}", jarkUtils::wstringToUtf8(path));
+
+        const auto size = static_cast<size_t>(file.tellg());
+        file.seekg(0);
+        std::vector<uint8_t> data(size);
+        file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
+
+        auto decoder = MediaDecoder::open(data);
+        if (!decoder || !decoder->info().hasAudio)
+            return std::format("no audio stream in {}", jarkUtils::wstringToUtf8(path));
+
+        auto output = AudioOutput::create();
+        if (!output)
+            return "AudioOutput::create failed (no output device?)";
+
+        output->setVolume(0.0f); // 静音，只看时钟
+
+        std::vector<int16_t> pending;
+        MediaDecoder::Chunk chunk;
+        bool submittedAll = false;
+        const auto begin = std::chrono::steady_clock::now();
+        int64_t lastPlayed = 0;
+
+        while (true) {
+            const auto elapsedMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - begin).count();
+
+            if (!submittedAll) {
+                while (output->queuedFrames() < AudioOutput::kMaxQueuedFrames && decoder->readNext(chunk)) {
+                    if (chunk.type == MediaDecoder::Chunk::Type::Audio)
+                        output->submit(chunk.audio);
+                }
+                if (chunk.type == MediaDecoder::Chunk::Type::End)
+                    submittedAll = true;
+            }
+
+            const int64_t played = output->playedFrames();
+            if (played != lastPlayed) {
+                report += std::format("[{:>6.0f}ms] played={} frames ({:.2f}s), queued={}\n",
+                    elapsedMs, played, static_cast<double>(played) / 48000.0, output->queuedFrames());
+                lastPlayed = played;
+            }
+
+            if (elapsedMs > 1500.0)
+                break;
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        const auto totalMs = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - begin).count();
+        const int64_t played = output->playedFrames();
+        const double expectedFrames = totalMs / 1000.0 * 48000.0;
+        const double ratio = expectedFrames > 0 ? played / expectedFrames : 0.0;
+
+        report += std::format("[audio-test] 用时 {:.0f}ms, 已播放 {} 帧 ({:.2f}s), 期望约 {:.0f} 帧, 比值 {:.3f}",
+            totalMs, played, played / 48000.0, expectedFrames, ratio);
+
+        return report;
     }
 
 } // namespace
@@ -158,12 +289,17 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     std::vector<std::wstring> targets;
     std::wstring reportPath = L"decode-probe.txt";
     bool fullExif = false;
+    bool audioTest = false;
 
     for (size_t i = 1; i < argv.size(); ++i) {
         if (argv[i] == L"--probe")
             continue;
         if (argv[i] == L"--full") {
             fullExif = true;
+            continue;
+        }
+        if (argv[i] == L"--audio-test") {
+            audioTest = true;
             continue;
         }
         if (argv[i] == L"--out" && i + 1 < argv.size()) {
@@ -184,6 +320,12 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         if (report.is_open())
             report.write(line.data(), static_cast<std::streamsize>(line.size())) << '\n';
     };
+
+    if (audioTest) {
+        const auto text = runAudioTest(targets.front());
+        emit(text);
+        return text.find("比值") == std::string::npos ? 1 : 0;
+    }
 
     ImageDatabase imageDatabase;
     size_t okCount = 0;
@@ -225,6 +367,8 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         // 矢量图：模拟若干缩放级别，验证按需光栅化的目标分辨率与耗时
         if (filled && !result.vectorReport.empty())
             line += result.vectorReport;
+        if (!result.mediaReport.empty())
+            line += result.mediaReport;
 
         emit(line);
     }

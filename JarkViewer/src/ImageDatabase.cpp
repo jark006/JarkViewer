@@ -11,6 +11,8 @@
 #endif
 
 #include "blpDecoder.h"
+#include "MediaDecoder.h"
+#include "MediaPlayer.h"
 #include "VectorImage.h"
 
 #include <intrin.h>
@@ -2915,19 +2917,14 @@ ImageAsset ImageDatabase::loadLivp(wstring_view path, std::span<const uint8_t> f
         return stillAsset;
     }
 
-    auto frames = DecodeVideoFrames(videoFileData.data(), videoFileData.size());
+    // 视频交给实时播放器播放（带声音），静态图作为首帧展示；
+    // 不再预解码成帧序列——一段短视频解成上百帧动辄上百 MB 内存。
+    ImageAsset imageAsset{ ImageFormat::Still, img, {}, {}, exifInfo };
+    imageAsset.orientation = imageOrientation;
+    auto videoSource = std::make_shared<jark::VideoSource>();
+    videoSource->data = std::move(videoFileData);
+    imageAsset.videoSource = std::move(videoSource);
 
-    if (frames.empty()) {
-        ImageAsset imageAsset{ ImageFormat::Still, img, {}, {}, exifInfo };
-        if (GlobalVar::settingParameter.enableColorManagement) {
-            imageAsset.iccProfile = (imageExt == "heic" || imageExt == "heif") ?
-                readHeifIccProfile(imageFileData) :
-                ColorManager::readEmbeddedIccProfile(path, imageFileData);
-        }
-        return imageAsset;
-    }
-
-    ImageAsset imageAsset{ ImageFormat::Animated, img, frames, std::vector<int>(frames.size(), 33), exifInfo };
     if (GlobalVar::settingParameter.enableColorManagement) {
         imageAsset.iccProfile = (imageExt == "heic" || imageExt == "heif") ?
             readHeifIccProfile(imageFileData) :
@@ -2993,18 +2990,16 @@ static std::vector<std::wstring> getVideoCandidatePaths(std::wstring_view imageP
     };
 }
 
-static std::vector<cv::Mat> decodeMotionPhotoSidecarVideo(wstring_view path) {
+// 苹果/VIVO 等把视频放在同目录同名文件里：读取其字节交给播放器
+static std::vector<uint8_t> readMotionPhotoSidecarVideoBytes(wstring_view path) {
     for (const auto& videoPath : getVideoCandidatePaths(path)) {
         auto fileReader = MappedFileReader(videoPath);
-        if (fileReader.isEmpty()) {
+        if (fileReader.isEmpty())
             continue;
-        }
 
         const auto videoBuf = fileReader.view();
-        auto frames = DecodeVideoFrames(videoBuf.data(), videoBuf.size(), MAX_VIDEO_FRAMES);
-        if (!frames.empty()) {
-            return frames;
-        }
+        if (videoBuf.size() >= MIN_VIDEO_BUFF_SIZE)
+            return std::vector<uint8_t>(videoBuf.begin(), videoBuf.end());
     }
 
     return {};
@@ -3029,31 +3024,32 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
         handleExifOrientation(exifDetail.orientation, img);
     }
 
-    auto videoSize = getVideoSize(exifInfo);
-    std::vector<cv::Mat> frames;
-    if (videoSize >= MIN_VIDEO_BUFF_SIZE && videoSize < fileBuf.size()) {
-        frames = DecodeVideoFrames(fileBuf.data() + fileBuf.size() - videoSize, videoSize);
-    }
-    else {
-        frames = decodeMotionPhotoSidecarVideo(path); // 苹果/VIVO等 独立视频文件的实况照片，尝试从同目录下的同名视频文件解码
-    }
-
-    if (frames.empty()) {
-        ImageAsset imageAsset{ ImageFormat::Still, img, {}, {}, exifInfo };
-        imageAsset.orientation = exifDetail.orientation;
-        if (GlobalVar::settingParameter.enableColorManagement && !isJPG)
-            imageAsset.iccProfile = readHeifIccProfile(fileBuf);
-        return imageAsset;
-    }
-
-    ImageAsset imageAsset{ ImageFormat::Animated, img, frames, std::vector<int>(frames.size(), 33), exifInfo };
+    // 视频源：Android 动态照片的尾部视频，或同目录下的同名视频文件
+    ImageAsset imageAsset{ ImageFormat::Still, img, {}, {}, exifInfo };
     imageAsset.orientation = exifDetail.orientation;
+
+    const size_t videoSize = getVideoSize(exifInfo);
+    auto videoSource = std::make_shared<jark::VideoSource>();
+    if (videoSize >= MIN_VIDEO_BUFF_SIZE && videoSize < fileBuf.size()) {
+        const auto* videoData = fileBuf.data() + fileBuf.size() - videoSize;
+        videoSource->data.assign(videoData, videoData + videoSize);
+    }
+    else if (auto sidecar = readMotionPhotoSidecarVideoBytes(path); !sidecar.empty()) {
+        videoSource->data = std::move(sidecar);
+    }
+
+    if (!videoSource->data.empty())
+        imageAsset.videoSource = std::move(videoSource);
+
     if (GlobalVar::settingParameter.enableColorManagement && !isJPG)
         imageAsset.iccProfile = readHeifIccProfile(fileBuf);
     return imageAsset;
 }
 
 namespace {
+    // 超过该体积的视频不做内存实时播放，退回预解码帧序列（避免占用过多内存）
+    constexpr size_t MAX_PLAYABLE_VIDEO_BYTES = 256ull << 20;
+
     // 取小写扩展名（不含点）。只看文件名部分，避免目录名中的点造成误判。
     wstring lowerExtension(const wstring& path) {
         const auto slashPos = path.find_last_of(L"\\/");
@@ -3113,7 +3109,29 @@ void ImageDatabase::applyExifInfo(ImageAsset& imageAsset, const wstring& path, s
 ImageAsset ImageDatabase::decodeByFormat(jark::FileFormat format, const wstring& path, std::span<const uint8_t> buf) {
     switch (format) {
     case jark::FileFormat::Video: {
-        // 默认不会打开视频；若强行打开则最多解码 MAX_VIDEO_FRAMES 帧
+        // 视频按实时播放处理：首帧作静态图，视频字节交给 MediaPlayer（含声音）
+        if (buf.size() <= MAX_PLAYABLE_VIDEO_BYTES) {
+            auto decoder = jark::MediaDecoder::open(buf);
+            if (decoder && decoder->info().hasVideo) {
+                jark::MediaDecoder::Chunk chunk;
+                cv::Mat firstFrame;
+                while (firstFrame.empty() && decoder->readNext(chunk)) {
+                    if (chunk.type == jark::MediaDecoder::Chunk::Type::Video && !chunk.video.empty())
+                        firstFrame = std::move(chunk.video);
+                }
+
+                if (!firstFrame.empty()) {
+                    ImageAsset imageAsset{ ImageFormat::Still, std::move(firstFrame) };
+                    auto videoSource = std::make_shared<jark::VideoSource>();
+                    videoSource->data.assign(buf.begin(), buf.end());
+                    imageAsset.videoSource = std::move(videoSource);
+                    applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+                    return imageAsset;
+                }
+            }
+        }
+
+        // 兜底（视频过大或无法实时播放时）：预解码若干帧当动图播放
         auto frames = DecodeVideoFrames(buf.data(), buf.size(), MAX_VIDEO_FRAMES);
         if (frames.empty()) {
             auto img = loadImageWinCOM(path, buf);
