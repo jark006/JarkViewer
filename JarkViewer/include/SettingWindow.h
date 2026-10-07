@@ -315,13 +315,50 @@ private:
             memcpy(GlobalVar::settingParameter.extCheckedListStr, checkedList.data(), checkedList.length() + 1);
     }
 
-    // —— 帮助（文字排版，不再用资源图）——
+    // —— 帮助 ——
 
     void drawHelpPage() {
         ImGui::TextUnformatted(getUIString(kStrHelpTitle));
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::TextUnformatted(getUIString(kStrHelpBody));
+
+        // 文案是若干行「按键：说明」，同一行内用两个全角空格分组。
+        // 整段 TextUnformatted 出来是一大坨，这里切成表格按列对齐，像一张速查表。
+        // 列数固定 2：列再多，像"窗口左右边缘：上一张 / 下一张"这种长条目就会被单元格裁掉，
+        // 多出来的分组换到下一行即可。
+        const std::string body = getUIString(kStrHelpBody);
+        const std::vector<std::string_view> lines = splitViews(body, "\n");
+
+        if (ImGui::BeginTable("helpShortcuts", kHelpColumns,
+            ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
+            for (const auto& line : lines) {
+                if (line.empty())
+                    continue;
+
+                for (const auto& cell : splitViews(line, kHelpGroupSeparator)) {
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(cell.data(), cell.data() + cell.size());
+                }
+                ImGui::TableNextRow();
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    // 按分隔符切片（返回视图，不复制字符串）
+    static std::vector<std::string_view> splitViews(std::string_view text, std::string_view separator) {
+        std::vector<std::string_view> parts;
+        size_t start = 0;
+        while (true) {
+            const size_t position = text.find(separator, start);
+            if (position == std::string_view::npos) {
+                parts.push_back(text.substr(start));
+                break;
+            }
+            parts.push_back(text.substr(start, position - start));
+            start = position + separator.size();
+        }
+        return parts;
     }
 
     // —— 关于 ——
@@ -329,32 +366,71 @@ private:
     void drawAboutPage() {
         const float scale = jark::ui::UiHost::instance().scale();
         ImGui::Spacing();
-        ImGui::TextUnformatted("JarkViewer");
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", jarkUtils::wstringToUtf8(appVersion).c_str());
 
-        ImGui::TextDisabled("%s", getUIString(19));
-        ImGui::TextDisabled("%s", std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
+        // 软件图标：从老版本关于页的贴图里抠出来的（透明底，深浅主题通用）
+        if (const ImTextureID icon = aboutIconTexture()) {
+            const float iconSize = 96.0f * scale;
+            ImGui::Image(icon, { iconSize, iconSize });
+
+            ImGui::SameLine();
+            ImGui::BeginGroup();
+            ImGui::Dummy({ 0.0f, 8.0f * scale });
+            ImGui::TextUnformatted("JarkViewer");
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", jarkUtils::wstringToUtf8(appVersion).c_str());
+            ImGui::TextDisabled("%s", getUIString(19));
+            ImGui::TextDisabled("%s", std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
+            ImGui::EndGroup();
+        }
+        else {
+            ImGui::TextUnformatted("JarkViewer");
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", jarkUtils::wstringToUtf8(appVersion).c_str());
+            ImGui::TextDisabled("%s", getUIString(19));
+            ImGui::TextDisabled("%s", std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
+        }
+
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
-        if (ImGui::Button("Jark006", { 200.0f * scale, 0 }))
+        const float buttonWidth = 200.0f * scale;
+        if (ImGui::Button("Jark006", { buttonWidth, 0 }))
             jarkUtils::openUrl(jarkLink.data());
-
-        if (ImGui::Button("GitHub / Gitee", { 200.0f * scale, 0 }))
+        ImGui::SameLine();
+        if (ImGui::Button("GitHub / Gitee", { buttonWidth, 0 }))
             jarkUtils::openUrl(RepositoryLink.data());
 
-        if (ImGui::Button("百度网盘", { 200.0f * scale, 0 }))
+        if (ImGui::Button("百度网盘", { buttonWidth, 0 }))
             jarkUtils::openUrl(BaiduLink.data());
-
-        if (ImGui::Button("蓝奏云", { 200.0f * scale, 0 }))
+        ImGui::SameLine();
+        if (ImGui::Button("蓝奏云", { buttonWidth, 0 }))
             jarkUtils::openUrl(LanzouLink.data());
+    }
+
+    // 关于页的图标纹理：第一次用到时才解码上传
+    ImTextureID aboutIconTexture() {
+        if (!aboutIconTried_) {
+            aboutIconTried_ = true;
+            const auto resource = jarkUtils::GetResource(IDB_PNG_ABOUT_ICON, L"PNG");
+            if (resource.size && resource.ptr) {
+                const cv::Mat pngData(1, static_cast<int>(resource.size), CV_8UC1,
+                    static_cast<uint8_t*>(resource.ptr));
+                const cv::Mat image = cv::imdecode(pngData, cv::IMREAD_UNCHANGED);
+                if (!image.empty())
+                    aboutIcon_ = jark::ui::UiHost::instance().textureFromImage(image, 4); // 槽 4：关于页图标
+            }
+        }
+        return aboutIcon_;
     }
 
     // 帮助页文案（窄表新增条目）
     static constexpr uint32_t kStrHelpTitle = 127;
     static constexpr uint32_t kStrHelpBody = 128;
+
+    // 帮助文案里同一行内的分组分隔符（两个全角空格），以及速查表的列数
+    static constexpr std::string_view kHelpGroupSeparator = "　　";
+    static constexpr int kHelpColumns = 2;
 
     bool visible_ = false;
     bool focusRequested_ = false;
@@ -366,4 +442,7 @@ private:
 
     std::vector<std::string> allSupportExt_;
     std::set<std::string> checkedExt_;
+
+    ImTextureID aboutIcon_ = 0;
+    bool aboutIconTried_ = false;
 };

@@ -71,6 +71,11 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   码位浏览器，截一张图看（`--revert` 还原）；码位猜错会画成豆腐块。
   业务侧只需实现 `D3D11App::DrawUi()` 提交界面，主循环在 `PresentFrame()` 里完成
   “画布贴后缓冲 → ImGui 一帧 → Present”。
+- 设置窗口的帮助页把文案（`kStrHelpBody`，一行行「按键：说明」、行内用两个全角空格分组）切成
+  **2 列**表格排版：列数不能再多，单元格宽度按窗口默认宽度算，3 列以上"窗口左右边缘：上一张 /
+  下一张"这类长条目会被裁掉；关于页顶部的软件图标是 `IDB_PNG_ABOUT_ICON`
+  （`file/aboutIcon.png`，从旧版设置页贴图 `settingRes.png` 里抠出来的透明底图标，纹理槽 4），
+  深浅主题通用，不需要两套图。
 - 各窗口都是 ImGui 窗口（不再是独立窗口线程）：`SettingWindow.h`（常规/文件关联/帮助/关于）、
   `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）。
   **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
