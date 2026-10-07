@@ -4074,7 +4074,9 @@ namespace ImGui
     IMGUI_API bool          CheckboxFlags(const char* label, ImU64* flags, ImU64 flags_value);
 
     // Widgets: Window Decorations
-    IMGUI_API bool          CloseButton(ImGuiID id, const ImVec2& pos);
+    // [JarkViewer 本地修改] 多了一个 size 参数：标题栏用它把关闭按钮画成系统标题栏按钮的尺寸，
+    // 不传（默认 0,0）时保持原行为（FontSize 见方，Dock 页签栏在用）。
+    IMGUI_API bool          CloseButton(ImGuiID id, const ImVec2& pos, const ImVec2& size = ImVec2(0.0f, 0.0f));
     IMGUI_API bool          CollapseButton(ImGuiID id, const ImVec2& pos, ImGuiDockNode* dock_node);
     IMGUI_API void          Scrollbar(ImGuiAxis axis);
     IMGUI_API bool          ScrollbarEx(const ImRect& bb, ImGuiID id, ImGuiAxis axis, ImS64* p_scroll_v, ImS64 avail_v, ImS64 contents_v, ImDrawFlags draw_rounding_flags = 0);

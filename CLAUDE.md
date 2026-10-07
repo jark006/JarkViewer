@@ -68,6 +68,11 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   “画布贴后缓冲 → ImGui 一帧 → Present”。
 - 各窗口都是 ImGui 窗口（不再是独立窗口线程）：`SettingWindow.h`（常规/文件关联/帮助/关于）、
   `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）。
+  **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
+  宽 = 1.5 倍高、悬停/按下铺系统红底 `#C42B1C` 与白色 ✕），改动在 `imgui.cpp` 的
+  `RenderWindowTitleBarContents()`、`imgui_widgets.cpp` 的 `CloseButton()`（多一个 `size` 参数，
+  默认 0 即原来的 FontSize 见方，Dock 页签栏仍走原行为）与 `imgui_internal.h` 的声明处，
+  三处都有 `[JarkViewer 本地修改]` 注释；**升级 imgui 后要把这三处补回去**。
   每个窗口都用 `ImGui::SetNextWindowSizeConstraints()` 设了**最小尺寸**，别写小到把控件藏起来；
   底部有固定内容（说明文字 + 按钮行）的页面要按实际高度给子区域留白（设置页的文件关联页就是这样
   算的），否则整页会多出一条窗口滚动条。

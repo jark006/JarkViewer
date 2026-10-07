@@ -904,14 +904,18 @@ bool ImGui::ArrowButton(const char* str_id, ImGuiDir dir)
 }
 
 // Button to close a window
-bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos)
+// [JarkViewer 本地修改] size 为 0 时保持原行为（FontSize 见方）；标题栏会传系统标题栏按钮的尺寸，
+// 此时 ✕ 字形仍然按字号大小绘制（系统也是这样：按钮大、字形不变）。
+bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos, const ImVec2& size)
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = g.CurrentWindow;
 
+    const ImVec2 button_size = (size.x > 0.0f && size.y > 0.0f) ? size : ImVec2(g.FontSize, g.FontSize);
+
     // Tweak 1: Shrink hit-testing area if button covers an abnormally large proportion of the visible region. That's in order to facilitate moving the window away. (#3825)
     // This may better be applied as a general hit-rect reduction mechanism for all widgets to ensure the area to move window is always accessible?
-    const ImRect bb(pos, pos + ImVec2(g.FontSize, g.FontSize));
+    const ImRect bb(pos, pos + button_size);
     ImRect bb_interact = bb;
     const float area_to_visible_ratio = window->OuterRectClipped.GetArea() / bb.GetArea();
     if (area_to_visible_ratio < 1.5f)
@@ -927,11 +931,17 @@ bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos)
         return pressed;
 
     // Render
-    ImU32 bg_col = GetColorU32(held ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered);
+    // [JarkViewer 本地修改] 悬停/按下时像系统标题栏那样铺一层内缩的圆角底色，并且用系统关闭按钮的红底
+    // （原先铺满整个按钮矩形、且用主题的按钮色）
     if (hovered)
-        window->DrawList->AddRectFilled(bb.Min, bb.Max, bg_col);
+    {
+        const ImU32 bg_col = held ? IM_COL32(176, 36, 22, 255) : IM_COL32(196, 43, 28, 255); // 系统标题栏关闭按钮的红
+        const float fill_inset = ImTrunc(button_size.y * 0.14f);
+        window->DrawList->AddRectFilled(bb.Min + ImVec2(fill_inset, fill_inset), bb.Max - ImVec2(fill_inset, fill_inset),
+            bg_col, ImTrunc(g.FontSize * 0.22f));
+    }
     RenderNavCursor(bb, id, ImGuiNavRenderCursorFlags_Compact);
-    const ImU32 cross_col = GetColorU32(ImGuiCol_Text);
+    const ImU32 cross_col = hovered ? IM_COL32_WHITE : GetColorU32(ImGuiCol_Text); // 红底上用白 ✕
     const ImVec2 cross_center = bb.GetCenter() - ImVec2(0.5f, 0.5f);
     const float cross_extent = g.FontSize * 0.5f * 0.7071f - 1.0f;
     const float cross_thickness = 1.0f * (float)(int)g.Style._MainScale; // FIXME-DPI

@@ -7811,11 +7811,17 @@ void ImGui::RenderWindowTitleBarContents(ImGuiWindow* window, const ImRect& titl
     float pad_r = style.FramePadding.x;
     float button_sz = g.FontSize;
     ImVec2 close_button_pos;
+    ImVec2 close_button_size;
     ImVec2 collapse_button_pos;
     if (has_close_button)
     {
-        close_button_pos = ImVec2(title_bar_rect.Max.x - pad_r - button_sz, title_bar_rect.Min.y + style.FramePadding.y);
-        pad_r += button_sz + style.ItemInnerSpacing.x;
+        // [JarkViewer 本地修改] 关闭按钮改为系统标题栏按钮的样式：贴住标题栏右上角、铺满标题栏高度、
+        // 宽度取高度的 1.5 倍（原来只有 FontSize 见方，高分屏上又小又不好点）。
+        const float close_button_h = title_bar_rect.GetHeight();
+        const float close_button_w = ImTrunc(close_button_h * 1.5f);
+        close_button_size = ImVec2(close_button_w, close_button_h);
+        close_button_pos = ImVec2(title_bar_rect.Max.x - close_button_w, title_bar_rect.Min.y);
+        pad_r += close_button_w + style.ItemInnerSpacing.x;
     }
     if (has_collapse_button && style.WindowMenuButtonPosition == ImGuiDir_Right)
     {
@@ -7838,7 +7844,7 @@ void ImGui::RenderWindowTitleBarContents(ImGuiWindow* window, const ImRect& titl
     {
         ImGuiItemFlags backup_item_flags = g.CurrentItemFlags;
         g.CurrentItemFlags |= ImGuiItemFlags_NoFocus;
-        if (CloseButton(window->GetID("#CLOSE"), close_button_pos))
+        if (CloseButton(window->GetID("#CLOSE"), close_button_pos, close_button_size))
             *p_open = false;
         g.CurrentItemFlags = backup_item_flags;
     }
