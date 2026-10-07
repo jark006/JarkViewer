@@ -149,6 +149,8 @@ std::string_view UIStringTable[STRING_MAX_NUM][jark::kLanguageCount] = {
     {"顺序", "順序", "Forward", "順方向", "순방향"},                                                  // 121
     {"逆序", "逆序", "Backward", "逆方向", "역방향"},
     {"随机", "隨機", "Random", "ランダム", "무작위"},
+    {"关闭", "關閉", "Close", "閉じる", "닫기"},                                                      // 126
+    {"序号位数", "序號位數", "Digits", "桁数", "자릿수"},
 
     // —— 帮助页（改成文字排版，不再用资源图）——
     {"快捷键与操作", "快速鍵與操作", "Shortcuts and controls", "ショートカットと操作", "단축키와 조작"},

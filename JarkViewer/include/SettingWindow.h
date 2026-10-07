@@ -309,10 +309,10 @@ private:
     // —— 帮助（文字排版，不再用资源图）——
 
     void drawHelpPage() {
-        ImGui::TextUnformatted(getUIString(124));
+        ImGui::TextUnformatted(getUIString(kStrHelpTitle));
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::TextUnformatted(getUIString(125));
+        ImGui::TextUnformatted(getUIString(kStrHelpBody));
     }
 
     // —— 关于 ——
@@ -342,6 +342,10 @@ private:
         if (ImGui::Button("蓝奏云", { 200.0f * scale, 0 }))
             jarkUtils::openUrl(LanzouLink.data());
     }
+
+    // 帮助页文案（窄表新增条目）
+    static constexpr uint32_t kStrHelpTitle = 126;
+    static constexpr uint32_t kStrHelpBody = 127;
 
     bool visible_ = false;
     bool focusRequested_ = false;

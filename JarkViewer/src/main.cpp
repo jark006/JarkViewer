@@ -1709,11 +1709,13 @@ public:
 
     void DrawUi() override {
         auto& uiHost = jark::ui::UiHost::instance();
-        uiHost.setUiVisible(hasOverlayUi() || showExif || SettingWindow::instance().visible());
+        uiHost.setUiVisible(hasOverlayUi() || showExif || SettingWindow::instance().visible() ||
+            BatchWindow::instance().visible());
 
         drawOverlayUi();
         drawExifPanel();
         SettingWindow::instance().draw();
+        BatchWindow::instance().draw();
     }
 
     void DrawScene() {
@@ -1767,30 +1769,17 @@ public:
         }
 
         if (operateAction.action == ActionENUM::batchProcess) {
-            JARK_LOG("批量处理请求: 文件列表 {} 项, 已在运行={}", imgFileList.size(), static_cast<bool>(BatchWindow::isWorking));
-            if (BatchWindow::isWorking) {
-                if (BatchWindow::hwnd)
-                    jarkUtils::activateWindow(BatchWindow::hwnd);
+            // 以当前目录里已识别的图片作为待处理列表
+            std::vector<std::wstring> batchFiles;
+            for (const auto& file : imgFileList) {
+                if (file != m_wndCaption)
+                    batchFiles.push_back(file);
             }
-            else {
-                // 以当前目录里已识别的图片作为待处理列表
-                std::vector<std::wstring> batchFiles;
-                for (const auto& file : imgFileList) {
-                    if (file != m_wndCaption)
-                        batchFiles.push_back(file);
-                }
 
-                if (batchFiles.empty()) {
-                    MessageBoxW(m_hWnd, getUIStringW(33), getUIStringW(15), MB_OK | MB_ICONINFORMATION);
-                }
-                else {
-                    OnRequestExitOtherWindows();
-                    std::thread batchThread([files = std::move(batchFiles)]() {
-                        BatchWindow window(files);
-                        });
-                    batchThread.detach();
-                }
-            }
+            if (batchFiles.empty())
+                MessageBoxW(m_hWnd, getUIStringW(33), getUIStringW(15), MB_OK | MB_ICONINFORMATION);
+            else
+                BatchWindow::instance().open(std::move(batchFiles));
         }
 
         if (operateAction.action == ActionENUM::editImage) {
@@ -2131,7 +2120,6 @@ public:
 
     void OnRequestExitOtherWindows() {
         Printer::requestExit();
-        BatchWindow::requestExit();
         EditorWindow::requestExit();
     }
 };

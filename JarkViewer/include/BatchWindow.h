@@ -1,245 +1,297 @@
 #pragma once
 
-// 批量处理窗口：转换/缩放/图像调整、重命名、旋转翻转、删除到回收站。
-// 界面用 UiFramework 搭建；处理逻辑在 BatchProcessor（可脱离界面单独验证）。
+// 批量处理窗口（ImGui 版）：转换/缩放、重命名、旋转翻转、删除到回收站。
+// 处理逻辑仍在 BatchProcessor（可脱离界面验证），界面由主窗口的 DrawUi() 每帧驱动。
 
 #include "BatchProcessor.h"
-#include "MatWindow.h"
-#include "TextRenderer.h"
-#include "UiFramework.h"
+#include "Localization.h"
+#include "UiHost.h"
+#include "jarkUtils.h"
+
+#include <imgui.h>
+#include <imgui_stdlib.h>
 
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <format>
 #include <set>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include <shlobj.h>
 #include <shlwapi.h>
 
-class BatchWindow : public MatWindow {
-private:
-    static constexpr int kLogicalWidth = 900;
-    static constexpr int kLogicalHeight = 940;
-    static constexpr int kListHeight = 200;
-    static constexpr int kRowHeight = 40;
+class BatchWindow {
+public:
+    static BatchWindow& instance() {
+        static BatchWindow window;
+        return window;
+    }
 
-    // 界面文案：追加在字符串表末尾，顺序必须与 stringRes.cpp 中新增条目一一对应，
-    // 因此这里用连续枚举自动编号，避免手写序号错位。
-    static constexpr uint32_t kStrBase = 58;
-    enum : uint32_t {
-        kStrTitle = kStrBase,  // 批量处理
-        kStrFileList,          // 选择要处理的文件
-        kStrConvert,           // 转换/缩放
-        kStrRename,            // 重命名
-        kStrRotate,            // 旋转/翻转
-        kStrDelete,            // 删除
-        kStrOutputFormat,      // 输出格式
-        kStrKeepSize,          // 不变
-        kStrColor,             // 彩色
-        kStrGray,              // 黑白
-        kStrDocument,          // 黑白文档
-        kStrDither,            // 黑白抖动
-        kStrStart,             // 开始处理
-        kStrCancel,            // 取消
-        kStrOutputDir,         // 输出目录
-        kStrChooseDir,         // 选择目录
-        kStrSameDir,           // 与源文件同目录
-        kStrPrefix,            // 重命名前缀
-        kStrNoRotation,        // 不旋转
-        kStrRotate90,          // 顺时针90°
-        kStrRotate270,         // 逆时针90°
-        kStrFlipH,             // 水平翻转
-        kStrFlipV,             // 垂直翻转
-        kStrOverwrite,         // 覆盖已有文件
-        kStrSelectFirst,       // 请先选择要处理的文件
-        kStrProcessing,        // 正在处理...
-        kStrFinished,          // 完成：成功 {}，跳过 {}，失败 {}
-        kStrUnusedFormat,      // 选择输出文件格式（暂未使用）
-        kStrTask,              // 任务
-        kStrApplyAdjust,       // 应用图像调整
-        kStrColorMode,         // 颜色模式
-        kStrBrightness,        // 亮度
-        kStrContrast,          // 对比度
-    };
-
-    static inline const wchar_t* windowsClassName = L"JarkBatchWnd";
-
-    std::vector<std::wstring> files_;
-    std::vector<std::string> fileNames_;
-    std::set<size_t> selected_;
-
-    jark::BatchOptions options_;
-    std::string renamePrefix_ = "image_";
-    std::wstring outputDirectory_;
-
-    // 任务状态（工作线程写，界面线程读）
-    std::atomic<bool> running_{ false };
-    std::atomic<bool> cancelRequested_{ false };
-    std::atomic<int> progressValue_{ 0 };
-    std::atomic<int> progressMax_{ 1 };
-    jark::BatchResult result_;
-    bool finished_ = false;
-    bool startFailed_ = false;
-
-    TextRenderer textDrawer;
-    cv::Mat canvasMat;
-    std::unique_ptr<jark::ui::Panel> root;
-
-    jark::ui::TextBox* prefixBox = nullptr;   // 均为控件树中的实例（容器持有所有权）
-
-    jark::ui::Label* outputDirLabel = nullptr;
-    std::vector<jark::ui::Control*> convertControls;
-    std::vector<jark::ui::Control*> renameControls;
-    std::vector<jark::ui::Control*> rotateControls;
-    std::vector<jark::ui::Control*> deleteControls;
-
-    // 界面上用下标绑定的选项，提交前同步到 options_
-    uint32_t taskIndex_ = 0;
-    uint32_t formatIndex_ = 0;
-    uint32_t maxEdgeIndex_ = 0;
-    uint32_t rotationIndex_ = 0;
-    uint32_t colorModeIndex_ = 0;
-
-    void Init() {
+    void open(std::vector<std::wstring> files) {
+        files_ = std::move(files);
         std::sort(files_.begin(), files_.end(), [](const std::wstring& a, const std::wstring& b) {
             return StrCmpLogicalW(a.c_str(), b.c_str()) < 0;
             });
 
+        fileNames_.clear();
         for (const auto& file : files_)
             fileNames_.push_back(jarkUtils::wstringToUtf8(std::filesystem::path(file).filename().wstring()));
 
+        selected_.clear();
         for (size_t i = 0; i < files_.size(); ++i)
             selected_.insert(i);
+
+        finished_ = false;
+        startFailed_ = false;
+        result_ = {};
+        progressValue_ = 0;
+        progressMax_ = (std::max)(size_t{ 1 }, files_.size());
+
+        visible_ = true;
+        focusRequested_ = true;
     }
 
-    void initCanvas() {
-        textDrawer.setSize(dp(22));
-        canvasMat = cv::Mat(dp(kLogicalHeight), dp(kLogicalWidth), CV_8UC4,
-            jarkUtils::to_cv_scalar(GlobalVar::currentTheme.BG));
-        buildControls();
+    void close() { visible_ = false; }
+    bool visible() const { return visible_; }
+
+    void draw() {
+        if (!visible_)
+            return;
+
+        const float scale = jark::ui::UiHost::instance().scale();
+        ImGui::SetNextWindowSize({ 700.0f * scale, 580.0f * scale }, ImGuiCond_FirstUseEver);
+        if (focusRequested_) {
+            ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
+            focusRequested_ = false;
+        }
+
+        bool open = true;
+        if (!ImGui::Begin(title().c_str(), &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking)) {
+            ImGui::End();
+            if (!open)
+                close();
+            return;
+        }
+
+        drawFileList(scale);
+        ImGui::Separator();
+        drawTaskPanel(scale);
+        ImGui::Separator();
+        drawActions(scale);
+
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            ImGui::IsKeyPressed(ImGuiKey_Escape) && !running_)
+            close();
+
+        ImGui::End();
+
+        if (!open)
+            close();
     }
 
-    static std::string ui(uint32_t id) { return std::string(getUIString(id)); }
+private:
+    BatchWindow() = default;
 
-    void buildControls() {
-        root = std::make_unique<jark::ui::Panel>();
+    static std::string title() {
+        return jarkUtils::wstringToUtf8(getUIStringW(42)) + "###batch";
+    }
 
-        root->add(std::make_unique<jark::ui::Label>(ui(kStrFileList)), 30, 0);
-        root->add(std::make_unique<jark::ui::CheckList>(
-            fileNames_,
-            [this](const std::string& name) {
-                const int index = indexOfName(name);
-                return index >= 0 && selected_.contains(static_cast<size_t>(index));
-            },
-            [this](const std::string& name, bool checked) {
-                const int index = indexOfName(name);
-                if (index < 0)
-                    return;
-                if (checked)
-                    selected_.insert(static_cast<size_t>(index));
-                else
-                    selected_.erase(static_cast<size_t>(index));
-                isNeedRefreshUI = true;
-            }), kListHeight, 4);
+    static const char* ui(uint32_t id) { return getUIString(id); }
 
-        auto selectRow = std::make_unique<jark::ui::Row>();
-        selectRow->add(std::make_unique<jark::ui::Button>(ui(8), [this]() {
+    // —— 文件列表 ——
+
+    void drawFileList(float scale) {
+        ImGui::TextUnformatted(ui(kStrFileList));
+
+        const float listHeight = 180.0f * scale;
+        if (ImGui::BeginChild("batchFiles", { 0, listHeight }, ImGuiChildFlags_Borders)) {
+            for (size_t index = 0; index < fileNames_.size(); ++index) {
+                bool checked = selected_.contains(index);
+                if (ImGui::Checkbox((fileNames_[index] + "##" + std::to_string(index)).c_str(), &checked)) {
+                    if (checked)
+                        selected_.insert(index);
+                    else
+                        selected_.erase(index);
+                }
+            }
+        }
+        ImGui::EndChild();
+
+        if (ImGui::Button(ui(8), { 120.0f * scale, 0 })) {
             for (size_t i = 0; i < files_.size(); ++i)
                 selected_.insert(i);
-            isNeedRefreshUI = true;
-        }));
-        selectRow->add(std::make_unique<jark::ui::Button>(ui(9), [this]() {
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(ui(9), { 120.0f * scale, 0 }))
             selected_.clear();
-            isNeedRefreshUI = true;
-        }));
-        root->add(std::move(selectRow), 40, 6);
 
-        // 任务类型
-        root->add(std::make_unique<jark::ui::RadioGroup>(
-            ui(kStrTask),
-            std::vector<std::string>{ ui(kStrConvert), ui(kStrRename), ui(kStrRotate), ui(kStrDelete) },
-            &taskIndex_), kRowHeight, 8);
-
-        // —— 转换 / 缩放 ——
-        convertControls.push_back(root->add(std::make_unique<jark::ui::RadioGroup>(
-            ui(kStrOutputFormat),
-            std::vector<std::string>{ "png", "jpg", "webp", "bmp", "tif" }, &formatIndex_), kRowHeight, 2));
-
-        convertControls.push_back(root->add(std::make_unique<jark::ui::RadioGroup>(
-            ui(41), // 分辨率
-            std::vector<std::string>{ ui(kStrKeepSize), "4096", "2048", "1600", "1280", "800" },
-            &maxEdgeIndex_), kRowHeight, 2));
-
-        // 图像调整（与打印页同一套参数）
-        convertControls.push_back(root->add(
-            std::make_unique<jark::ui::CheckBox>(ui(kStrApplyAdjust), &options_.applyAdjustments), 36, 2));
-
-        convertControls.push_back(root->add(std::make_unique<jark::ui::RadioGroup>(
-            ui(kStrColorMode),
-            std::vector<std::string>{ ui(kStrColor), ui(kStrGray), ui(kStrDocument), ui(kStrDither) },
-            &colorModeIndex_), kRowHeight, 2));
-
-        convertControls.push_back(root->add(std::make_unique<jark::ui::Slider>(
-            ui(kStrBrightness), &options_.brightness, 200, 250, 500), 32, 2));
-        convertControls.push_back(root->add(std::make_unique<jark::ui::Slider>(
-            ui(kStrContrast), &options_.contrast, 200, 250, 500), 32, 2));
-
-        convertControls.push_back(root->add(
-            std::make_unique<jark::ui::CheckBox>(ui(kStrOverwrite), &options_.overwrite), 36, 4));
-
-        // —— 重命名 ——
-        renameControls.push_back(root->add(std::make_unique<jark::ui::Label>(ui(kStrPrefix)), 34, 4));
-        prefixBox = static_cast<jark::ui::TextBox*>(
-            root->add(std::make_unique<jark::ui::TextBox>(&renamePrefix_, "image_"), 40, 2));
-        renameControls.push_back(prefixBox);
-
-        // —— 旋转 / 翻转 ——
-        rotateControls.push_back(root->add(std::make_unique<jark::ui::RadioGroup>(
-            ui(kStrRotate),
-            std::vector<std::string>{ ui(kStrNoRotation), ui(kStrRotate90), "180°", ui(kStrRotate270) },
-            &rotationIndex_), kRowHeight, 2));
-
-        rotateControls.push_back(root->add(
-            std::make_unique<jark::ui::CheckBox>(ui(kStrFlipH), &options_.flipHorizontal), 36, 2));
-        rotateControls.push_back(root->add(
-            std::make_unique<jark::ui::CheckBox>(ui(kStrFlipV), &options_.flipVertical), 36, 2));
-
-        // —— 删除说明 ——
-        deleteControls.push_back(root->add(std::make_unique<jark::ui::Label>(ui(11)), 60, 4));
-
-        // —— 输出目录（转换时有效）——
-        auto dirRow = std::make_unique<jark::ui::Row>();
-        dirRow->add(std::make_unique<jark::ui::Label>(ui(kStrOutputDir)));
-        dirRow->add(std::make_unique<jark::ui::Button>(ui(kStrChooseDir), [this]() { chooseOutputDirectory(); }));
-        convertControls.push_back(root->add(std::move(dirRow), 46, 6));
-
-        outputDirLabel = static_cast<jark::ui::Label*>(root->add(
-            std::make_unique<jark::ui::Label>(ui(kStrSameDir)), 26, 0));
-        convertControls.push_back(outputDirLabel);
-
-        // —— 进度与操作 ——
-        root->add(std::make_unique<jark::ui::ProgressBar>(&progressPercent_, 100), 32, 10);
-
-        auto actionRow = std::make_unique<jark::ui::Row>();
-        actionRow->add(std::make_unique<jark::ui::Button>(ui(kStrStart), [this]() { startBatch(); }, true));
-        actionRow->add(std::make_unique<jark::ui::Button>(ui(kStrCancel), [this]() { cancelRequested_ = true; }));
-        root->add(std::move(actionRow), 46, 6);
-
-        statusLabel = static_cast<jark::ui::Label*>(root->add(
-            std::make_unique<jark::ui::Label>(""), 26, 2));
+        ImGui::SameLine();
+        ImGui::TextDisabled("%zu / %zu", selected_.size(), files_.size());
     }
 
-    jark::ui::Label* statusLabel = nullptr;
-    int progressPercent_ = 0;
+    // —— 任务参数 ——
 
-    int indexOfName(const std::string& name) const {
-        for (size_t i = 0; i < fileNames_.size(); ++i) {
-            if (fileNames_[i] == name)
-                return static_cast<int>(i);
+    void drawTaskPanel(float scale) {
+        const char* taskNames[] = { ui(kStrConvert), ui(kStrRename), ui(kStrRotate), ui(kStrDelete) };
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(ui(kStrTask));
+        ImGui::SameLine();
+
+        for (int index = 0; index < 4; ++index) {
+            if (index > 0)
+                ImGui::SameLine();
+            if (ImGui::RadioButton((std::string(taskNames[index]) + "##task").c_str(),
+                taskIndex_ == static_cast<uint32_t>(index)))
+                taskIndex_ = static_cast<uint32_t>(index);
         }
-        return -1;
+
+        ImGui::Spacing();
+
+        switch (taskIndex_) {
+        case 1: options_.task = jark::BatchTask::Rename; drawRenamePanel(scale); break;
+        case 2: options_.task = jark::BatchTask::Rotate; drawRotatePanel(scale); break;
+        case 3: options_.task = jark::BatchTask::Delete; drawDeletePanel(); break;
+        default: options_.task = jark::BatchTask::Convert; drawConvertPanel(scale); break;
+        }
+    }
+
+    void drawConvertPanel(float scale) {
+        static const char* formats[] = { "png", "jpg", "webp", "bmp", "tif" };
+        static const int edges[] = { 0, 4096, 2048, 1600, 1280, 800 };
+        static const char* edgeNames[] = { "", "4096", "2048", "1600", "1280", "800" };
+
+        int format = static_cast<int>(formatIndex_);
+        ImGui::SetNextItemWidth(140.0f * scale);
+        if (ImGui::Combo(ui(kStrOutputFormat), &format, formats, IM_ARRAYSIZE(formats))) {
+            formatIndex_ = static_cast<uint32_t>(format);
+            options_.outputExtension = jarkUtils::utf8ToWstring(formats[formatIndex_]);
+        }
+
+        ImGui::SameLine();
+        int edgeIndex = static_cast<int>(maxEdgeIndex_);
+        const char* edgeLabels[] = { ui(kStrKeepSize), edgeNames[1], edgeNames[2], edgeNames[3], edgeNames[4], edgeNames[5] };
+        ImGui::SetNextItemWidth(140.0f * scale);
+        if (ImGui::Combo(ui(41), &edgeIndex, edgeLabels, IM_ARRAYSIZE(edgeLabels))) {
+            maxEdgeIndex_ = static_cast<uint32_t>(edgeIndex);
+            options_.maxEdge = edges[maxEdgeIndex_];
+        }
+
+        ImGui::Checkbox(ui(kStrApplyAdjust), &options_.applyAdjustments);
+        if (options_.applyAdjustments) {
+            ImGui::Indent(20.0f * scale);
+
+            const char* colorModes[] = { ui(kStrColor), ui(kStrGray), ui(kStrDocument), ui(kStrDither) };
+            int colorMode = static_cast<int>(colorModeIndex_);
+            ImGui::SetNextItemWidth(200.0f * scale);
+            if (ImGui::Combo(ui(kStrColorMode), &colorMode, colorModes, IM_ARRAYSIZE(colorModes))) {
+                colorModeIndex_ = static_cast<uint32_t>(colorMode);
+                options_.colorMode = colorModeIndex_;
+            }
+
+            ImGui::SetNextItemWidth(220.0f * scale);
+            ImGui::SliderInt(ui(kStrBrightness), &options_.brightness, 0, 200, "%d");
+            ImGui::SetNextItemWidth(220.0f * scale);
+            ImGui::SliderInt(ui(kStrContrast), &options_.contrast, 0, 200, "%d");
+
+            ImGui::Unindent(20.0f * scale);
+        }
+
+        ImGui::Checkbox(ui(kStrOverwrite), &options_.overwrite);
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(ui(kStrOutputDir));
+        ImGui::SameLine();
+        if (ImGui::Button(ui(kStrChooseDir), { 140.0f * scale, 0 }))
+            chooseOutputDirectory();
+        ImGui::SameLine();
+        if (ImGui::Button(ui(kStrSameDir), { 160.0f * scale, 0 }))
+            outputDirectory_.clear();
+
+        if (!outputDirectory_.empty())
+            ImGui::TextDisabled("%s", jarkUtils::wstringToUtf8(outputDirectory_).c_str());
+    }
+
+    void drawRenamePanel(float scale) {
+        ImGui::SetNextItemWidth(220.0f * scale);
+        ImGui::InputText(ui(kStrPrefix), &renamePrefix_);
+
+        ImGui::SetNextItemWidth(120.0f * scale);
+        int start = options_.renameStart;
+        if (ImGui::InputInt(ui(kStrStart), &start))
+            options_.renameStart = (std::max)(0, start);
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120.0f * scale);
+        int digits = options_.renameDigits;
+        if (ImGui::InputInt(ui(kStrDigits), &digits))
+            options_.renameDigits = std::clamp(digits, 1, 8);
+
+        const std::wstring extension = files_.empty() ? std::wstring()
+            : std::filesystem::path(files_.front()).extension().wstring();
+        ImGui::TextDisabled("%s", (std::string(renamePrefix_) +
+            std::format("{:0{}}", options_.renameStart, options_.renameDigits) +
+            jarkUtils::wstringToUtf8(extension)).c_str());
+    }
+
+    void drawRotatePanel(float scale) {
+        const char* rotations[] = { ui(kStrNoRotation), ui(kStrRotate90), "180°", ui(kStrRotate270) };
+        int rotation = static_cast<int>(rotationIndex_);
+        ImGui::SetNextItemWidth(200.0f * scale);
+        if (ImGui::Combo(ui(kStrRotate), &rotation, rotations, IM_ARRAYSIZE(rotations))) {
+            rotationIndex_ = static_cast<uint32_t>(rotation);
+            options_.rotationDegrees = static_cast<int>(rotationIndex_) * 90;
+        }
+
+        ImGui::Checkbox(ui(kStrFlipH), &options_.flipHorizontal);
+        ImGui::SameLine();
+        ImGui::Checkbox(ui(kStrFlipV), &options_.flipVertical);
+    }
+
+    void drawDeletePanel() {
+        ImGui::TextWrapped("%s", ui(11));
+    }
+
+    // —— 进度与操作 ——
+
+    void drawActions(float scale) {
+        const float buttonWidth = 150.0f * scale;
+
+        ImGui::BeginDisabled(running_ || selected_.empty());
+        if (ImGui::Button(ui(kStrStart), { buttonWidth, 0 }))
+            startBatch();
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!running_);
+        if (ImGui::Button(ui(kStrCancel), { buttonWidth, 0 }))
+            cancelRequested_ = true;
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        ImGui::BeginDisabled(running_);
+        if (ImGui::Button(ui(kStrClose), { buttonWidth, 0 }))
+            close();
+        ImGui::EndDisabled();
+
+        const float progress = progressMax_ > 0
+            ? static_cast<float>(progressValue_) / static_cast<float>(progressMax_)
+            : 0.0f;
+        ImGui::ProgressBar(progress, { ImGui::GetContentRegionAvail().x, 0 });
+
+        if (startFailed_)
+            ImGui::TextColored({ 1.0f, 0.45f, 0.35f, 1.0f }, "%s", ui(kStrSelectFirst));
+        else if (running_)
+            ImGui::TextUnformatted(ui(kStrProcessing));
+        else if (finished_) {
+            ImGui::TextUnformatted(std::vformat(getUIString(kStrFinished),
+                std::make_format_args(result_.succeeded, result_.skipped, result_.failed)).c_str());
+            for (const auto& message : result_.messages)
+                ImGui::TextDisabled("%s", jarkUtils::wstringToUtf8(message).c_str());
+        }
     }
 
     void chooseOutputDirectory() {
@@ -249,85 +301,36 @@ private:
 
         if (LPITEMIDLIST item = SHBrowseForFolderW(&browse)) {
             wchar_t path[MAX_PATH] = {};
-            if (SHGetPathFromIDListW(item, path)) {
+            if (SHGetPathFromIDListW(item, path))
                 outputDirectory_ = path;
-                outputDirLabel->setText(jarkUtils::wstringToUtf8(outputDirectory_));
-            }
             CoTaskMemFree(item);
         }
-        isNeedRefreshUI = true;
-    }
-
-    void syncOptionsFromControls() {
-        static const wchar_t* const formats[] = { L"png", L"jpg", L"webp", L"bmp", L"tif" };
-        static const int edges[] = { 0, 4096, 2048, 1600, 1280, 800 };
-        static const int rotations[] = { 0, 90, 180, 270 };
-
-        static const jark::BatchTask tasks[] = {
-            jark::BatchTask::Convert, jark::BatchTask::Rename,
-            jark::BatchTask::Rotate, jark::BatchTask::Delete,
-        };
-
-        if (taskIndex_ < std::size(tasks))
-            options_.task = tasks[taskIndex_];
-        if (formatIndex_ < std::size(formats))
-            options_.outputExtension = formats[formatIndex_];
-        if (maxEdgeIndex_ < std::size(edges))
-            options_.maxEdge = edges[maxEdgeIndex_];
-        if (rotationIndex_ < std::size(rotations))
-            options_.rotationDegrees = rotations[rotationIndex_];
-
-        options_.colorMode = colorModeIndex_;
-        options_.outputDirectory = outputDirectory_;
-        options_.renamePrefix = jarkUtils::utf8ToWstring(renamePrefix_);
-
-        // 亮度/对比度由 Slider 直接写入 options_；调整关闭时不需要
-        if (!options_.applyAdjustments) {
-            options_.brightness = 100;
-            options_.contrast = 100;
-        }
-    }
-
-    void updateControlVisibility() {
-        const auto task = options_.task;
-        for (auto* control : convertControls)
-            control->visible = task == jark::BatchTask::Convert;
-        for (auto* control : renameControls)
-            control->visible = task == jark::BatchTask::Rename;
-        for (auto* control : rotateControls)
-            control->visible = task == jark::BatchTask::Rotate;
-        for (auto* control : deleteControls)
-            control->visible = task == jark::BatchTask::Delete;
-    }
-
-    std::vector<std::wstring> selectedFiles() const {
-        std::vector<std::wstring> result;
-        for (const auto index : selected_) {
-            if (index < files_.size())
-                result.push_back(files_[index]);
-        }
-        return result;
     }
 
     void startBatch() {
-        if (running_ || files_.empty())
+        if (running_)
             return;
 
-        syncOptionsFromControls();
-        auto targets = selectedFiles();
+        std::vector<std::wstring> targets;
+        for (const auto index : selected_) {
+            if (index < files_.size())
+                targets.push_back(files_[index]);
+        }
 
         if (targets.empty()) {
             startFailed_ = true;
-            isNeedRefreshUI = true;
             return;
         }
         startFailed_ = false;
 
+        options_.outputDirectory = outputDirectory_;
+        options_.renamePrefix = jarkUtils::utf8ToWstring(renamePrefix_);
+
         if (options_.task == jark::BatchTask::Delete) {
-            // 文案来自字符串表（运行期），需用 vformat；make_wformat_args 需要左值
             const size_t fileCount = targets.size();
             auto message = std::vformat(getUIStringW(43), std::make_wformat_args(fileCount));
-            if (MessageBoxW(m_hwnd, message.c_str(), getUIStringW(42), MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
+            if (MessageBoxW(jark::ui::UiHost::instance().window(), message.c_str(), getUIStringW(42),
+                MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
                 return;
         }
 
@@ -335,141 +338,80 @@ private:
         cancelRequested_ = false;
         finished_ = false;
         progressValue_ = 0;
-        progressMax_ = static_cast<int>(targets.size());
+        progressMax_ = targets.size();
         result_ = {};
-        isNeedRefreshUI = true;
 
         const auto options = options_;
         std::thread worker([this, targets, options]() {
             result_ = jark::runBatch(targets, options,
                 [this](size_t current, size_t total, const std::wstring&) {
-                    progressValue_ = static_cast<int>(current);
-                    progressMax_ = static_cast<int>(total ? total : 1);
+                    progressValue_ = current;
+                    progressMax_ = total ? total : 1;
                     return !cancelRequested_.load();
                 });
-
             finished_ = true;
             running_ = false;
-            isNeedRefreshUI = true;
             });
-
-        // 让界面持续重绘以显示进度
-        std::thread refresher([this]() {
-            while (running_)
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            isNeedRefreshUI = true;
-            });
-
         worker.detach();
-        refresher.detach();
     }
 
-public:
-    static inline volatile bool isWorking = false;
-    static inline volatile HWND hwnd = nullptr;
+    // 字符串表 ID（与 stringRes.cpp 中批量处理段落对应）
+    static constexpr uint32_t kStrFileList = 59;
+    static constexpr uint32_t kStrConvert = 60;
+    static constexpr uint32_t kStrRename = 61;
+    static constexpr uint32_t kStrRotate = 62;
+    static constexpr uint32_t kStrDelete = 63;
+    static constexpr uint32_t kStrOutputFormat = 64;
+    static constexpr uint32_t kStrKeepSize = 65;
+    static constexpr uint32_t kStrColor = 66;
+    static constexpr uint32_t kStrGray = 67;
+    static constexpr uint32_t kStrDocument = 68;
+    static constexpr uint32_t kStrDither = 69;
+    static constexpr uint32_t kStrStart = 70;
+    static constexpr uint32_t kStrCancel = 71;
+    static constexpr uint32_t kStrOutputDir = 72;
+    static constexpr uint32_t kStrChooseDir = 73;
+    static constexpr uint32_t kStrSameDir = 74;
+    static constexpr uint32_t kStrPrefix = 75;
+    static constexpr uint32_t kStrNoRotation = 76;
+    static constexpr uint32_t kStrRotate90 = 77;
+    static constexpr uint32_t kStrRotate270 = 78;
+    static constexpr uint32_t kStrFlipH = 79;
+    static constexpr uint32_t kStrFlipV = 80;
+    static constexpr uint32_t kStrOverwrite = 81;
+    static constexpr uint32_t kStrSelectFirst = 82;
+    static constexpr uint32_t kStrProcessing = 83;
+    static constexpr uint32_t kStrFinished = 84;
+    static constexpr uint32_t kStrTask = 86;
+    static constexpr uint32_t kStrApplyAdjust = 87;
+    static constexpr uint32_t kStrColorMode = 88;
+    static constexpr uint32_t kStrBrightness = 89;
+    static constexpr uint32_t kStrContrast = 90;
+    static constexpr uint32_t kStrClose = 124;  // 关闭
+    static constexpr uint32_t kStrDigits = 125; // 序号位数
 
-    explicit BatchWindow(std::vector<std::wstring> files) : files_(std::move(files)) {
-        requestExitFlag = false;
-        isWorking = true;
+    bool visible_ = false;
+    bool focusRequested_ = false;
 
-        Init();
-        runWindow();
+    std::vector<std::wstring> files_;
+    std::vector<std::string> fileNames_;
+    std::set<size_t> selected_;
 
-        requestExitFlag = false;
-        isWorking = false;
-        hwnd = nullptr;
-    }
+    jark::BatchOptions options_;
+    std::string renamePrefix_ = "image_";
+    std::wstring outputDirectory_;
 
-    ~BatchWindow() = default;
+    uint32_t taskIndex_ = 0;
+    uint32_t formatIndex_ = 0;
+    uint32_t maxEdgeIndex_ = 0;
+    uint32_t rotationIndex_ = 0;
+    uint32_t colorModeIndex_ = 0;
 
-    static void requestExit() {
-        if (hwnd)
-            PostMessageW(hwnd, WM_CLOSE, 0, 0);
-    }
-
-protected:
-    void onPaint(HDC hdc) override {
-        if (!canvasMat.empty())
-            blitMat(hdc, canvasMat);
-    }
-
-    void onLButtonDown() override {
-        if (!root)
-            return;
-
-        if (root->onMouseDown(m_x, m_y))
-            isNeedRefreshUI = true;
-    }
-
-    void onLButtonUp() override {
-        if (!root)
-            return;
-
-        root->onMouseUp(m_x, m_y);
-        isNeedRefreshUI = true;
-    }
-
-    void onMouseMove(WPARAM keyState) override {
-        (void)keyState;
-        if (root && root->onMouseMove(m_x, m_y))
-            isNeedRefreshUI = true;
-    }
-
-    void onMouseWheel(int delta) override {
-        if (root && root->onWheel(m_x, m_y, delta))
-            isNeedRefreshUI = true;
-    }
-
-    void onKeyChar(wchar_t character) override {
-        if (prefixBox && prefixBox->onKeyChar(character))
-            isNeedRefreshUI = true;
-    }
-
-    void onKeyDown(WPARAM key) override {
-        if (prefixBox && prefixBox->onKeyDown(static_cast<int>(key))) {
-            isNeedRefreshUI = true;
-            return;
-        }
-
-        if (key == VK_ESCAPE && !running_)
-            PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
-    }
-
-    void drawingUI() override {
-        jark::ui::UiCanvas canvas(canvasMat, textDrawer, GlobalVar::currentTheme, uiScale());
-        canvas.fill({ 0, 0, canvas.width(), canvas.height() }, GlobalVar::currentTheme.BG);
-
-        progressPercent_ = progressMax_ > 0 ? progressValue_ * 100 / progressMax_ : 0;
-        updateControlVisibility();
-
-        if (statusLabel) {
-            if (startFailed_)
-                statusLabel->setText(ui(kStrSelectFirst));
-            else if (running_)
-                statusLabel->setText(ui(kStrProcessing));
-            else if (finished_) {
-                const size_t succeeded = result_.succeeded;
-                const size_t skipped = result_.skipped;
-                const size_t failed = result_.failed;
-                statusLabel->setText(std::vformat(getUIString(kStrFinished),
-                    std::make_format_args(succeeded, skipped, failed)));
-            }
-            else
-                statusLabel->setText("");
-        }
-
-        root->bounds = { canvas.dp(20), canvas.dp(20), canvas.width() - canvas.dp(40), canvas.height() - canvas.dp(40) };
-        root->draw(canvas);
-    }
-
-    void runWindow() {
-        if (!createWindow(kLogicalWidth, kLogicalHeight, windowsClassName, getUIStringW(kStrTitle))) {
-            return;
-        }
-
-        hwnd = m_hwnd;
-        initCanvas();
-        isNeedRefreshUI = true;
-        runMessageLoop();
-    }
+    std::atomic<bool> running_{ false };
+    std::atomic<bool> cancelRequested_{ false };
+    std::atomic<size_t> progressValue_{ 0 };
+    std::atomic<size_t> progressMax_{ 1 };
+    jark::BatchResult result_;
+    bool finished_ = false;
+    bool startFailed_ = false;
 };
