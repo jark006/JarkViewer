@@ -1,5 +1,6 @@
 #include "jarkUtils.h"
 
+#include "BatchWindow.h"
 #include "CanvasRenderer.h"
 #include "DecodeProbe.h"
 #include "Localization.h"
@@ -665,6 +666,10 @@ public:
                 ctrlIsPressing = false; // 上面弹出窗口导致收不到CTRL键释放的消息
             }break;
 
+            case 'B': { // Ctrl + B 批量处理
+                operateQueue.push({ ActionENUM::batchProcess });
+            }break;
+
             case 'S': { // Ctrl + S  动图或实况图视频 批量保存每一帧到png图片
                 auto& frames = curPar.imageAssetPtr->frames;
                 if (frames.empty())
@@ -957,6 +962,10 @@ public:
 
         case ContextMenu::printImage: {
             operateQueue.push({ ActionENUM::printImage });
+        }break;
+
+        case ContextMenu::batchProcess: {
+            operateQueue.push({ ActionENUM::batchProcess });
         }break;
 
         case ContextMenu::toggleFullScreen: {
@@ -1511,6 +1520,33 @@ public:
             return;
         }
 
+        if (operateAction.action == ActionENUM::batchProcess) {
+            JARK_LOG("批量处理请求: 文件列表 {} 项, 已在运行={}", imgFileList.size(), static_cast<bool>(BatchWindow::isWorking));
+            if (BatchWindow::isWorking) {
+                if (BatchWindow::hwnd)
+                    jarkUtils::activateWindow(BatchWindow::hwnd);
+            }
+            else {
+                // 以当前目录里已识别的图片作为待处理列表
+                std::vector<std::wstring> batchFiles;
+                for (const auto& file : imgFileList) {
+                    if (file != m_wndCaption)
+                        batchFiles.push_back(file);
+                }
+
+                if (batchFiles.empty()) {
+                    MessageBoxW(m_hWnd, getUIStringW(33), getUIStringW(15), MB_OK | MB_ICONINFORMATION);
+                }
+                else {
+                    OnRequestExitOtherWindows();
+                    std::thread batchThread([files = std::move(batchFiles)]() {
+                        BatchWindow window(files);
+                        });
+                    batchThread.detach();
+                }
+            }
+        }
+
         if (operateAction.action == ActionENUM::printImage) {
             if (Printer::isWorking) {
                 jarkUtils::activateWindow(Printer::hwnd);
@@ -1945,6 +1981,7 @@ public:
     void OnRequestExitOtherWindows() {
         Printer::requestExit();
         Setting::requestExit();
+        BatchWindow::requestExit();
     }
 };
 

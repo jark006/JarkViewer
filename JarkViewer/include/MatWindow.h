@@ -167,6 +167,9 @@ protected:
     virtual void onMouseMove(WPARAM keyState) {}
     virtual void onMouseWheel(int delta) {}
     virtual void onKeyDown(WPARAM key) {}
+
+    // 字符输入（文本框等需要）；界面已禁用 IME，收到的多为 ASCII
+    virtual void onKeyChar(wchar_t character) {}
     virtual void onClose() {
         if (m_hwnd)
             DestroyWindow(m_hwnd);
@@ -223,6 +226,10 @@ protected:
             m_x = LOWORD(lParam);
             m_y = HIWORD(lParam);
             onMouseMove(wParam);
+            return 0;
+
+        case WM_CHAR:
+            onKeyChar(static_cast<wchar_t>(wParam));
             return 0;
 
         case WM_MOUSEWHEEL:

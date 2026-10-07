@@ -159,6 +159,7 @@
     <ClInclude Include="include\blpDecoder.h" />
     <ClInclude Include="include\AiPrompt.h" />
     <ClInclude Include="include\AudioOutput.h" />
+    <ClInclude Include="include\BatchProcessor.h" />
     <ClInclude Include="include\CanvasRenderer.h" />
     <ClInclude Include="include\ColorManager.h" />
     <ClInclude Include="include\D3D11App.h" />
@@ -167,6 +168,7 @@
     <ClInclude Include="include\FileAssociationNaming.h" />
     <ClInclude Include="include\FileAssociationManager.h" />
     <ClInclude Include="include\FormatSniffer.h" />
+    <ClInclude Include="include\ImageAdjust.h" />
     <ClInclude Include="include\ImageDatabase.h" />
     <ClInclude Include="include\Localization.h" />
     <ClInclude Include="include\LRU.h" />
@@ -190,12 +192,14 @@
     <ClCompile Include="src\blpDecoder.cpp" />
     <ClCompile Include="src\AiPrompt.cpp" />
     <ClCompile Include="src\AudioOutput.cpp" />
+    <ClCompile Include="src\BatchProcessor.cpp" />
     <ClCompile Include="src\CanvasRenderer.cpp" />
     <ClCompile Include="src\ColorManager.cpp" />
     <ClCompile Include="src\D3D11App.cpp" />
     <ClCompile Include="src\DecodeProbe.cpp" />
     <ClCompile Include="src\exifParse.cpp" />
     <ClCompile Include="src\FormatSniffer.cpp" />
+    <ClCompile Include="src\ImageAdjust.cpp" />
     <ClCompile Include="src\ImageDatabase.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\MediaDecoder.cpp" />

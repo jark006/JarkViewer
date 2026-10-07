@@ -3,6 +3,7 @@
 #include "MatWindow.h"
 #include "Localization.h"
 #include "TextDrawer.h"
+#include "ImageAdjust.h"
 #include "UiFramework.h"
 
 // 全局变量存储UI状态
@@ -221,47 +222,6 @@ public:
     }
 
     // 均衡全图亮度 再调整亮度对比度 适合打印文档
-    static cv::Mat balancedImageBrightness(const cv::Mat& input_img) {
-        if (input_img.type() != CV_8UC3) {
-            MessageBoxW(nullptr, L"balancedImageBrightness转换图像错误: 只接受BGR/CV_8UC3类型图像", getUIStringW(14), MB_OK | MB_ICONERROR);
-            return {};
-        }
-
-        int kernel_size = std::max(input_img.cols, input_img.rows) / 20;
-        if (kernel_size < 3)
-            kernel_size = 3;
-
-        // 确保核大小为奇数
-        kernel_size |= 1;
-
-        // 转换为灰度图像
-        cv::Mat gray;
-        if (input_img.channels() == 3) {
-            cvtColor(input_img, gray, cv::COLOR_BGR2GRAY);
-        }
-        else {
-            gray = input_img.clone();
-        }
-
-        // 估计背景（使用大核模糊）
-        cv::Mat background;
-        GaussianBlur(gray, background, cv::Size(kernel_size, kernel_size), 0);
-
-        // 从原始图像中减去背景
-        cv::Mat corrected;
-        // 相当于：corrected = gray * 1 + background * (-1) + 128
-        addWeighted(gray, 1.0, background, -1.0, 128, corrected);
-
-        // 增强对比度（归一化到0-255范围）
-        normalize(corrected, corrected, 0, 255, cv::NORM_MINMAX);
-        corrected.convertTo(corrected, CV_8U);
-
-        cvtColor(corrected, corrected, cv::COLOR_GRAY2BGR);
-        return corrected;
-    }
-
-
-    // 将cv::Mat转换为HBITMAP
     HBITMAP MatToHBITMAP(const cv::Mat& image) {
         if (image.empty()) {
             MessageBoxW(nullptr, L"MatToHBITMAP转换图像错误: 空图像", getUIStringW(14), MB_OK | MB_ICONERROR);
@@ -303,123 +263,6 @@ public:
         }
 
         return hBitmap;
-    }
-
-    static void adjustBrightnessContrast(cv::Mat& src, uint32_t brightnessInt, uint32_t contrastInt) {
-        if (src.empty() || src.type() != CV_8UC3)
-            return;
-
-        // 取值不能极端
-        if (brightnessInt < 1)
-            brightnessInt = 1;
-        else if (brightnessInt > 199)
-            brightnessInt = 199;
-
-        if (contrastInt > 200)
-            contrastInt = 200;
-
-        // brightness: 0 ~ 200 映射到 0 ~ 2.0
-        // contrast:   0 ~ 200 映射到 0 ~ 2.0
-        double brightness = brightnessInt / 100.0;
-        double contrast = contrastInt / 100.0;
-
-        brightness = pow(2.0 - brightness, 3); // 增大对比度比例
-        contrast = pow(contrast, 3); // 增大对比度比例
-
-        for (int y = 0; y < src.rows; y++) {
-            for (int x = 0; x < src.cols; x++) {
-                cv::Vec3b pixel = src.at<cv::Vec3b>(y, x);
-                for (int c = 0; c < 3; c++) {
-                    // 以128为中心进行对比度调整
-                    double adjusted = (pixel[c] - 128.0) * contrast + 128.0;
-
-                    // 添加亮度偏移
-                    adjusted = pow(adjusted / 255.0, brightness) * 255;
-
-                    // 确保值在0-255范围内
-                    pixel[c] = cv::saturate_cast<uchar>(adjusted);
-                }
-                src.at<cv::Vec3b>(y, x) = pixel;
-            }
-        }
-    }
-
-    // 图像处理 调整对比度 彩色 黑白
-    static void ApplyImageAdjustments(cv::Mat& image, uint32_t brightness, uint32_t contrast, uint32_t colorMode, bool invertColors) {
-        if (image.empty()) return;
-
-        if (colorMode == 1 || colorMode == 3) { // 黑白、黑白抖动也需要先灰度
-            cv::Mat gray;
-            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-            cv::cvtColor(gray, image, cv::COLOR_GRAY2BGR);
-        }else if (colorMode == 2) {
-            image = balancedImageBrightness(image);
-        }
-
-        // brightness: 0 ~ 200, 100是中间值，亮度不增不减
-        // contrast:   0 ~ 200, 100是中间值，对比度不增不减
-        adjustBrightnessContrast(image, brightness, contrast);
-
-        if (colorMode == 3) // 最后处理 黑白抖动
-            floydSteinbergDithering(image);
-
-        if (invertColors) {
-            cv::bitwise_not(image, image);
-        }
-    }
-
-    // 误差扩散抖动算法
-    static void floydSteinbergDithering(cv::Mat& image) {
-        cv::cvtColor(image, image, cv::COLOR_BGR2GRAY);
-
-        int height = image.rows;
-        int width = image.cols;
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                // 获取当前像素值
-                uchar oldVal = image.at<uchar>(y, x);
-                // 二值化：大于阈值设为255（白），否则0（黑）
-                uchar newVal = (oldVal < 128) ? 0 : 255;
-                image.at<uchar>(y, x) = newVal;
-
-                // 计算误差
-                int error = oldVal - newVal;
-
-                // 将误差按比例分配到周围像素（Floyd-Steinberg权重）
-                if (x + 1 < width) {
-                    image.at<uchar>(y, x + 1) = cv::saturate_cast<uchar>(
-                        image.at<uchar>(y, x + 1) + error * 7 / 16
-                    );
-                }
-                if (y + 1 < height) {
-                    if (x - 1 >= 0) {
-                        image.at<uchar>(y + 1, x - 1) = cv::saturate_cast<uchar>(
-                            image.at<uchar>(y + 1, x - 1) + error * 3 / 16
-                        );
-                    }
-                    image.at<uchar>(y + 1, x) = cv::saturate_cast<uchar>(
-                        image.at<uchar>(y + 1, x) + error * 5 / 16
-                    );
-                    if (x + 1 < width) {
-                        image.at<uchar>(y + 1, x + 1) = cv::saturate_cast<uchar>(
-                            image.at<uchar>(y + 1, x + 1) + error * 1 / 16
-                        );
-                    }
-                }
-            }
-        }
-        cv::cvtColor(image, image, cv::COLOR_GRAY2BGR);
-    }
-
-    void drawProgressBar(cv::Mat& image, cv::Rect rect, double progress) {
-        cv::rectangle(image, rect, cv::Scalar(255, 0, 0, 255), 2);
-
-        const int progresswidth = static_cast<int>(rect.width * progress);
-        if (0 < progresswidth && progresswidth <= rect.width) {
-            rect.width = progresswidth;
-            cv::rectangle(image, rect, cv::Scalar(204, 72, 63, 255), -1);
-        }
     }
 
     void onPaint(HDC hdc) override {
@@ -487,7 +330,7 @@ public:
         // 预览图：按当前参数处理后在下方居中等比显示
         if (!params.previewImage.empty()) {
             cv::Mat adjusted = params.previewImage.clone();
-            ApplyImageAdjustments(adjusted, params.brightness, params.contrast, params.colorMode, params.invertColors);
+            jark::applyImageAdjustments(adjusted, params.brightness, params.contrast, params.colorMode, params.invertColors);
             cv::cvtColor(adjusted, adjusted, cv::COLOR_BGR2BGRA);
 
             const int offsetX = (canvas.width() - adjusted.cols) / 2;
@@ -511,7 +354,7 @@ public:
                 if (filePath.empty())
                     return;
 
-                ApplyImageAdjustments(image, params->brightness, params->contrast, params->colorMode, params->invertColors);
+                jark::applyImageAdjustments(image, params->brightness, params->contrast, params->colorMode, params->invertColors);
 
                 std::vector<uchar> buffer;
                 if (cv::imencode(isJPG ? ".jpg" : ".png", image, buffer)) {
@@ -623,7 +466,7 @@ public:
         cv::Mat resized;
         cv::resize(m_inputBgrMat, resized, cv::Size(newWidth, newHeight), 0, 0);
         // 使用之前调整的参数处理图像
-        ApplyImageAdjustments(resized, params.brightness, params.contrast, params.colorMode, params.invertColors);
+        jark::applyImageAdjustments(resized, params.brightness, params.contrast, params.colorMode, params.invertColors);
 
         cv::Mat output(pageHeight, pageWidth, m_inputBgrMat.type(), cv::Scalar(255, 255, 255));
         int offsetX = (pageWidth - newWidth + 1) / 2;  // +1确保偶数差时居中
