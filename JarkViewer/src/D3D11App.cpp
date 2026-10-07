@@ -428,8 +428,11 @@ void D3D11App::OnDestroy() {
 
 
 LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    // ImGui 先记录输入状态（键盘/鼠标/IME/DPI 都由它维护）
-    jark::ui::UiHost::processMessage(hwnd, message, wParam, lParam);
+    // ImGui 先记录输入状态（键盘/鼠标/IME/DPI 都由它维护）；它声明"已处理"的消息直接返回，
+    // 不要再落到下面的 DefWindowProc —— WM_IME_COMPOSITION 被处理两遍的话，
+    // 输入法上屏的中文会重复一遍（输入"安装"落进编辑框变成"安装安装"）
+    if (jark::ui::UiHost::processMessage(hwnd, message, wParam, lParam))
+        return S_OK;
 
     switch (message) {
     case WM_CREATE: {

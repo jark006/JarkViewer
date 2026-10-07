@@ -416,12 +416,14 @@ bool UiHost::keyboardCaptured(bool windowVisible) const {
     return initialized_ && windowVisible && ImGui::GetIO().WantCaptureKeyboard;
 }
 
-void UiHost::processMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+bool UiHost::processMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (!instance().initialized_)
-        return;
+        return false;
 
-    // 让 ImGui 记录输入状态；是否消费由调用方按 WantCapture* 决定
-    ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam);
+    // 让 ImGui 记录输入状态；是否消费由调用方按 WantCapture* 决定。
+    // 后端返回非 0 = 它已经处理完（WM_IME_COMPOSITION 带 GCS_RESULTSTR、WM_SETCURSOR 等），
+    // 调用方要直接返回，别让消息再落到 DefWindowProc（否则中文上屏会重复一遍）
+    return ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam) != 0;
 }
 
 ImTextureID UiHost::textureFromImage(const cv::Mat& image, int slot) {

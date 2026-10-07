@@ -118,8 +118,11 @@ namespace jark::ui {
         bool mouseCaptured(bool windowVisible) const;
         bool keyboardCaptured(bool windowVisible) const;
 
-        // Win32 消息先过这里，让 ImGui 记录输入状态
-        static void processMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+        // Win32 消息先过这里，让 ImGui 记录输入状态。
+        // 返回 true 表示后端已经处理完这条消息，调用方**必须直接返回**、不要再走
+        // DefWindowProc：WM_IME_COMPOSITION 落在 DefWindowProc 上会让输入法上屏的结果
+        // 再生成一遍（中文会变成双份），WM_SETCURSOR 也是它自己设光标的。
+        static bool processMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     private:
         UiHost() = default;
