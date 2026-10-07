@@ -91,6 +91,10 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   屏幕上的位置”（`ImGui::GetMainViewport()->Pos`），直接按客户区坐标绘制会整体偏移，
   动图播放条会有一半被顶到客户区上边。切片 UV 要**内缩半个像素**，否则放大绘制时边缘会
   掺进相邻格（下面的播放条是亮的，会在打印/设置图标底部拉出一条亮线）。
+- `D3D11App::WndProc` 开头必须 `if (UiHost::processMessage(...)) return S_OK;` —— **按返回值提前返回**。
+  后端返回非 0 表示这条消息它已经处理完（`WM_IME_COMPOSITION` 带 `GCS_RESULTSTR`、`WM_SETCURSOR`），
+  再落到 `DefWindowProc` 会把输入法上屏的结果生成两遍：中文变成双份（输入"安装"落进编辑框变成
+  "安装安装"），英文走 `WM_CHAR` 不受影响——所以这个 bug 只在中文输入时出现。
 - 输入法（IME）不能靠 `ImmDisableIME()` 禁用：它是**线程级且没有反向接口**，一旦调用，
   界面里的所有 ImGui 文本框就永远打不了中文。改为 `UiHost` 在窗口上挂/摘 IME 上下文
   （`ImmAssociateContext`）：默认把上下文摘下来（中文输入法会吃掉 p/c 这类单键快捷键），
