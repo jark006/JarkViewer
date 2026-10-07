@@ -67,6 +67,11 @@ bool UiHost::init(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* context,
     context_ = context;
     swapChain_ = swapChain;
 
+    // 窗口的输入法上下文先摘下来存着：默认不挂 IME（中文输入法会吃掉 p/c 这类单键快捷键），
+    // 等 ImGui 里有文本框获得焦点再挂回去（ImGui 会把组字/候选窗口摆到文本光标处）。
+    // 注意别用 ImmDisableIME()——它是线程级且没有反向接口，之后再也接不回输入法。
+    imeContext_ = ::ImmAssociateContext(hwnd_, nullptr);
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -364,6 +369,28 @@ void UiHost::newFrame() {
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+
+    // io.WantTextInput 在 ImGui::NewFrame() 里刷新，所以放在它后面
+    updateImeAssociation(ImGui::GetIO().WantTextInput);
+}
+
+// 输入法跟着"有没有文本框在编辑"走：编辑时才把 IME 挂回窗口，其余时间窗口没有 IME，
+// 单键快捷键（J/K/P/E…）不会被输入法吃掉。组字与候选窗口的位置由 ImGui 的
+// Platform_SetImeDataFn 默认实现设置（它按文本框光标位置摆），这里只管挂/摘。
+void UiHost::updateImeAssociation(bool wantTextInput) {
+    if (!hwnd_ || wantTextInput == imeAttached_)
+        return;
+
+    imeAttached_ = wantTextInput;
+    if (wantTextInput) {
+        ::ImmAssociateContext(hwnd_, imeContext_);
+        JARK_LOG("输入法：挂回窗口（有文本框在编辑）");
+    }
+    else {
+        if (HIMC context = ::ImmAssociateContext(hwnd_, nullptr))
+            imeContext_ = context; // 记下窗口的上下文，下次编辑时再挂回去
+        JARK_LOG("输入法：从窗口摘下（不干扰快捷键）");
+    }
 }
 
 void UiHost::renderDrawData() {

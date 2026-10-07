@@ -147,6 +147,13 @@ private:
         drawSelectionOverlay(drawList);
         drawActiveShape(drawList);
 
+        // 文字工具：悬停时先给个淡淡的落点光标（点在图像上才有效），点下去后变成实心光标
+        if (currentTool() == jark::AnnoTool::Text && isOnImage(ImGui::GetIO().MousePos))
+            drawTextCaret(drawList, ImGui::GetIO().MousePos, textPreviewFontSize(), 110);
+
+        if (textPlaced_ && currentTool() == jark::AnnoTool::Text)
+            drawPendingText(drawList);
+
         // 交互：整块画布区域都可响应
         ImGui::InvisibleButton("canvasInput", region, ImGuiButtonFlags_MouseButtonLeft);
 
@@ -235,6 +242,29 @@ private:
         }
     }
 
+    // 文字锚点光标：深浅双色细线，压在浅色/深色图上都看得见
+    static void drawTextCaret(ImDrawList* drawList, const ImVec2& pos, float fontSize, int alpha) {
+        const float top = pos.y - fontSize * 0.12f;
+        const float bottom = pos.y + fontSize * 1.02f;
+        drawList->AddLine({ pos.x, top }, { pos.x, bottom }, IM_COL32(0, 0, 0, alpha / 2), 3.0f);
+        drawList->AddLine({ pos.x, top }, { pos.x, bottom }, IM_COL32(255, 255, 255, alpha), 1.5f);
+    }
+
+    float textPreviewFontSize() const {
+        return (std::max)(8.0f, static_cast<float>(fontSize_) * viewScale_);
+    }
+
+    // 待放置的文字：点一下就在图像上定住位置，输入框里打字时实时预览。
+    // 这条路径不受 drawingShape_ 约束（文字是"点一下"而不是拖动产生的），
+    // 否则点了之后画面上什么反馈都没有。
+    void drawPendingText(ImDrawList* drawList) {
+        const ImVec2 anchor = toScreen(textAnchor_);
+        const float fontSize = textPreviewFontSize();
+        drawTextCaret(drawList, anchor, fontSize, 240);
+        if (!textInput_.empty())
+            drawList->AddText(ImGui::GetFont(), fontSize, anchor, imColor(currentStyle().color), textInput_.c_str());
+    }
+
     // 正在拖动的图形：矢量预览（拖动期间不重新上传纹理）
     void drawActiveShape(ImDrawList* drawList) {
         if (!drawingShape_)
@@ -294,13 +324,6 @@ private:
             const ImVec2 max((std::max)(from.x, to.x), (std::max)(from.y, to.y));
             drawList->AddRect(min, max, IM_COL32(0, 0, 0, 150), 0.0f, 0, 4.0f);
             drawList->AddRect(min, max, IM_COL32(255, 255, 255, 230), 0.0f, 0, 2.0f);
-        } break;
-
-        case jark::AnnoTool::Text: {
-            if (!textInput_.empty()) {
-                const float fontSize = (std::max)(8.0f, active.style.fontSize * viewScale_);
-                drawList->AddText(ImGui::GetFont(), fontSize, from, color, textInput_.c_str());
-            }
         } break;
 
         default:

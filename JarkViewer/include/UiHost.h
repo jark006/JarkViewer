@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 #include <windows.h>
+#include <imm.h>        // HIMC（输入法上下文）
 #include <opencv2/opencv.hpp>
 
 #include "imgui.h"
@@ -130,6 +131,7 @@ namespace jark::ui {
         void reloadFonts();
         void applyTheme();
         void applyStyleSizes();
+        void updateImeAssociation(bool wantTextInput);
         static std::string systemFontPath(const wchar_t* fileName);
 
         struct TextureEntry {
@@ -149,6 +151,11 @@ namespace jark::ui {
         bool initialized_ = false;
         bool uiVisible_ = false;
         std::unordered_map<int, TextureEntry> textures_;
+
+        // 输入法：窗口的 IME 上下文在 init 时摘下来存着，只有 ImGui 里文本框获得焦点
+        // 时才挂回去（见 updateImeAssociation），这样中文能输入、又不会让输入法吃掉快捷键
+        HIMC imeContext_ = nullptr;
+        bool imeAttached_ = false;
     };
 
 } // namespace jark::ui

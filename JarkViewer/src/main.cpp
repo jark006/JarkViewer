@@ -2242,7 +2242,8 @@ int WINAPI wWinMain(
     }
 
     Exiv2::enableBMFF();
-    ::ImmDisableIME(GetCurrentThreadId()); // 禁用输入法，防止干扰按键操作
+    // 输入法不在这里禁用（ImmDisableIME 是线程级且不可撤销，那样界面里的文本框就永远打不了中文）：
+    // 改由 UiHost 在窗口上挂/摘 IME 上下文——平时不挂（不干扰快捷键），有文本框聚焦时才挂回去。
 
     ::HeapSetInformation(nullptr, HeapEnableTerminationOnCorruption, nullptr, 0);
     if (!SUCCEEDED(::CoInitialize(nullptr)))
