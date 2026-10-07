@@ -83,6 +83,12 @@ namespace jark::ui {
 
         // 返回 true 表示状态有变化、需要重绘
         virtual bool onClick(int x, int y) { (void)x; (void)y; return false; }
+
+        // 拖动类控件：按下返回 true 表示开始捕获鼠标，之后的移动/抬起都发给它
+        virtual bool onMouseDown(int x, int y) { (void)x; (void)y; return false; }
+        virtual bool onMouseMove(int x, int y) { (void)x; (void)y; return false; }
+        virtual bool onMouseUp(int x, int y) { (void)x; (void)y; return false; }
+
         virtual bool onWheel(int x, int y, int delta) { (void)x; (void)y; (void)delta; return false; }
 
         virtual int preferredHeight() const { return 50; }
@@ -167,6 +173,52 @@ namespace jark::ui {
         std::function<void()> onChanged_;
     };
 
+    // 拖动条：轨道位置由 trackX/trackWidth 指定（与资源图对齐），支持点击、拖动与滚轮
+    class Slider : public Control {
+    public:
+        Slider(std::string label, int* value, int maxValue, int trackX, int trackWidth)
+            : label_(std::move(label)), value_(value), maxValue_(maxValue > 0 ? maxValue : 1),
+            trackX_(trackX), trackWidth_(trackWidth > 0 ? trackWidth : 1) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+        bool onMouseDown(int x, int y) override;
+        bool onMouseMove(int x, int y) override;
+        bool onMouseUp(int x, int y) override;
+        bool onWheel(int x, int y, int delta) override;
+
+    private:
+        bool setFromX(int x);
+
+        std::string label_;
+        int* value_ = nullptr;
+        int maxValue_ = 100;
+        int trackX_ = 0;          // 逻辑像素：轨道起点（相对控件）
+        int trackWidth_ = 100;    // 逻辑像素：轨道宽度
+        int trackXPhysical_ = 0;  // 绘制时换算出的物理轨道几何，事件处理使用
+        int trackWidthPhysical_ = 0;
+        bool dragging_ = false;
+    };
+
+    // 图片单选组：选项外观来自资源图；drawSelectedOnly 时只画选中项（如打印窗口的模式按钮）
+    class ImageRadioGroup : public Control {
+    public:
+        ImageRadioGroup(std::vector<cv::Mat> images, std::function<int()> getValue,
+            std::function<void(int)> setValue, bool invertInDarkMode = false, bool drawSelectedOnly = false)
+            : images_(std::move(images)), getValue_(std::move(getValue)), setValue_(std::move(setValue)),
+            invertInDarkMode_(invertInDarkMode), drawSelectedOnly_(drawSelectedOnly) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+    private:
+        std::vector<cv::Mat> images_;
+        std::function<int()> getValue_;
+        std::function<void(int)> setValue_;
+        bool invertInDarkMode_ = false;
+        bool drawSelectedOnly_ = false;
+    };
+
     // 隐形热区：用于图片上已经画好按钮外观的场景（帮助/关于页的链接）
     class HotArea : public Control {
     public:
@@ -237,15 +289,24 @@ namespace jark::ui {
 
         void draw(UiCanvas& canvas) override;
         bool onClick(int x, int y) override;
+        bool onMouseDown(int x, int y) override;
+        bool onMouseMove(int x, int y) override;
+        bool onMouseUp(int x, int y) override;
         bool onWheel(int x, int y, int delta) override;
 
+        // 事件路由：命中坐标处最上层的控件
+        Control* controlAt(int x, int y);
         Control* find(int x, int y);
+
+        // 拖动中的控件：按下时捕获，移动/抬起都发给它
+        Control* capturedControl = nullptr;
 
     private:
         struct Entry {
             ControlPtr control;
             int height = 0;
             int gap = 0;
+            Rect logical; // 覆盖层用：始终保存逻辑坐标，避免重绘时被重复换算
         };
         std::vector<Entry> entries_;
         std::vector<Entry> overlays_;

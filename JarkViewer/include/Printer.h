@@ -3,6 +3,7 @@
 #include "MatWindow.h"
 #include "Localization.h"
 #include "TextDrawer.h"
+#include "UiFramework.h"
 
 // 全局变量存储UI状态
 struct PrintParams {
@@ -11,8 +12,8 @@ struct PrintParams {
     //double leftMargin = 5.0;      // 左边距百分比
     //double rightMargin = 5.0;     // 右边距百分比
     //int layoutMode = 0;           // 0=适应, 1=填充, 2=原始比例
-    uint32_t brightness = 100;      // 亮度调整 (0 ~ 200)
-    uint32_t contrast = 100;        // 对比度调整 (0 ~ 200)
+    int brightness = 100;           // 亮度调整 (0 ~ 200)
+    int contrast = 100;             // 对比度调整 (0 ~ 200)
     uint32_t colorMode = 1;         // 颜色模式 0:彩色  1:黑白  2:黑白文档 3:黑白抖动(二值像素)
     bool invertColors = false;      // 是否反相
 
@@ -29,48 +30,37 @@ class Printer : public MatWindow {
 private:
     static inline const wchar_t* windowsClassName = L"JarkPrinterWnd";
 
-    const int winWidth = 800;
-    const int winHeight = 950;
+    // 逻辑尺寸：物理像素由 MatWindow/UiCanvas 按 DPI 换算
+    static constexpr int kLogicalWidth = 800;
+    static constexpr int kLogicalHeight = 950;
 
     PrintParams params{};
     TextDrawer textDrawer;
     cv::Mat printerRes, buttonPrint, buttonNormal, buttonInvert, trackbarBg;
+    std::vector<cv::Mat> buttonColorMode;
     cv::Mat m_inputBgrMat;  // 输入的图像
     cv::Mat m_uiCanvas;     // UI 画布
-    std::vector<cv::Mat> buttonColorMode;
+
+    // 控件树：顶栏（模式/正反色/打印）+ 两条拖动条 + 打印按钮热区
+    std::unique_ptr<jark::ui::Panel> root;   // 控件树（控件由它持有）
 
     void Init() {
-        textDrawer.setSize(24);
-
-        rcFileInfo rc;
-        rc = jarkUtils::GetResource(IDB_PNG_PRINTER_RES, L"PNG");
+        rcFileInfo rc = jarkUtils::GetResource(IDB_PNG_PRINTER_RES, L"PNG");
         printerRes = cv::imdecode(cv::Mat(1, (int)rc.size, CV_8UC1, (uint8_t*)rc.ptr), cv::IMREAD_UNCHANGED);
-        m_uiCanvas = cv::Mat(winHeight, winWidth, CV_8UC4, jarkUtils::to_cv_scalar(GlobalVar::currentTheme.BG));
 
-        if (jark::prefersChineseResources()) {
-            buttonColorMode.push_back(printerRes({ 0, 0, 400, 50 }));
-            buttonColorMode.push_back(printerRes({ 400, 0, 400, 50 }));
-            buttonColorMode.push_back(printerRes({ 0, 50, 400, 50 }));
-            buttonColorMode.push_back(printerRes({ 400, 50, 400, 50 }));
+        const bool chinese = jark::prefersChineseResources();
+        const int baseX = chinese ? 0 : 800;
 
-            buttonNormal = printerRes({ 0, 100, 200, 50 });
-            buttonInvert = printerRes({ 200, 100, 200, 50 });
-
-            buttonPrint = printerRes({ 400, 100, 200, 50 });
-            trackbarBg = printerRes({ 0, 150, 800, 100 });
-        }
-        else {
-            buttonColorMode.push_back(printerRes({ 800, 0, 400, 50 }));
-            buttonColorMode.push_back(printerRes({ 1200, 0, 400, 50 }));
-            buttonColorMode.push_back(printerRes({ 800, 50, 400, 50 }));
-            buttonColorMode.push_back(printerRes({ 1200, 50, 400, 50 }));
-
-            buttonNormal = printerRes({ 800, 100, 200, 50 });
-            buttonInvert = printerRes({ 1000, 100, 200, 50 });
-
-            buttonPrint = printerRes({ 1200, 100, 200, 50 });
-            trackbarBg = printerRes({ 800, 150, 800, 100 });
-        }
+        buttonColorMode = {
+            printerRes({ baseX, 0, 400, 50 }),
+            printerRes({ baseX + 400, 0, 400, 50 }),
+            printerRes({ baseX, 50, 400, 50 }),
+            printerRes({ baseX + 400, 50, 400, 50 }),
+        };
+        buttonNormal = printerRes({ baseX, 100, 200, 50 });
+        buttonInvert = printerRes({ baseX + 200, 100, 200, 50 });
+        buttonPrint = printerRes({ baseX + 400, 100, 200, 50 });
+        trackbarBg = printerRes({ baseX, 150, 800, 100 });
 
         params.brightness = GlobalVar::settingParameter.printerBrightness;
         params.contrast = GlobalVar::settingParameter.printerContrast;
@@ -82,6 +72,77 @@ private:
         if (params.contrast > 200) params.contrast = 100;
         if (params.colorMode > 3) params.colorMode = 1;
     }
+
+    // 画布与控件树依赖窗口 DPI，必须在窗口创建之后建立
+    void initCanvas() {
+        textDrawer.setSize(dp(24));
+        m_uiCanvas = cv::Mat(dp(kLogicalHeight), dp(kLogicalWidth), CV_8UC4,
+            jarkUtils::to_cv_scalar(GlobalVar::currentTheme.BG));
+
+        const bool dark = GlobalVar::isCurrentUIDarkMode;
+
+        root = std::make_unique<jark::ui::Panel>();
+
+        // 顶栏：颜色模式（四选一，只画选中项）
+        auto colorModeGroup = std::make_unique<jark::ui::ImageRadioGroup>(
+            buttonColorMode,
+            [this]() { return static_cast<int>(params.colorMode); },
+            [this](int index) {
+                // 从黑白文档/抖动切回彩色或黑白时恢复默认亮度对比度
+                if (params.colorMode >= 2 && index <= 1) {
+                    params.brightness = 100;
+                    params.contrast = 100;
+                }
+                params.colorMode = static_cast<uint32_t>(index);
+                if (index == 2) { // 黑白文档
+                    params.brightness = 160;
+                    params.contrast = 180;
+                }
+                else if (index == 3) { // 黑白抖动
+                    params.brightness = 80;
+                    params.contrast = 100;
+                }
+                isNeedRefreshUI = true;
+            },
+            dark, true);
+        root->overlay(std::move(colorModeGroup), { 0, 0, 400, 50 });
+
+        // 正色 / 反色
+        auto invertGroup = std::make_unique<jark::ui::ImageRadioGroup>(
+            std::vector<cv::Mat>{ buttonNormal, buttonInvert },
+            [this]() { return params.invertColors ? 1 : 0; },
+            [this](int index) {
+                params.invertColors = index == 1;
+                isNeedRefreshUI = true;
+            },
+            dark);
+        root->overlay(std::move(invertGroup), { 400, 0, 200, 50 });
+
+        // 打印按钮（图片 + 两个热区：另存为 / 确定）
+        root->overlay(std::make_unique<jark::ui::ImageView>(&buttonPrint), { 600, 0, 200, 50 });
+        root->overlay(std::make_unique<jark::ui::HotArea>([this]() { params.saveToFile = true; }), { 600, 0, 100, 50 });
+        root->overlay(std::make_unique<jark::ui::HotArea>([this]() {
+            params.confirmed = true;
+            PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+        }), { 700, 0, 100, 50 });
+
+        // 拖动条背景图（深色主题下反相；成员持有以保证 ImageView 引用的生命周期）
+        trackBackgroundImage = trackbarBg;
+        if (dark) {
+            std::vector<cv::Mat> channels(4);
+            cv::split(trackbarBg, channels);
+            for (int i = 0; i < 3; ++i)
+                channels[i] = 255 - channels[i];
+            cv::merge(channels, trackBackgroundImage);
+        }
+        root->overlay(std::make_unique<jark::ui::ImageView>(&trackBackgroundImage), { 0, 50, 800, 100 });
+
+        // 亮度 / 对比度（轨道与原资源图对齐：x 250 ~ 750）
+        root->overlay(std::make_unique<jark::ui::Slider>("", &params.brightness, 200, 250, 500), { 0, 50, 800, 50 });
+        root->overlay(std::make_unique<jark::ui::Slider>("", &params.contrast, 200, 250, 500), { 0, 100, 800, 50 });
+    }
+
+    cv::Mat trackBackgroundImage; // 拖动条背景
 
 public:
     static inline volatile bool isWorking = false;
@@ -361,180 +422,84 @@ public:
         }
     }
 
-    // 反相
-    cv::Mat toInvertedMat(const cv::Mat& src) {
-        std::vector<cv::Mat> bgra(4);
-        cv::split(src, bgra);
-
-        // 仅对 B、G、R 通道取反 (255 - pixel_value)
-        bgra[0] = 255 - bgra[0]; // B
-        bgra[1] = 255 - bgra[1]; // G
-        bgra[2] = 255 - bgra[2]; // R
-
-        cv::Mat dst;
-        cv::merge(bgra, dst);
-        return dst;
-    }
-
     void onPaint(HDC hdc) override {
         if (!m_uiCanvas.empty())
             blitMat(hdc, m_uiCanvas);
     }
 
+    // 鼠标事件统一交给控件树处理（拖动、点击都在控件内部完成）
     void onLButtonDown() override {
-        params.mousePressing = true;
+        if (!root)
+            return;
 
-        if ((200 < m_x) && (m_x <= 800) && (50 < m_y) && (m_y < 100)) {
-            params.mousePressingBrightnessBar = true;
-            params.brightness = m_x < 250 ? 0 : (m_x > 750 ? 200 : ((m_x - 250) * 200 / 500));
+        jark::ui::UiCanvas canvas(m_uiCanvas, textDrawer, GlobalVar::currentTheme, uiScale());
+        rebuildLayout(canvas);
+        if (root->onMouseDown(m_x, m_y))
             isNeedRefreshUI = true;
-        }
-
-        if ((200 < m_x) && (m_x <= 800) && (100 < m_y) && (m_y < 150)) {
-            params.mousePressingContrastBar = true;
-            params.contrast = m_x < 250 ? 0 : (m_x > 750 ? 200 : ((m_x - 250) * 200 / 500));
-            isNeedRefreshUI = true;
-        }
-
-        if ((0 < m_x) && (m_x < 100) && (m_y < 50)) { // 彩色
-            if (params.colorMode != 0) {
-                if (params.colorMode >= 2) { // 若之前是黑白文档/抖动模式，则恢复默认亮度对比度
-                    params.brightness = 100;
-                    params.contrast = 100;
-                }
-                params.colorMode = 0;
-                isNeedRefreshUI = true;
-            }
-        }
-
-        if ((100 < m_x) && (m_x < 200) && (m_y < 50)) { // 黑白
-            if (params.colorMode != 1) {
-                if (params.colorMode >= 2) { // 若之前是黑白文档/抖动模式，则恢复默认亮度对比度
-                    params.brightness = 100;
-                    params.contrast = 100;
-                }
-                params.colorMode = 1;
-                isNeedRefreshUI = true;
-            }
-        }
-
-        if ((200 < m_x) && (m_x < 300) && (m_y < 50)) { // 黑白文档
-            if (params.colorMode != 2) {
-                params.colorMode = 2;
-                params.brightness = 160;
-                params.contrast = 180;
-                isNeedRefreshUI = true;
-            }
-        }
-
-        if ((300 < m_x) && (m_x < 400) && (m_y < 50)) { // 黑白抖动
-            if (params.colorMode != 3) {
-                params.colorMode = 3;
-                params.brightness = 80;
-                params.contrast = 100;
-                isNeedRefreshUI = true;
-            }
-        }
-
-        if ((400 < m_x) && (m_x < 500) && (m_y < 50)) { // 正色
-            if (params.invertColors) {
-                params.invertColors = false;
-                isNeedRefreshUI = true;
-            }
-        }
-        if ((500 < m_x) && (m_x < 600) && (m_y < 50)) { // 反色
-            if (!params.invertColors) {
-                params.invertColors = true;
-                isNeedRefreshUI = true;
-            }
-        }
     }
 
     void onLButtonUp() override {
-        params.mousePressing = false;
-        params.mousePressingBrightnessBar = false;
-        params.mousePressingContrastBar = false;
+        if (!root)
+            return;
 
-        if ((600 < m_x) && (m_x < 700) && (m_y < 50)) { //另存为
-            params.saveToFile = true;
-        }
-        if ((700 < m_x) && (m_x < 800) && (m_y < 50)) { // 确定按钮
-            params.confirmed = true;
-            PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
-        }
-    }
-
-    void onRButtonUp() override {
-        if (GlobalVar::settingParameter.rightClickAction == 1) {
-            PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
-        }
+        if (root->onMouseUp(m_x, m_y))
+            isNeedRefreshUI = true;
     }
 
     void onMouseMove(WPARAM keyState) override {
-        if (params.mousePressing) {
-            if (params.mousePressingBrightnessBar) {
-                params.brightness = m_x < 250 ? 0 : (m_x > 750 ? 200 : ((m_x - 250) * 200 / 500));
-                isNeedRefreshUI = true;
-            }
-            else if (params.mousePressingContrastBar) {
-                params.contrast = m_x < 250 ? 0 : (m_x > 750 ? 200 : ((m_x - 250) * 200 / 500));
-                isNeedRefreshUI = true;
-            }
-        }
+        (void)keyState;
+        if (!root)
+            return;
+
+        if (root->onMouseMove(m_x, m_y))
+            isNeedRefreshUI = true;
     }
 
     void onMouseWheel(int delta) override {
-        if ((100 < m_x) && (m_x < 800) && (50 < m_y) && (m_y < 100)) {
-            params.brightness += (delta > 0) ? 1 : -1;
+        if (!root)
+            return;
+
+        jark::ui::UiCanvas canvas(m_uiCanvas, textDrawer, GlobalVar::currentTheme, uiScale());
+        rebuildLayout(canvas);
+        if (root->onWheel(m_x, m_y, delta))
             isNeedRefreshUI = true;
-            if (params.brightness > INT_MAX) params.brightness = 0;
-            if (params.brightness > 200) params.brightness = 200;
-        }
-        else if ((100 < m_x) && (m_x < 800) && (100 < m_y) && (m_y < 150)) {
-            params.contrast += (delta > 0) ? 1 : -1;
-            isNeedRefreshUI = true;
-            if (params.contrast > INT_MAX) params.contrast = 0;
-            if (params.contrast > 200) params.contrast = 200;
-        }
+    }
+
+    void onRButtonUp() override {
+        if (GlobalVar::settingParameter.rightClickAction == 1)
+            PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
     }
 
     void onKeyDown(WPARAM key) override {
-        if (key == VK_ESCAPE) {
+        if (key == VK_ESCAPE)
             PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
-        }
+    }
+
+    // 控件树每次绘制前排布一次（Panel 在 draw 时给子控件分配矩形）
+    void rebuildLayout(jark::ui::UiCanvas& canvas) {
+        root->bounds = { 0, 0, canvas.width(), canvas.height() };
     }
 
     void drawingUI() override {
-        cv::Mat adjusted = params.previewImage.clone();
-        ApplyImageAdjustments(adjusted, params.brightness, params.contrast, params.colorMode, params.invertColors);
-        cv::cvtColor(adjusted, adjusted, cv::COLOR_BGR2BGRA);
+        jark::ui::UiCanvas canvas(m_uiCanvas, textDrawer, GlobalVar::currentTheme, uiScale());
+        canvas.fill({ 0, 0, canvas.width(), canvas.height() }, GlobalVar::currentTheme.BG);
 
-        // 扩展为正方形画布
-        int outputSize = std::max(adjusted.rows, adjusted.cols);
-        int x = (outputSize - adjusted.cols) / 2;
-        int y = (outputSize - adjusted.rows) / 2;
+        // 预览图：按当前参数处理后在下方居中等比显示
+        if (!params.previewImage.empty()) {
+            cv::Mat adjusted = params.previewImage.clone();
+            ApplyImageAdjustments(adjusted, params.brightness, params.contrast, params.colorMode, params.invertColors);
+            cv::cvtColor(adjusted, adjusted, cv::COLOR_BGR2BGRA);
 
-        // 画布高度+150 放置三行底栏：两行拖动条，一行按钮
-        cv::Mat roi = m_uiCanvas(cv::Rect(x, y + 150, adjusted.cols, adjusted.rows));
-        adjusted.copyTo(roi);
-        
-        if (GlobalVar::isCurrentUIDarkMode) {
-            jarkUtils::overlayImg(m_uiCanvas, toInvertedMat(buttonColorMode[params.colorMode]), 0, 0);
-            jarkUtils::overlayImg(m_uiCanvas, toInvertedMat(params.invertColors ? buttonInvert : buttonNormal), 400, 0);
-            jarkUtils::overlayImg(m_uiCanvas, toInvertedMat(buttonPrint), 600, 0);
-            jarkUtils::overlayImg(m_uiCanvas, toInvertedMat(trackbarBg), 0, 50);
+            const int offsetX = (canvas.width() - adjusted.cols) / 2;
+            const int offsetY = canvas.dp(150) + ((canvas.height() - canvas.dp(150)) - adjusted.rows) / 2;
+            if (offsetX >= 0 && offsetY >= canvas.dp(150) &&
+                offsetX + adjusted.cols <= canvas.width() && offsetY + adjusted.rows <= canvas.height()) {
+                adjusted.copyTo(canvas.raw()(cv::Rect(offsetX, offsetY, adjusted.cols, adjusted.rows)));
+            }
         }
-        else {
-            jarkUtils::overlayImg(m_uiCanvas, buttonColorMode[params.colorMode], 0, 0);
-            jarkUtils::overlayImg(m_uiCanvas, params.invertColors ? buttonInvert : buttonNormal, 400, 0);
-            jarkUtils::overlayImg(m_uiCanvas, buttonPrint, 600, 0);
-            jarkUtils::overlayImg(m_uiCanvas, trackbarBg, 0, 50);
-        }
-        textDrawer.putAlignLeft(m_uiCanvas, { 120, 60, 200, 900 }, std::format("{:3} %", params.brightness).c_str(), GlobalVar::currentTheme.FG);
-        textDrawer.putAlignLeft(m_uiCanvas, { 120, 110, 200, 900 }, std::format("{:3} %", params.contrast).c_str(), GlobalVar::currentTheme.FG);
 
-        drawProgressBar(m_uiCanvas, { 250, 60, 500, 30 }, params.brightness / 200.0);
-        drawProgressBar(m_uiCanvas, { 250, 110, 500, 30 }, params.contrast / 200.0);
+        rebuildLayout(canvas);
+        root->draw(canvas);
     }
 
     void idleTask() override {
@@ -567,7 +532,9 @@ public:
             return false;
         }
 
-        double scale = (double)winWidth / std::max(m_inputBgrMat.rows, m_inputBgrMat.cols);
+        // 预览按物理像素宽度缩放（高 DPI 下画布是物理像素）
+        const int previewWidth = dp(kLogicalWidth);
+        double scale = (double)previewWidth / std::max(m_inputBgrMat.rows, m_inputBgrMat.cols);
         cv::resize(m_inputBgrMat, params.previewImage, cv::Size(), scale, scale);
 
         // 若长宽差距很极端，超长或超宽，缩放可能异常
@@ -576,10 +543,12 @@ public:
         }
 
         // 创建UI窗口
-        if (!createWindow(winWidth, winHeight, windowsClassName, getUIStringW(40)))
+        if (!createWindow(kLogicalWidth, kLogicalHeight, windowsClassName, getUIStringW(40)))
             return false;
 
         hwnd = m_hwnd;
+        initCanvas();
+        isNeedRefreshUI = true;
         runMessageLoop();
 
         // 用户是否确定打印

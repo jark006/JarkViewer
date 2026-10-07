@@ -180,6 +180,144 @@ bool TabBar::onClick(int x, int y) {
     return true;
 }
 
+// —— Slider ——
+
+bool Slider::setFromX(int x) {
+    if (!value_)
+        return false;
+
+    // 轨道几何在绘制时换算为物理像素；事件坐标也是物理像素
+    const int trackWidth = trackWidthPhysical_ > 0 ? trackWidthPhysical_ : 1;
+    const int relative = x - (bounds.x + trackXPhysical_);
+    int newValue = relative <= 0 ? 0
+        : (relative >= trackWidth ? maxValue_ : relative * maxValue_ / trackWidth);
+
+    newValue = std::clamp(newValue, 0, maxValue_);
+    if (*value_ == newValue)
+        return false;
+
+    *value_ = newValue;
+    return true;
+}
+
+void Slider::draw(UiCanvas& canvas) {
+    if (!value_)
+        return;
+
+    const int value = std::clamp(*value_, 0, maxValue_);
+    const int trackHeight = canvas.dp(30);
+    const int trackY = bounds.y + (bounds.height - trackHeight) / 2;
+    trackXPhysical_ = canvas.dp(trackX_);
+    trackWidthPhysical_ = canvas.dp(trackWidth_);
+    const Rect track{ bounds.x + trackXPhysical_, trackY, trackWidthPhysical_, trackHeight };
+
+    canvas.stroke(track, 0xFF0000FF, canvas.dp(2));
+
+    const int filled = track.width * value / maxValue_;
+    if (filled > 0) {
+        Rect fill = track;
+        fill.width = filled;
+        canvas.fill(fill, 0xFF3F48CC);
+    }
+
+    // 数值画在轨道左侧的标签区之后（与背景资源图上的标题错开）
+    const int valueX = canvas.dp(trackX_ - 130);
+    canvas.text({ bounds.x + valueX, bounds.y, canvas.dp(120), bounds.height },
+        std::format("{:3} %", value), canvas.theme().FG, Align::Left);
+}
+
+bool Slider::onClick(int x, int y) {
+    return bounds.contains(x, y) && setFromX(x);
+}
+
+bool Slider::onMouseDown(int x, int y) {
+    if (!bounds.contains(x, y))
+        return false;
+
+    dragging_ = true;
+    setFromX(x);
+    return true;
+}
+
+bool Slider::onMouseMove(int x, int y) {
+    if (!dragging_)
+        return false;
+
+    (void)y;
+    setFromX(x);
+    return true;
+}
+
+bool Slider::onMouseUp(int x, int y) {
+    (void)x; (void)y;
+    const bool wasDragging = dragging_;
+    dragging_ = false;
+    return wasDragging;
+}
+
+bool Slider::onWheel(int x, int y, int delta) {
+    if (!value_ || !bounds.contains(x, y))
+        return false;
+
+    const int step = delta > 0 ? 1 : -1;
+    const int newValue = std::clamp(*value_ + step, 0, maxValue_);
+    if (newValue == *value_)
+        return false;
+
+    *value_ = newValue;
+    return true;
+}
+
+// —— ImageRadioGroup ——
+
+void ImageRadioGroup::draw(UiCanvas& canvas) {
+    if (images_.empty() || !getValue_)
+        return;
+
+    int index = getValue_();
+    if (index < 0 || index >= static_cast<int>(images_.size()))
+        index = 0;
+
+    cv::Mat inverted;
+    const auto prepare = [&](const cv::Mat& source) -> const cv::Mat& {
+        if (!invertInDarkMode_ || source.channels() != 4)
+            return source;
+
+        std::vector<cv::Mat> channels(4);
+        cv::split(source, channels);
+        for (int i = 0; i < 3; ++i)
+            channels[i] = 255 - channels[i];
+        cv::merge(channels, inverted);
+        return inverted;
+    };
+
+    if (drawSelectedOnly_) {
+        canvas.image(prepare(images_[index]), bounds);
+        return;
+    }
+
+    const int itemWidth = bounds.width / static_cast<int>(images_.size());
+    for (size_t i = 0; i < images_.size(); ++i) {
+        const Rect item{ bounds.x + itemWidth * static_cast<int>(i), bounds.y, itemWidth, bounds.height };
+        canvas.image(prepare(images_[i]), item);
+    }
+}
+
+bool ImageRadioGroup::onClick(int x, int y) {
+    if (!bounds.contains(x, y) || images_.empty() || !setValue_)
+        return false;
+
+    const int itemWidth = bounds.width / static_cast<int>(images_.size());
+    const int index = (x - bounds.x) / (itemWidth > 0 ? itemWidth : 1);
+    if (index < 0 || index >= static_cast<int>(images_.size()))
+        return false;
+    if (getValue_ && getValue_() == index)
+        return false;
+
+    setValue_(index);
+    return true;
+}
+
 // —— HotArea ——
 
 bool HotArea::onClick(int x, int y) {
@@ -305,8 +443,9 @@ Panel& Panel::overlay(ControlPtr control, Rect logicalBounds) {
     if (!control)
         return *this;
 
-    control->bounds = logicalBounds; // 逻辑坐标，绘制时再换算
-    overlays_.push_back(Entry{ std::move(control), 0, 0 });
+    Entry entry{ std::move(control), 0, 0, logicalBounds };
+    entry.control->bounds = logicalBounds;
+    overlays_.push_back(std::move(entry));
     return *this;
 }
 
@@ -323,13 +462,29 @@ void Panel::draw(UiCanvas& canvas) {
     }
 
     for (auto& entry : overlays_) {
-        entry.control->bounds = { bounds.x + canvas.dp(entry.control->bounds.x),
-                                  bounds.y + canvas.dp(entry.control->bounds.y),
-                                  canvas.dp(entry.control->bounds.width),
-                                  canvas.dp(entry.control->bounds.height) };
+        // 始终用保存的逻辑坐标换算，重复绘制不会累积缩放
+        entry.control->bounds = { bounds.x + canvas.dp(entry.logical.x),
+                                  bounds.y + canvas.dp(entry.logical.y),
+                                  canvas.dp(entry.logical.width),
+                                  canvas.dp(entry.logical.height) };
         if (entry.control->visible)
             entry.control->draw(canvas);
     }
+}
+
+Control* Panel::controlAt(int x, int y) {
+    for (auto it = overlays_.rbegin(); it != overlays_.rend(); ++it) {
+        Control* control = it->control.get();
+        if (control->visible && control->enabled && control->bounds.contains(x, y))
+            return control;
+    }
+
+    for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+        Control* control = it->control.get();
+        if (control->visible && control->enabled && control->bounds.contains(x, y))
+            return control;
+    }
+    return nullptr;
 }
 
 Control* Panel::find(int x, int y) {
@@ -357,6 +512,35 @@ bool Panel::onClick(int x, int y) {
             continue;
 
         control->onClick(x, y); // 命中即消费，避免穿透到下层控件
+        return true;
+    }
+    return false;
+}
+
+bool Panel::onMouseDown(int x, int y) {
+    Control* control = controlAt(x, y);
+    if (!control)
+        return false;
+
+    if (control->onMouseDown(x, y)) {
+        capturedControl = control;
+        return true;
+    }
+    return control->bounds.contains(x, y);
+}
+
+bool Panel::onMouseMove(int x, int y) {
+    if (capturedControl) {
+        capturedControl->onMouseMove(x, y);
+        return true;
+    }
+    return false;
+}
+
+bool Panel::onMouseUp(int x, int y) {
+    if (capturedControl) {
+        capturedControl->onMouseUp(x, y);
+        capturedControl = nullptr;
         return true;
     }
     return false;
