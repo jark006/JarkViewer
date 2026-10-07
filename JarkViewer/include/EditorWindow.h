@@ -11,8 +11,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -188,6 +190,34 @@ private:
         zoomFactor_ = 1.0;
         panX_ = 0.0;
         panY_ = 0.0;
+    }
+
+    // 当前显示比例（相对图像原始像素）
+    double displayScale() const {
+        const ViewTransform vt = viewTransform(canvasArea());
+        return vt.valid ? vt.scale : 1.0;
+    }
+
+    // 把缩放比例设为「适应窗口」的 times 倍，并居中
+    void setZoom(double times) {
+        zoomFactor_ = std::clamp(times, 0.05, 40.0);
+        panX_ = 0.0;
+        panY_ = 0.0;
+        isNeedRefreshUI = true;
+    }
+
+    // 1:1 显示：一个图像像素对应一个逻辑像素（高 DPI 下即 uiScale() 个物理像素）
+    void zoomToActualPixels() {
+        const double fitScale = displayScale() / zoomFactor_;
+        if (fitScale > 0.0001)
+            setZoom(uiScale() / fitScale);
+    }
+
+    void showZoomStatus() {
+        // 百分比按逻辑像素计（与「1:1」的定义一致）
+        const double percent = displayScale() / uiScale() * 100.0;
+        setStatusText(std::format("{}%", static_cast<int>(std::lround(percent))));
+        statusUntil_ = nowSeconds() + 2.0; // 短暂显示后回到操作提示
     }
 
     // —— 图像显示 ——
@@ -446,8 +476,19 @@ private:
             return true;
         }
 
-        if (!drawingShape_)
-            return false;
+        // 窗口类没有 CS_DBLCLKS，自己按系统双击时间与距离判断
+        const auto now = std::chrono::steady_clock::now();
+        const bool isDoubleClick = lastClickTime_ != std::chrono::steady_clock::time_point{} &&
+            now - lastClickTime_ < std::chrono::milliseconds(::GetDoubleClickTime()) &&
+            std::abs(x - lastClickX_) < 8 && std::abs(y - lastClickY_) < 8;
+        lastClickTime_ = now;
+        lastClickX_ = x;
+        lastClickY_ = y;
+
+        if (!drawingShape_) {
+            // 没有正在绘制的图形（例如未按下就抬起）：双击切换缩放
+            return isDoubleClick && handleDoubleClick();
+        }
 
         drawingShape_ = false;
 
@@ -459,6 +500,9 @@ private:
 
         document_.commit();
         rebuildDisplay();
+
+        if (isDoubleClick)
+            handleDoubleClick();
         return true;
     }
 
@@ -483,11 +527,26 @@ private:
             panX_ += x - (after.offsetX + imageX * after.scale);
             panY_ += y - (after.offsetY + imageY * after.scale);
         }
+
+        showZoomStatus();
+        return true;
+    }
+
+    // 双击画布：在「适应窗口」与 1:1 之间切换
+    bool handleDoubleClick() {
+        if (std::abs(displayScale() - uiScale()) < 0.01)
+            setZoom(1.0); // 已经是 1:1，回到适应窗口
+        else
+            zoomToActualPixels();
+        showZoomStatus();
         return true;
     }
 
     int lastPanX_ = 0;
     int lastPanY_ = 0;
+    std::chrono::steady_clock::time_point lastClickTime_{};
+    int lastClickX_ = 0;
+    int lastClickY_ = 0;
 
     // —— 编辑操作 ——
 
@@ -867,6 +926,28 @@ protected:
             key == 'Z' ? document_.undo() : document_.redo();
             rebuildDisplay();
             isNeedRefreshUI = true;
+            return;
+        }
+
+        if (ctrl && key == 'S') {
+            saveAs();
+            return;
+        }
+
+        if (ctrl && key == 'C') {
+            copyToClipboard();
+            return;
+        }
+
+        if (ctrl && (key == '0' || key == VK_NUMPAD0)) {
+            setZoom(1.0); // 适应窗口
+            showZoomStatus();
+            return;
+        }
+
+        if (ctrl && (key == '1' || key == VK_NUMPAD1)) {
+            zoomToActualPixels(); // 1:1
+            showZoomStatus();
             return;
         }
 

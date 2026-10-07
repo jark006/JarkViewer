@@ -24,6 +24,7 @@ param(
     [string]$Click = "",
     [string]$Hover = "",
     [string]$Drag = "",
+    [int]$SegmentDelayMs = -1,   # delay between drag segments (default: $AfterKeysMs)
     [int]$LogicWidth = 1000,
     [int]$WaitMs = 2500,
     [int]$AfterKeysMs = 1200,
@@ -207,17 +208,28 @@ try {
             [void][JarkCapture]::ClientToScreen($hwnd, [ref]$to)
 
             [void][JarkCapture]::SetCursorPos($from.X, $from.Y)
-            Start-Sleep -Milliseconds 150
-            [JarkCapture]::mouse_event([JarkCapture]::LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
-            for ($step = 1; $step -le 6; $step++) {
+
+            if ($from.X -eq $to.X -and $from.Y -eq $to.Y) {
+                # plain click: keep it short so repeated segments register as a double click
                 Start-Sleep -Milliseconds 60
-                [void][JarkCapture]::SetCursorPos(
-                    [int]($from.X + ($to.X - $from.X) * $step / 6),
-                    [int]($from.Y + ($to.Y - $from.Y) * $step / 6))
+                [JarkCapture]::mouse_event([JarkCapture]::LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+                Start-Sleep -Milliseconds 60
             }
-            Start-Sleep -Milliseconds 100
+            else {
+                Start-Sleep -Milliseconds 150
+                [JarkCapture]::mouse_event([JarkCapture]::LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+                for ($step = 1; $step -le 6; $step++) {
+                    Start-Sleep -Milliseconds 60
+                    [void][JarkCapture]::SetCursorPos(
+                        [int]($from.X + ($to.X - $from.X) * $step / 6),
+                        [int]($from.Y + ($to.Y - $from.Y) * $step / 6))
+                }
+                Start-Sleep -Milliseconds 100
+            }
+
             [JarkCapture]::mouse_event([JarkCapture]::LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
-            Start-Sleep -Milliseconds $AfterKeysMs
+            if ($SegmentDelayMs -ge 0) { Start-Sleep -Milliseconds $SegmentDelayMs }
+            else { Start-Sleep -Milliseconds $AfterKeysMs }
         }
     }
 
