@@ -64,8 +64,9 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   宿主模块是 `JarkViewer/include/UiHost.h` 与 `src/UiHost.cpp`：创建上下文/后端、深浅两套主题
   （跟随 `GlobalVar::isCurrentUIDarkMode`）、按窗口 DPI 缩放字号与样式、系统字体（Segoe UI +
   微软雅黑 + 图标字体合并，1.92+ 动态字形加载）、以及把 `cv::Mat` 上传成 `ImTextureID` 的纹理池。
-  界面里的符号图标统一写在 `UiHost.h` 的 `jark::ui::icon`（`Glyph<码位>`）：几何符号取
-  普通 Unicode（↗ ╱ ▦），功能图标取 **Segoe Fluent Icons / Segoe MDL2 Assets** 的私用区码位，
+  界面里的符号图标统一写在 `UiHost.h` 的 `jark::ui::icon`（`Glyph<码位>`）：**优先用普通几何
+  符号**（□ ○ 〰 ▣ ↗ ╱ ▦，外形接近即可，观感统一），只有确实没有合适几何符号的按钮
+  （撤销/重做/打印/设置…）才用 **Segoe Fluent Icons / Segoe MDL2 Assets** 的私用区码位。
   **加新图标必须先确认字形存在**——用 `python tools/gen_icon_probe.py` 临时把 `DrawUi` 换成
   码位浏览器，截一张图看（`--revert` 还原）；码位猜错会画成豆腐块。
   业务侧只需实现 `D3D11App::DrawUi()` 提交界面，主循环在 `PresentFrame()` 里完成

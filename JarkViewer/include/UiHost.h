@@ -68,6 +68,10 @@ namespace jark::ui {
         constexpr Glyph<0x2571> kLine;          // ╱ 直线
         constexpr Glyph<0x25A6> kMosaic;        // ▦ 马赛克
         constexpr Glyph<0x2715> kClose;         // ✕ 关闭
+        constexpr Glyph<0x25A1> kRect;          // □ 矩形（标注工具）
+        constexpr Glyph<0x25CB> kEllipse;       // ○ 椭圆（标注工具）
+        constexpr Glyph<0x3030> kPen;           // 〰 画笔（标注工具）
+        constexpr Glyph<0x25A3> kCrop;          // ▣ 裁剪（标注工具）
 
         // 以下取自 Segoe Fluent Icons / Segoe MDL2 Assets（已确认字形存在）
         constexpr Glyph<0xE7A7> kUndo;          // 撤销 / 逆时针
@@ -82,10 +86,6 @@ namespace jark::ui {
         constexpr Glyph<0xE8B7> kFolder;        // 文件夹
         constexpr Glyph<0xE8E5> kOpenFile;      // 打开
         constexpr Glyph<0xE91B> kPhoto;         // 图片
-        constexpr Glyph<0xE739> kRect;          // ⬜ 矩形（标注工具）
-        constexpr Glyph<0xEA3A> kEllipse;       // ⭕ 椭圆（标注工具）
-        constexpr Glyph<0xE70F> kPen;           // ✏ 画笔（标注工具）
-        constexpr Glyph<0xE7A8> kCrop;          // ⌐ 裁剪（标注工具）
     }
 
     class UiHost {
