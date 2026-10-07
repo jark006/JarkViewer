@@ -2,7 +2,7 @@
 
 #include "ImageAnnotator.h"
 
-#include "TextDrawer.h"
+#include "TextRenderer.h"
 #include "jarkUtils.h"
 
 #include <algorithm>
@@ -120,7 +120,7 @@ cv::Rect annotationBounds(const Annotation& anno) {
     return { box.x - margin, box.y - margin, box.width + margin * 2, box.height + margin * 2 };
 }
 
-void drawAnnotation(cv::Mat& canvas, const Annotation& anno, TextDrawer& textDrawer) {
+void drawAnnotation(cv::Mat& canvas, const Annotation& anno, TextRenderer& textDrawer) {
     if (!isAnnoCanvas(canvas) || anno.points.empty())
         return;
 

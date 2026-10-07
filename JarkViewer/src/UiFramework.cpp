@@ -1,6 +1,6 @@
 #include "UiFramework.h"
 
-#include "TextDrawer.h"
+#include "TextRenderer.h"
 
 namespace jark::ui {
 namespace {
@@ -210,7 +210,7 @@ bool TabBar::onClick(int x, int y) {
 // —— Slider ——
 
 bool Slider::setFromX(int x) {
-    if (!value_)
+    if (!getValue_ || !setValue_)
         return false;
 
     // 轨道几何在绘制时换算为物理像素；事件坐标也是物理像素
@@ -220,18 +220,18 @@ bool Slider::setFromX(int x) {
         : (relative >= trackWidth ? maxValue_ : relative * maxValue_ / trackWidth);
 
     newValue = std::clamp(newValue, 0, maxValue_);
-    if (*value_ == newValue)
+    if (getValue_() == newValue)
         return false;
 
-    *value_ = newValue;
+    setValue_(newValue);
     return true;
 }
 
 void Slider::draw(UiCanvas& canvas) {
-    if (!value_)
+    if (!getValue_)
         return;
 
-    const int value = std::clamp(*value_, 0, maxValue_);
+    const int value = std::clamp(getValue_(), 0, maxValue_);
     const int trackHeight = canvas.dp(30);
     const int trackY = bounds.y + (bounds.height - trackHeight) / 2;
     trackXPhysical_ = canvas.dp(trackX_);
@@ -288,15 +288,15 @@ bool Slider::onMouseUp(int x, int y) {
 }
 
 bool Slider::onWheel(int x, int y, int delta) {
-    if (!value_ || !bounds.contains(x, y))
+    if (!getValue_ || !setValue_ || !bounds.contains(x, y))
         return false;
 
     const int step = delta > 0 ? 1 : -1;
-    const int newValue = std::clamp(*value_ + step, 0, maxValue_);
-    if (newValue == *value_)
+    const int newValue = std::clamp(getValue_() + step, 0, maxValue_);
+    if (newValue == getValue_())
         return false;
 
-    *value_ = newValue;
+    setValue_(newValue);
     return true;
 }
 

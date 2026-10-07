@@ -1,19 +1,21 @@
 #include "jarkUtils.h"
 
 #include "BatchWindow.h"
+#include "UiHost.h"
 #include "EditorWindow.h"
 #include "CanvasRenderer.h"
 #include "DecodeProbe.h"
 #include "Localization.h"
 #include "MediaPlayer.h"
 #include "VectorImage.h"
-#include "TextDrawer.h"
+#include "TextRenderer.h"
 #include "ImageDatabase.h"
 #include "Printer.h"
 #include "Setting.h"
 
 #include "D3D11App.h"
 #include <optional>
+#include <random>
 #include <ppl.h>
 #include <concrt.h>
 
@@ -268,7 +270,7 @@ public:
     int curFileIdx = -1;         // 文件在路径列表的索引
     vector<wstring> imgFileList; // 工作目录下所有图像文件路径
 
-    TextDrawer textDrawer;       // 给Mat绘制文字
+    TextRenderer textDrawer;       // 给Mat绘制文字
     std::unique_ptr<jark::MediaPlayer> mediaPlayer; // 实况照片/视频的实时播放
     cv::Mat playbackFrame;                          // 播放中的当前帧
     const ImageAsset* playedAsset = nullptr;        // 已播放过的资源（每张图只自动播一次）
@@ -809,6 +811,10 @@ public:
                 jarkUtils::ToggleFullScreen(m_hWnd);
             }break;
 
+            case 'P': { // 幻灯片播放开关
+                operateQueue.push({ ActionENUM::slideshow });
+            }break;
+
             case 'Q': {
                 operateQueue.push({ ActionENUM::rotateLeft });
             }break;
@@ -920,8 +926,11 @@ public:
                 operateQueue.push({ ActionENUM::setting, 3 });
             }break;
 
-            case VK_ESCAPE: { // ESC
-                operateQueue.push({ ActionENUM::requestExit });
+            case VK_ESCAPE: { // ESC：播放中先停止播放，否则退出
+                if (slideshowActive)
+                    operateQueue.push({ ActionENUM::slideshow });
+                else
+                    operateQueue.push({ ActionENUM::requestExit });
             }break;
 
             case VK_DELETE: { //DELETE
@@ -1015,6 +1024,10 @@ public:
 
         case ContextMenu::editImage: {
             operateQueue.push({ ActionENUM::editImage });
+        }break;
+
+        case ContextMenu::slideshow: {
+            operateQueue.push({ ActionENUM::slideshow });
         }break;
 
         case ContextMenu::toggleFullScreen: {
@@ -1421,6 +1434,7 @@ public:
 
     void updateMainCanvas() {
         PresentCanvas(mainCanvas.ptr(), mainCanvas.cols, mainCanvas.rows, (int)mainCanvas.step);
+        PresentFrame();
     }
 
 
@@ -1428,6 +1442,134 @@ public:
     const std::chrono::milliseconds frameDuration{ 10 };
     std::chrono::steady_clock::time_point lastTimestamp = std::chrono::steady_clock::now();
 
+
+    // 标题栏：[帧/总数] 缩放% 路径 旋转状态；幻灯片播放时前面加播放标记
+    void updateWindowCaption() {
+        if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size() || !curPar.imageAssetPtr)
+            return;
+
+        std::wstring str;
+        if (curPar.imageAssetPtr->format == ImageFormat::Animated && curPar.isAnimationPause) {
+            str = std::format(L"{} [{}/{}] {}% {}  ",
+                getUIStringW(9),
+                curPar.curFrameIdx + 1, curPar.curFrameIdxMax + 1,
+                curPar.zoomCur * 100ULL / curPar.ZOOM_BASE,
+                imgFileList[curFileIdx]);
+        }
+        else {
+            str = std::format(L" [{}/{}] {}% {}  ",
+                curFileIdx + 1, imgFileList.size(),
+                curPar.zoomCur * 100ULL / curPar.ZOOM_BASE,
+                imgFileList[curFileIdx]);
+        }
+
+        if (curPar.rotation)
+            str += (curPar.rotation == 1 ? getUIStringW(10) : (curPar.rotation == 3 ? getUIStringW(11) : getUIStringW(12)));
+
+        if (slideshowActive)
+            str = L"▶ " + str;
+
+        SetWindowTextW(m_hWnd, str.c_str());
+    }
+
+    // —— 幻灯片播放 ——
+
+    bool slideshowActive = false;
+    std::chrono::steady_clock::time_point slideshowNextAdvance{};
+
+    void toggleSlideshow() {
+        slideshowActive = !slideshowActive;
+        if (slideshowActive) {
+            slideshowNextAdvance = std::chrono::steady_clock::now() +
+                std::chrono::seconds(std::clamp<uint32_t>(GlobalVar::settingParameter.pptTimeout, 1, 300));
+            JARK_LOG("幻灯片播放开始：顺序={} 间隔={}s", GlobalVar::settingParameter.pptOrder,
+                GlobalVar::settingParameter.pptTimeout);
+        }
+        else {
+            JARK_LOG("幻灯片播放结束");
+        }
+        updateWindowCaption();
+    }
+
+    // 到点后切换到下一张（顺序/逆序/随机由设置决定）
+    void updateSlideshow() {
+        if (!slideshowActive)
+            return;
+
+        if (imgFileList.size() <= 1) {
+            slideshowActive = false;
+            updateWindowCaption();
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now < slideshowNextAdvance)
+            return;
+
+        slideshowNextAdvance = now +
+            std::chrono::seconds(std::clamp<uint32_t>(GlobalVar::settingParameter.pptTimeout, 1, 300));
+
+        int direction = 1;
+        switch (std::clamp<uint32_t>(GlobalVar::settingParameter.pptOrder, 0, 2)) {
+        case 1: // 逆序
+            direction = -1;
+            if (--curFileIdx < 0)
+                curFileIdx = (int)imgFileList.size() - 1;
+            break;
+
+        case 2: { // 随机（不重复当前）
+            static std::mt19937 generator(std::random_device{}());
+            std::uniform_int_distribution<int> distribution(0, (int)imgFileList.size() - 2);
+            const int candidate = distribution(generator);
+            const int next = candidate >= curFileIdx ? candidate + 1 : candidate;
+            direction = next > curFileIdx ? 1 : -1;
+            curFileIdx = next;
+        } break;
+
+        default: // 顺序
+            if (++curFileIdx >= (int)imgFileList.size())
+                curFileIdx = 0;
+            break;
+        }
+
+        switchToFile(curFileIdx, direction);
+    }
+
+    // 切换当前图片到指定索引，并把画面按方向滑动切过去（direction: +1 下一张 / -1 上一张 / 0 直接切）
+    void switchToFile(int newIndex, int direction) {
+        if (imgFileList.size() <= 1 || newIndex < 0 || newIndex >= (int)imgFileList.size())
+            return;
+
+        if (GlobalVar::settingParameter.switchImageAnimationMode) { // 开动画时才需要
+            cv::Mat srcImg = currentSourceImage();
+
+            drawCanvas(srcImg, mainCanvas); //先更新无额外按钮UI的原图
+            drawExifInfo(mainCanvas);
+        }
+
+        // 播放过的实况图，状态会变成静态图，切走前恢复一下
+        if (curPar.imageAssetPtr->format == ImageFormat::Still && !curPar.imageAssetPtr->frames.empty()) {
+            curPar.imageAssetPtr->format = ImageFormat::Animated;
+        }
+
+        curFileIdx = newIndex;
+
+        if (direction > 0)
+            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + 1) % imgFileList.size()]);
+        else
+            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + imgFileList.size() - 1) % imgFileList.size()]);
+
+        curPar.Init(winWidth, winHeight);
+
+        const int animationMode = GlobalVar::settingParameter.switchImageAnimationMode;
+        if (animationMode == 1)
+            direction > 0 ? mainCanvasSlideToNextAnimationVertical() : mainCanvasSlideToPreAnimationVertical();
+        else if (animationMode == 2)
+            direction > 0 ? mainCanvasSlideToNextAnimationHorizontal() : mainCanvasSlideToPreAnimationHorizontal();
+
+        lastTimestamp = std::chrono::steady_clock::now();
+        delayRemain = 0;
+    }
 
     // 当前应显示的图像：视频播放中优先用播放帧，否则取动图当前帧/静态图
     cv::Mat currentSourceImage() const {
@@ -1524,8 +1666,100 @@ public:
         return true;
     }
 
+    void DrawUi() override {
+        // 临时：带标签的图标码位浏览（由 tools/gen_icon_probe.py 生成）
+        jark::ui::UiHost::instance().setUiVisible(true);
+        ImGui::SetNextWindowSize({ 620, 760 }, ImGuiCond_Always);
+        ImGui::Begin("icon candidates");
+        if (ImGui::BeginTable("cand", 8, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59155>>12)), (char)(0x80|((59155>>6)&0x3F)), (char)(0x80|(59155&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E713"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59213>>12)), (char)(0x80|((59213>>6)&0x3F)), (char)(0x80|(59213&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74D"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59151>>12)), (char)(0x80|((59151>>6)&0x3F)), (char)(0x80|(59151&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70F"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59592>>12)), (char)(0x80|((59592>>6)&0x3F)), (char)(0x80|(59592&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8C8"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59304>>12)), (char)(0x80|((59304>>6)&0x3F)), (char)(0x80|(59304&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7A8"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59280>>12)), (char)(0x80|((59280>>6)&0x3F)), (char)(0x80|(59280&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E790"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59675>>12)), (char)(0x80|((59675>>6)&0x3F)), (char)(0x80|(59675&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E91B"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59621>>12)), (char)(0x80|((59621>>6)&0x3F)), (char)(0x80|(59621&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8E5"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59575>>12)), (char)(0x80|((59575>>6)&0x3F)), (char)(0x80|(59575&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8B7"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59198>>12)), (char)(0x80|((59198>>6)&0x3F)), (char)(0x80|(59198&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E73E"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59602>>12)), (char)(0x80|((59602>>6)&0x3F)), (char)(0x80|(59602&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8D2"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59689>>12)), (char)(0x80|((59689>>6)&0x3F)), (char)(0x80|(59689&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E929"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59331>>12)), (char)(0x80|((59331>>6)&0x3F)), (char)(0x80|(59331&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7C3"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59568>>12)), (char)(0x80|((59568>>6)&0x3F)), (char)(0x80|(59568&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8B0"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59305>>12)), (char)(0x80|((59305>>6)&0x3F)), (char)(0x80|(59305&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7A9"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59215>>12)), (char)(0x80|((59215>>6)&0x3F)), (char)(0x80|(59215&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74F"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59225>>12)), (char)(0x80|((59225>>6)&0x3F)), (char)(0x80|(59225&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E759"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59227>>12)), (char)(0x80|((59227>>6)&0x3F)), (char)(0x80|(59227&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E75B"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59366>>12)), (char)(0x80|((59366>>6)&0x3F)), (char)(0x80|(59366&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7E6"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59865>>12)), (char)(0x80|((59865>>6)&0x3F)), (char)(0x80|(59865&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E9D9"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59959>>12)), (char)(0x80|((59959>>6)&0x3F)), (char)(0x80|(59959&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("EA37"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59567>>12)), (char)(0x80|((59567>>6)&0x3F)), (char)(0x80|(59567&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8AF"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59559>>12)), (char)(0x80|((59559>>6)&0x3F)), (char)(0x80|(59559&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8A7"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59147>>12)), (char)(0x80|((59147>>6)&0x3F)), (char)(0x80|(59147&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70B"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59160>>12)), (char)(0x80|((59160>>6)&0x3F)), (char)(0x80|(59160&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E718"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59163>>12)), (char)(0x80|((59163>>6)&0x3F)), (char)(0x80|(59163&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E71B"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59212>>12)), (char)(0x80|((59212>>6)&0x3F)), (char)(0x80|(59212&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74C"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59269>>12)), (char)(0x80|((59269>>6)&0x3F)), (char)(0x80|(59269&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E785"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59337>>12)), (char)(0x80|((59337>>6)&0x3F)), (char)(0x80|(59337&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7C9"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59645>>12)), (char)(0x80|((59645>>6)&0x3F)), (char)(0x80|(59645&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8FD"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59717>>12)), (char)(0x80|((59717>>6)&0x3F)), (char)(0x80|(59717&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E945"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59374>>12)), (char)(0x80|((59374>>6)&0x3F)), (char)(0x80|(59374&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7EE"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59142>>12)), (char)(0x80|((59142>>6)&0x3F)), (char)(0x80|(59142&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E706"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59149>>12)), (char)(0x80|((59149>>6)&0x3F)), (char)(0x80|(59149&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70D"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59150>>12)), (char)(0x80|((59150>>6)&0x3F)), (char)(0x80|(59150&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70E"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59631>>12)), (char)(0x80|((59631>>6)&0x3F)), (char)(0x80|(59631&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8EF"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59449>>12)), (char)(0x80|((59449>>6)&0x3F)), (char)(0x80|(59449&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E839"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59329>>12)), (char)(0x80|((59329>>6)&0x3F)), (char)(0x80|(59329&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7C1"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(59577>>12)), (char)(0x80|((59577>>6)&0x3F)), (char)(0x80|(59577&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8B9"); }
+            ImGui::TableNextColumn();
+            { const char g[4] = { (char)(0xE0|(60319>>12)), (char)(0x80|((60319>>6)&0x3F)), (char)(0x80|(60319&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("EB9F"); }
+            ImGui::EndTable();
+        }
+        ImGui::End();
+    }
+
     void DrawScene() {
         updateMediaPlayback(); // 实时播放推进（含音频时钟驱动的帧切换）
+        updateSlideshow();     // 幻灯片按间隔自动切换
 
         if (GlobalVar::isNeedUpdateTheme) {
             GlobalVar::isNeedUpdateTheme = false;
@@ -1564,6 +1798,10 @@ public:
             // 画面已经稳定：此时才把矢量图升级到当前缩放需要的分辨率
             if (refreshVectorRasterIfNeeded())
                 return;
+
+            // 有界面在显示时要继续出帧（界面上有动画/光标，不能停在上一帧）
+            if (jark::ui::UiHost::instance().uiVisible())
+                PresentUiOnly();
 
             Sleep(1); // Windows机制限制，实际时长最小只能 15.6ms
             return;
@@ -1704,121 +1942,31 @@ public:
 
         switch (operateAction.action) {
         case ActionENUM::preImg: {
-            if (imgFileList.size() <= 1)
-                break;
-
-            if (GlobalVar::settingParameter.switchImageAnimationMode) {// 开动画时才需要
-                cv::Mat srcImg = currentSourceImage();
-
-                drawCanvas(srcImg, mainCanvas); //先更新无额外按钮UI的原图
-                drawExifInfo(mainCanvas);
-            }
-            
-            // 播放过的实况图，状态会变成静态图，切走前恢复一下
-            if (curPar.imageAssetPtr->format == ImageFormat::Still && !curPar.imageAssetPtr->frames.empty()) {
-                curPar.imageAssetPtr->format = ImageFormat::Animated;
-            }
-
             if (--curFileIdx < 0)
                 curFileIdx = (int)imgFileList.size() - 1;
-            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + imgFileList.size() - 1) % imgFileList.size()]);
-            curPar.Init(winWidth, winHeight);
-
-            if (GlobalVar::settingParameter.switchImageAnimationMode == 1)
-                mainCanvasSlideToPreAnimationVertical();      // 竖直滑动
-            else if (GlobalVar::settingParameter.switchImageAnimationMode == 2)
-                mainCanvasSlideToPreAnimationHorizontal();    // 水平滑动
-
-            lastTimestamp = std::chrono::steady_clock::now();
-            delayRemain = 0;
+            switchToFile(curFileIdx, -1);
         } break;
 
         case ActionENUM::nextImg: {
-            if (imgFileList.size() <= 1)
-                break;
-
-            if (GlobalVar::settingParameter.switchImageAnimationMode) {// 开动画时才需要
-                cv::Mat srcImg = currentSourceImage();
-
-                drawCanvas(srcImg, mainCanvas); //先更新无额外按钮UI的原图
-                drawExifInfo(mainCanvas);
-            }
-
-            // 播放过的实况图，状态会变成静态图，切走前恢复一下
-            if (curPar.imageAssetPtr->format == ImageFormat::Still && !curPar.imageAssetPtr->frames.empty()) {
-                curPar.imageAssetPtr->format = ImageFormat::Animated;
-            }
-
             if (++curFileIdx >= (int)imgFileList.size())
                 curFileIdx = 0;
-            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + 1) % imgFileList.size()]);
-            curPar.Init(winWidth, winHeight);
-
-            if (GlobalVar::settingParameter.switchImageAnimationMode == 1)
-                mainCanvasSlideToNextAnimationVertical();   // 竖直滑动
-            else if (GlobalVar::settingParameter.switchImageAnimationMode == 2)
-                mainCanvasSlideToNextAnimationHorizontal(); // 水平滑动
-
-            lastTimestamp = std::chrono::steady_clock::now();
-            delayRemain = 0;
+            switchToFile(curFileIdx, +1);
         } break;
 
         case ActionENUM::firstImg: {
-            if (imgFileList.size() == 1 or curFileIdx == 0)
+            if (curFileIdx == 0)
                 break;
-
-            if (GlobalVar::settingParameter.switchImageAnimationMode) {// 开动画时才需要
-                cv::Mat srcImg = currentSourceImage();
-
-                drawCanvas(srcImg, mainCanvas); //先更新无额外按钮UI的原图
-                drawExifInfo(mainCanvas);
-            }
-
-            // 播放过的实况图，状态会变成静态图，切走前恢复一下
-            if (curPar.imageAssetPtr->format == ImageFormat::Still && !curPar.imageAssetPtr->frames.empty()) {
-                curPar.imageAssetPtr->format = ImageFormat::Animated;
-            }
-
-            curFileIdx = 0;
-            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + imgFileList.size() - 1) % imgFileList.size()]);
-            curPar.Init(winWidth, winHeight);
-
-            if (GlobalVar::settingParameter.switchImageAnimationMode == 1)
-                mainCanvasSlideToPreAnimationVertical();      // 竖直滑动
-            else if (GlobalVar::settingParameter.switchImageAnimationMode == 2)
-                mainCanvasSlideToPreAnimationHorizontal();    // 水平滑动
-
-            lastTimestamp = std::chrono::steady_clock::now();
-            delayRemain = 0;
+            switchToFile(0, -1);
         } break;
 
         case ActionENUM::finalImg: {
-            if (imgFileList.size() == 1 or curFileIdx == ((int)imgFileList.size() - 1))
+            if (curFileIdx == (int)imgFileList.size() - 1)
                 break;
+            switchToFile((int)imgFileList.size() - 1, +1);
+        } break;
 
-            if (GlobalVar::settingParameter.switchImageAnimationMode) {// 开动画时才需要
-                cv::Mat srcImg = currentSourceImage();
-
-                drawCanvas(srcImg, mainCanvas); //先更新无额外按钮UI的原图
-                drawExifInfo(mainCanvas);
-            }
-
-            // 播放过的实况图，状态会变成静态图，切走前恢复一下
-            if (curPar.imageAssetPtr->format == ImageFormat::Still && !curPar.imageAssetPtr->frames.empty()) {
-                curPar.imageAssetPtr->format = ImageFormat::Animated;
-            }
-
-            curFileIdx = (int)imgFileList.size() - 1;
-            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + 1) % imgFileList.size()]);
-            curPar.Init(winWidth, winHeight);
-
-            if (GlobalVar::settingParameter.switchImageAnimationMode == 1)
-                mainCanvasSlideToNextAnimationVertical();   // 竖直滑动
-            else if (GlobalVar::settingParameter.switchImageAnimationMode == 2)
-                mainCanvasSlideToNextAnimationHorizontal(); // 水平滑动
-
-            lastTimestamp = std::chrono::steady_clock::now();
-            delayRemain = 0;
+        case ActionENUM::slideshow: {
+            toggleSlideshow();
         } break;
 
         case ActionENUM::slide: {
@@ -2000,25 +2148,7 @@ public:
         drawExifInfo(mainCanvas);
         drawExtraUI(mainCanvas);
 
-        if (curPar.imageAssetPtr->format == ImageFormat::Animated && curPar.isAnimationPause) {
-            wstring str = std::format(L"{} [{}/{}] {}% {}  ",
-                getUIStringW(9),
-                curPar.curFrameIdx + 1, curPar.curFrameIdxMax + 1,
-                curPar.zoomCur * 100ULL / curPar.ZOOM_BASE,
-                imgFileList[curFileIdx]);
-            if (curPar.rotation)
-                str += (curPar.rotation == 1 ? getUIStringW(10) : (curPar.rotation == 3 ? getUIStringW(11) : getUIStringW(12)));
-            SetWindowTextW(m_hWnd, str.c_str());
-        }
-        else {
-            wstring str = std::format(L" [{}/{}] {}% {}  ",
-                curFileIdx + 1, imgFileList.size(),
-                curPar.zoomCur * 100ULL / curPar.ZOOM_BASE,
-                imgFileList[curFileIdx]);
-            if (curPar.rotation)
-                str += (curPar.rotation == 1 ? getUIStringW(10) : (curPar.rotation == 3 ? getUIStringW(11) : getUIStringW(12)));
-            SetWindowTextW(m_hWnd, str.c_str());
-        }
+        updateWindowCaption();
 
         updateMainCanvas();
 

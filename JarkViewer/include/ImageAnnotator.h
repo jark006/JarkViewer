@@ -11,7 +11,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "TextDrawer.h"
+#include "TextRenderer.h"
 
 namespace jark {
 
@@ -51,7 +51,7 @@ namespace jark {
 
     // 把单个标注画到画布上（马赛克会直接修改该区域像素）。
     // textDrawer 只用于文字标注，调用方持有以便复用字体缓存。
-    void drawAnnotation(cv::Mat& canvas, const Annotation& anno, TextDrawer& textDrawer);
+    void drawAnnotation(cv::Mat& canvas, const Annotation& anno, TextRenderer& textDrawer);
 
     // 标注文档：底图 + 已提交标注 + 进行中的标注 + 撤销/重做栈。
     // 底图始终是 CV_8UC4（BGRA），便于保存与复制。
@@ -100,7 +100,7 @@ namespace jark {
         void rebuildCommittedImage();
         cv::Rect clampRect(const cv::Rect& rect) const;
 
-        mutable TextDrawer textDrawer_; // 仅用于文字标注，复用字体缓存
+        mutable TextRenderer textDrawer_; // 仅用于文字标注，复用字体缓存
         cv::Mat base_;                 // CV_8UC4
         cv::Mat committedImage_;       // base_ + annotations_
         std::vector<Annotation> annotations_;

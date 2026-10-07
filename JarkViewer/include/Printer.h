@@ -2,7 +2,7 @@
 
 #include "MatWindow.h"
 #include "Localization.h"
-#include "TextDrawer.h"
+#include "TextRenderer.h"
 #include "ImageAdjust.h"
 #include "UiFramework.h"
 
@@ -36,7 +36,7 @@ private:
     static constexpr int kLogicalHeight = 950;
 
     PrintParams params{};
-    TextDrawer textDrawer;
+    TextRenderer textDrawer;
     cv::Mat printerRes, buttonPrint, buttonNormal, buttonInvert, trackbarBg;
     std::vector<cv::Mat> buttonColorMode;
     cv::Mat m_inputBgrMat;  // 输入的图像

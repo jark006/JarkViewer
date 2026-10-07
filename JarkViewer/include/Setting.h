@@ -2,7 +2,7 @@
 
 #include "MatWindow.h"
 #include "Localization.h"
-#include "TextDrawer.h"
+#include "TextRenderer.h"
 #include "FileAssociationManager.h"
 #include "UiFramework.h"
 
@@ -35,7 +35,7 @@ private:
     static inline const jark::ui::Rect baiduBtnRect{ 440, 330, 520, 116 };
     static inline const jark::ui::Rect lanzouBtnRect{ 440, 460, 520, 90 };
 
-    TextDrawer textDrawer;
+    TextRenderer textDrawer;
     cv::Mat winCanvas;
     cv::Mat settingRes;
     cv::Mat helpPage, helpPageEN, helpPageDark, helpPageDarkEN;
@@ -113,6 +113,16 @@ private:
             std::string(getUIString(20)),
             std::vector<std::string>{ getUIString(21), getUIString(22), getUIString(23) },
             &parameter.switchImageAnimationMode), kRowHeight, kRowGap * 3);
+
+        // 幻灯片：顺序与间隔同一行（窗口高度有限，两行会顶掉下面的按钮）
+        auto slideshowRow = std::make_unique<jark::ui::Row>();
+        slideshowRow->add(std::make_unique<jark::ui::RadioGroup>(
+            std::string(getUIString(17)),
+            std::vector<std::string>{ getUIString(121), getUIString(122), getUIString(123) },
+            &parameter.pptOrder));
+        slideshowRow->add(std::make_unique<jark::ui::Slider>(
+            std::string(getUIString(18)), &parameter.pptTimeout, 60, 200, 190, "s"));
+        page->add(std::move(slideshowRow), kRowHeight, kRowGap);
 
         // 主题：切换后立即更新当前配色
         page->add(std::make_unique<jark::ui::RadioGroup>(

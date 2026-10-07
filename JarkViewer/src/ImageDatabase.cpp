@@ -1863,13 +1863,19 @@ ImageAsset ImageDatabase::loadSVG(wstring_view path, std::span<const uint8_t> bu
 
     if (!isInitFont) {
         isInitFont = true;
-        auto rc = jarkUtils::GetResource(IDR_MSYHMONO_TTF, L"TTF");
-        JARK_LOG("loadSVG initFont: size:{} ptr:{:x}", rc.size, (size_t)rc.ptr);
-        if (!lunasvg_add_font_face_from_data("", false, false, rc.ptr, rc.size, nullptr, nullptr)) {
-            JARK_LOG("loadSVG initFont Fail !!!\nlunasvg_add_font_face_from_data");
-        }
-        else {
-            JARK_LOG("loadSVG initFont Done!");
+
+        // SVG 内文字用系统字体渲染（不再内嵌 ttf）
+        wchar_t windowsDir[MAX_PATH] = {};
+        const UINT length = ::GetWindowsDirectoryW(windowsDir, MAX_PATH);
+        if (length > 0 && length < MAX_PATH) {
+            const std::wstring fontDir = std::wstring(windowsDir) + L"\\Fonts\\";
+            for (const wchar_t* fileName : { L"msyh.ttc", L"Deng.ttf", L"simhei.ttf", L"segoeui.ttf" }) {
+                const std::string path = jarkUtils::wstringToUtf8(fontDir + fileName);
+                if (lunasvg_add_font_face_from_file("", false, false, path.c_str())) {
+                    JARK_LOG("SVG 字体：{}", path);
+                    break;
+                }
+            }
         }
     }
 

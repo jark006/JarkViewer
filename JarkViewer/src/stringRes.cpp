@@ -146,6 +146,9 @@ std::string_view UIStringTable[STRING_MAX_NUM][jark::kLanguageCount] = {
     {"未选中区域，请先在图像上框选", "未選取區域，請先在圖像上框選", "Select an area on the image first",
      "先に画像上で範囲を選択してください", "먼저 이미지에서 영역을 선택하세요"},
     {"应用裁剪", "套用裁剪", "Apply crop", "切り抜きを適用", "자르기 적용"},                          // 120
+    {"顺序", "順序", "Forward", "順方向", "순방향"},                                                  // 121
+    {"逆序", "逆序", "Backward", "逆方向", "역방향"},
+    {"随机", "隨機", "Random", "ランダム", "무작위"},
 };
 
 // 供 Win32 API（窗口标题/消息框/右键菜单）使用的字符串表，ID 与窄表相互独立
@@ -205,6 +208,7 @@ std::string_view UIStringTableWide[STRING_MAX_NUM][jark::kLanguageCount] = {
      "元のファイルを上書きしますか？この操作は取り消せません。",
      "원본 파일을 덮어쓸까요? 이 작업은 되돌릴 수 없습니다."},
     {"编辑与标注 (&E)", "編輯與標註 (&E)", "&Edit and annotate", "編集と注釈 (&E)", "편집 및 주석 (&E)"},
+    {"幻灯片播放 (&S)", "幻燈片播放 (&S)", "&Slideshow", "スライドショー (&S)", "슬라이드쇼 (&S)"},
 };
 
 namespace {

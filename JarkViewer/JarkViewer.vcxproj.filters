@@ -33,7 +33,7 @@
     <ClInclude Include="include\printer.h">
       <Filter>include</Filter>
     </ClInclude>
-    <ClInclude Include="include\TextDrawer.h">
+    <ClInclude Include="include\TextRenderer.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\jarkUtils.h">
@@ -89,7 +89,7 @@
     <ClCompile Include="src\jarkUtils.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="src\TextDrawer.cpp">
+    <ClCompile Include="src\TextRenderer.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="src\tinyxml2.cpp">
@@ -137,8 +137,5 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <Font Include="file\MSYHMONO.ttf">
-      <Filter>resources</Filter>
-    </Font>
-  </ItemGroup>
+     </ItemGroup>
 </Project>

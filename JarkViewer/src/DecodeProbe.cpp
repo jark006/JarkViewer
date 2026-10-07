@@ -357,13 +357,30 @@ namespace {
         {
             const cv::Mat flattened = document.flatten();
             int changed = 0;
-            for (int y = 200; y < 200 + 53 && y < flattened.rows; ++y) {
-                for (int x = 560; x < 560 + 132 && x < flattened.cols; ++x) {
-                    if (!pixelNear(flattened, x, y, background, 12))
+            int minX = 1 << 30, minY = 1 << 30, maxX = -1, maxY = -1;
+            for (int y = 150; y < 400 && y < flattened.rows; ++y) {
+                for (int x = 400; x < 900 && x < flattened.cols; ++x) {
+                    if (pixelNear(flattened, x, y, background, 12))
+                        continue;
+
+                    minX = (std::min)(minX, x);
+                    minY = (std::min)(minY, y);
+                    maxX = (std::max)(maxX, x);
+                    maxY = (std::max)(maxY, y);
+
+                    if (x >= 560 && x < 560 + 132 && y >= 200 && y < 200 + 53)
                         ++changed;
                 }
             }
-            check(changed > 50, std::format("文字：包围盒内着色像素 {} 个", changed));
+            check(changed > 50, std::format("文字：包围盒内着色像素 {} 个（实际范围 {}x{}..{}x{}）",
+                changed, minX, minY, maxX, maxY));
+
+            if (!outDir.empty()) {
+                std::error_code errorCode;
+                std::filesystem::create_directories(outDir, errorCode);
+                cv::imwrite((std::filesystem::path(outDir) / "synthetic.png").string(),
+                    document.flatten()(cv::Rect(500, 150, 300, 150)));
+            }
         }
 
         // 撤销 / 重做

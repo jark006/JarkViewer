@@ -31,13 +31,21 @@ public:
     virtual void OnRequestExitOtherWindows() = 0;
     virtual void OnDestroy();
 
+    // 界面（ImGui）：每帧在 PresentFrame() 里被调用，子类在这里提交窗口与控件
+    virtual void DrawUi() {}
+
 protected:
     HRESULT CreateDeviceResources();
     void CreateWindowSizeDependentResources();
     void DiscardDeviceResources();
 
-    // CPU 画布数据呈现到屏幕
+    // CPU 画布数据上传到暂存纹理
     void PresentCanvas(const uint8_t* data, int width, int height, int stride);
+
+    // 把最近上传的画布贴到后缓冲，叠加 ImGui 界面后 Present（每帧一次）
+    void PresentFrame();
+    // 画布内容没有变化时只重画界面
+    void PresentUiOnly();
 
     template<class Interface>
     void SafeRelease(Interface*& pInterfaceToRelease);
@@ -73,6 +81,8 @@ protected:
     // 暂存纹理尺寸
     UINT m_stagingWidth = 0;
     UINT m_stagingHeight = 0;
+    // 后缓冲渲染目标（ImGui 需要绑定 RTV 才能绘制）
+    ID3D11RenderTargetView* m_pBackBufferRTV = nullptr;
     // 所创设备特性等级
     D3D_FEATURE_LEVEL m_featureLevel;
 

@@ -6,7 +6,7 @@
 
 #include "ImageAnnotator.h"
 #include "MatWindow.h"
-#include "TextDrawer.h"
+#include "TextRenderer.h"
 #include "UiFramework.h"
 
 #include <algorithm>
@@ -109,7 +109,7 @@ private:
     bool previewActive_ = false;
 
     cv::Mat canvasMat;
-    TextDrawer textDrawer;
+    TextRenderer textDrawer;
     std::unique_ptr<jark::ui::Panel> root;
     CanvasControl* canvasControl = nullptr;
     jark::ui::OptionGrid* toolGrid = nullptr;

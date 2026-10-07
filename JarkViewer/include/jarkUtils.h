@@ -349,7 +349,7 @@ struct ImageAsset {
 
 enum class ActionENUM:int64_t {
     none = 0, slide, preImg, nextImg, firstImg, finalImg, zoomIn, zoomOut, zoomFix, toggleExif, toggleFullScreen, requestExit, refresh,
-    rotateLeft, rotateRight, printImage, deleteImg, setting, batchProcess, editImage
+    rotateLeft, rotateRight, printImage, deleteImg, setting, batchProcess, editImage, slideshow
 };
 
 enum class CursorPos :int {
@@ -363,7 +363,7 @@ enum class ShowExtraUI :int {
 enum class ContextMenu :int {
     openNewImage = 1000, copyImageInfo, copyImagePath, copyImageData, toggleExifDisplay, openContainerFloder, deleteImage,
     openFileProperties, printImage, toggleFullScreen, openSetting, openHelp, aboutSoftware, exitSoftware, batchProcess,
-    editImage
+    editImage, slideshow
 };
 
 struct Action {

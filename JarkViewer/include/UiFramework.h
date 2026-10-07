@@ -17,7 +17,7 @@
 
 #include "jarkUtils.h"
 
-class TextDrawer;
+class TextRenderer;
 
 namespace jark::ui {
 
@@ -43,7 +43,7 @@ namespace jark::ui {
     // 控件绘制时面对的接口：不直接操作 cv::Mat，避免各处重复写主题色与文字绘制
     class UiCanvas {
     public:
-        UiCanvas(cv::Mat& target, TextDrawer& drawer, const ThemeColor& theme, float scale = 1.0f)
+        UiCanvas(cv::Mat& target, TextRenderer& drawer, const ThemeColor& theme, float scale = 1.0f)
             : target_(target), drawer_(drawer), theme_(theme), scale_(scale > 0.0f ? scale : 1.0f) {}
 
         // 逻辑像素 -> 物理像素：控件内部尺寸一律用 dp() 表示
@@ -69,7 +69,7 @@ namespace jark::ui {
 
     private:
         cv::Mat& target_;
-        TextDrawer& drawer_;
+        TextRenderer& drawer_;
         const ThemeColor& theme_;
         float scale_ = 1.0f;
     };
@@ -182,8 +182,20 @@ namespace jark::ui {
     public:
         Slider(std::string label, int* value, int maxValue, int trackX, int trackWidth,
             std::string suffix = "%")
-            : label_(std::move(label)), value_(value), maxValue_(maxValue > 0 ? maxValue : 1),
-            trackX_(trackX), trackWidth_(trackWidth > 0 ? trackWidth : 1), suffix_(std::move(suffix)) {}
+            : label_(std::move(label)), maxValue_(maxValue > 0 ? maxValue : 1),
+            trackX_(trackX), trackWidth_(trackWidth > 0 ? trackWidth : 1), suffix_(std::move(suffix)),
+            getValue_([value]() { return *value; }),
+            setValue_([value](int newValue) { *value = newValue; }) {
+        }
+
+        // 设置项里的间隔/分辨率等是 uint32_t，单独给个重载免得各处手工转换
+        Slider(std::string label, uint32_t* value, int maxValue, int trackX, int trackWidth,
+            std::string suffix = "%")
+            : label_(std::move(label)), maxValue_(maxValue > 0 ? maxValue : 1),
+            trackX_(trackX), trackWidth_(trackWidth > 0 ? trackWidth : 1), suffix_(std::move(suffix)),
+            getValue_([value]() { return static_cast<int>(*value); }),
+            setValue_([value](int newValue) { *value = static_cast<uint32_t>(newValue); }) {
+        }
 
         void draw(UiCanvas& canvas) override;
         bool onClick(int x, int y) override;
@@ -197,7 +209,8 @@ namespace jark::ui {
 
         std::string label_;
         std::string suffix_ = "%";
-        int* value_ = nullptr;
+        std::function<int()> getValue_;
+        std::function<void(int)> setValue_;
         int maxValue_ = 100;
         int trackX_ = 0;          // 逻辑像素：轨道起点（相对控件）
         int trackWidth_ = 100;    // 逻辑像素：轨道宽度

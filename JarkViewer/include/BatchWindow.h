@@ -5,7 +5,7 @@
 
 #include "BatchProcessor.h"
 #include "MatWindow.h"
-#include "TextDrawer.h"
+#include "TextRenderer.h"
 #include "UiFramework.h"
 
 #include <algorithm>
@@ -83,7 +83,7 @@ private:
     bool finished_ = false;
     bool startFailed_ = false;
 
-    TextDrawer textDrawer;
+    TextRenderer textDrawer;
     cv::Mat canvasMat;
     std::unique_ptr<jark::ui::Panel> root;
 

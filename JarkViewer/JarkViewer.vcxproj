@@ -50,12 +50,12 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LibraryPath>$(ProjectDir)libjxl;$(ProjectDir)libavif;$(ProjectDir)libwebp2;$(ProjectDir)libpng;$(ProjectDir)libexiv2;$(ProjectDir)libopencv;$(ProjectDir)libffmpeg;$(ProjectDir)lib;$(LibraryPath)</LibraryPath>
-    <IncludePath>$(ProjectDir)include/ffmpeg;$(ProjectDir)include/libwebp2;$(ProjectDir)include;$(ProjectDir);$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)include/ffmpeg;$(ProjectDir)include/libwebp2;$(ProjectDir)include;$(ProjectDir)vendor/imgui;$(ProjectDir)vendor/imgui/backends;$(ProjectDir)vendor/imgui/misc/cpp;$(ProjectDir);$(IncludePath)</IncludePath>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LibraryPath>$(ProjectDir)libjxl;$(ProjectDir)libavif;$(ProjectDir)libwebp2;$(ProjectDir)libpng;$(ProjectDir)libexiv2;$(ProjectDir)libopencv;$(ProjectDir)libffmpeg;$(ProjectDir)lib;$(LibraryPath)</LibraryPath>
-    <IncludePath>$(ProjectDir)include/ffmpeg;$(ProjectDir)include/libwebp2;$(ProjectDir)include;$(ProjectDir);$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)include/ffmpeg;$(ProjectDir)include/libwebp2;$(ProjectDir)include;$(ProjectDir)vendor/imgui;$(ProjectDir)vendor/imgui/backends;$(ProjectDir)vendor/imgui/misc/cpp;$(ProjectDir);$(IncludePath)</IncludePath>
     <LinkIncremental>false</LinkIncremental>
     <CopyCppRuntimeToOutputDir>false</CopyCppRuntimeToOutputDir>
   </PropertyGroup>
@@ -179,11 +179,14 @@
     <ClInclude Include="include\Setting.h" />
     <ClInclude Include="include\stringRes.h" />
     <ClInclude Include="include\SVGPreprocessor.h" />
-    <ClInclude Include="include\TextDrawer.h" />
+    <ClInclude Include="include\TextRenderer.h" />
     <ClInclude Include="include\UiFramework.h" />
     <ClInclude Include="include\VectorImage.h" />
     <ClInclude Include="include\ThumbnailProviderGuids.h" />
     <ClInclude Include="include\ThumbnailRegistrar.h" />
+    <ClInclude Include="include\UiHost.h" />
+    <ClInclude Include="vendor\imgui\imgui.h" />
+    <ClInclude Include="vendor\imgui\imgui_internal.h" />
     <ClInclude Include="include\jarkUtils.h" />
     <ClInclude Include="include\tinyxml2.h" />
     <ClInclude Include="include\videoDecoder.h" />
@@ -209,9 +212,17 @@
     <ClCompile Include="src\jarkUtils.cpp" />
     <ClCompile Include="src\Localization.cpp" />
     <ClCompile Include="src\stringRes.cpp" />
-    <ClCompile Include="src\TextDrawer.cpp" />
+    <ClCompile Include="src\TextRenderer.cpp" />
     <ClCompile Include="src\UiFramework.cpp" />
+    <ClCompile Include="src\UiHost.cpp" />
     <ClCompile Include="src\tinyxml2.cpp" />
+    <ClCompile Include="vendor\imgui\imgui.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_draw.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_tables.cpp" />
+    <ClCompile Include="vendor\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="vendor\imgui\backends\imgui_impl_dx11.cpp" />
+    <ClCompile Include="vendor\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="vendor\imgui\misc\cpp\imgui_stdlib.cpp" />
     <ClCompile Include="src\VectorImage.cpp" />
     <ClCompile Include="src\videoDecoder.cpp" />
   </ItemGroup>
@@ -228,7 +239,6 @@
     <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
-    <Font Include="file\MSYHMONO.ttf" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

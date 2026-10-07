@@ -1,0 +1,64 @@
+    void DrawUi() override {
+        // 临时：带标签的图标码位浏览（由 tools/gen_icon_probe.py 生成）
+        jark::ui::UiHost::instance().setUiVisible(true);
+        ImGui::SetNextWindowSize({ 620, 760 }, ImGuiCond_Always);
+        ImGui::Begin("icon candidates");
+            { const char g[4] = { (char)(0xE0|(59243>>12)), (char)(0x80|((59243>>6)&0x3F)), (char)(0x80|(59243&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E76B"); }
+            { const char g[4] = { (char)(0xE0|(59244>>12)), (char)(0x80|((59244>>6)&0x3F)), (char)(0x80|(59244&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E76C"); }
+            { const char g[4] = { (char)(0xE0|(59240>>12)), (char)(0x80|((59240>>6)&0x3F)), (char)(0x80|(59240&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E768"); }
+            { const char g[4] = { (char)(0xE0|(59241>>12)), (char)(0x80|((59241>>6)&0x3F)), (char)(0x80|(59241&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E769"); }
+            { const char g[4] = { (char)(0xE0|(59166>>12)), (char)(0x80|((59166>>6)&0x3F)), (char)(0x80|(59166&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E71E"); }
+            { const char g[4] = { (char)(0xE0|(59555>>12)), (char)(0x80|((59555>>6)&0x3F)), (char)(0x80|(59555&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8A3"); }
+            ImGui::NewLine();
+            { const char g[4] = { (char)(0xE0|(59167>>12)), (char)(0x80|((59167>>6)&0x3F)), (char)(0x80|(59167&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E71F"); }
+            { const char g[4] = { (char)(0xE0|(59302>>12)), (char)(0x80|((59302>>6)&0x3F)), (char)(0x80|(59302&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7A6"); }
+            { const char g[4] = { (char)(0xE0|(59303>>12)), (char)(0x80|((59303>>6)&0x3F)), (char)(0x80|(59303&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7A7"); }
+            { const char g[4] = { (char)(0xE0|(59209>>12)), (char)(0x80|((59209>>6)&0x3F)), (char)(0x80|(59209&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E749"); }
+            { const char g[4] = { (char)(0xE0|(59214>>12)), (char)(0x80|((59214>>6)&0x3F)), (char)(0x80|(59214&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74E"); }
+            { const char g[4] = { (char)(0xE0|(59592>>12)), (char)(0x80|((59592>>6)&0x3F)), (char)(0x80|(59592&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8C8"); }
+            ImGui::NewLine();
+            { const char g[4] = { (char)(0xE0|(59155>>12)), (char)(0x80|((59155>>6)&0x3F)), (char)(0x80|(59155&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E713"); }
+            { const char g[4] = { (char)(0xE0|(59213>>12)), (char)(0x80|((59213>>6)&0x3F)), (char)(0x80|(59213&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74D"); }
+            { const char g[4] = { (char)(0xE0|(59151>>12)), (char)(0x80|((59151>>6)&0x3F)), (char)(0x80|(59151&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70F"); }
+            { const char g[4] = { (char)(0xE0|(59304>>12)), (char)(0x80|((59304>>6)&0x3F)), (char)(0x80|(59304&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7A8"); }
+            { const char g[4] = { (char)(0xE0|(59280>>12)), (char)(0x80|((59280>>6)&0x3F)), (char)(0x80|(59280&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E790"); }
+            { const char g[4] = { (char)(0xE0|(59675>>12)), (char)(0x80|((59675>>6)&0x3F)), (char)(0x80|(59675&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E91B"); }
+            ImGui::NewLine();
+            { const char g[4] = { (char)(0xE0|(59621>>12)), (char)(0x80|((59621>>6)&0x3F)), (char)(0x80|(59621&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8E5"); }
+            { const char g[4] = { (char)(0xE0|(59575>>12)), (char)(0x80|((59575>>6)&0x3F)), (char)(0x80|(59575&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8B7"); }
+            { const char g[4] = { (char)(0xE0|(59153>>12)), (char)(0x80|((59153>>6)&0x3F)), (char)(0x80|(59153&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E711"); }
+            { const char g[4] = { (char)(0xE0|(59152>>12)), (char)(0x80|((59152>>6)&0x3F)), (char)(0x80|(59152&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E710"); }
+            { const char g[4] = { (char)(0xE0|(59198>>12)), (char)(0x80|((59198>>6)&0x3F)), (char)(0x80|(59198&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E73E"); }
+            { const char g[4] = { (char)(0xE0|(59602>>12)), (char)(0x80|((59602>>6)&0x3F)), (char)(0x80|(59602&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8D2"); }
+            ImGui::NewLine();
+            { const char g[4] = { (char)(0xE0|(59689>>12)), (char)(0x80|((59689>>6)&0x3F)), (char)(0x80|(59689&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E929"); }
+            { const char g[4] = { (char)(0xE0|(59331>>12)), (char)(0x80|((59331>>6)&0x3F)), (char)(0x80|(59331&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7C3"); }
+            { const char g[4] = { (char)(0xE0|(59568>>12)), (char)(0x80|((59568>>6)&0x3F)), (char)(0x80|(59568&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8B0"); }
+            { const char g[4] = { (char)(0xE0|(59305>>12)), (char)(0x80|((59305>>6)&0x3F)), (char)(0x80|(59305&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7A9"); }
+            { const char g[4] = { (char)(0xE0|(59215>>12)), (char)(0x80|((59215>>6)&0x3F)), (char)(0x80|(59215&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74F"); }
+            { const char g[4] = { (char)(0xE0|(59225>>12)), (char)(0x80|((59225>>6)&0x3F)), (char)(0x80|(59225&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E759"); }
+            ImGui::NewLine();
+            { const char g[4] = { (char)(0xE0|(59227>>12)), (char)(0x80|((59227>>6)&0x3F)), (char)(0x80|(59227&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E75B"); }
+            { const char g[4] = { (char)(0xE0|(59366>>12)), (char)(0x80|((59366>>6)&0x3F)), (char)(0x80|(59366&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7E6"); }
+            { const char g[4] = { (char)(0xE0|(59865>>12)), (char)(0x80|((59865>>6)&0x3F)), (char)(0x80|(59865&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E9D9"); }
+            { const char g[4] = { (char)(0xE0|(59959>>12)), (char)(0x80|((59959>>6)&0x3F)), (char)(0x80|(59959&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("EA37"); }
+            { const char g[4] = { (char)(0xE0|(59567>>12)), (char)(0x80|((59567>>6)&0x3F)), (char)(0x80|(59567&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8AF"); }
+            { const char g[4] = { (char)(0xE0|(59559>>12)), (char)(0x80|((59559>>6)&0x3F)), (char)(0x80|(59559&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8A7"); }
+            ImGui::NewLine();
+            { const char g[4] = { (char)(0xE0|(59147>>12)), (char)(0x80|((59147>>6)&0x3F)), (char)(0x80|(59147&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70B"); }
+            { const char g[4] = { (char)(0xE0|(59160>>12)), (char)(0x80|((59160>>6)&0x3F)), (char)(0x80|(59160&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E718"); }
+            { const char g[4] = { (char)(0xE0|(59163>>12)), (char)(0x80|((59163>>6)&0x3F)), (char)(0x80|(59163&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E71B"); }
+            { const char g[4] = { (char)(0xE0|(59212>>12)), (char)(0x80|((59212>>6)&0x3F)), (char)(0x80|(59212&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74C"); }
+            { const char g[4] = { (char)(0xE0|(59269>>12)), (char)(0x80|((59269>>6)&0x3F)), (char)(0x80|(59269&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E785"); }
+            { const char g[4] = { (char)(0xE0|(59337>>12)), (char)(0x80|((59337>>6)&0x3F)), (char)(0x80|(59337&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7C9"); }
+            ImGui::NewLine();
+            { const char g[4] = { (char)(0xE0|(59645>>12)), (char)(0x80|((59645>>6)&0x3F)), (char)(0x80|(59645&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8FD"); }
+            { const char g[4] = { (char)(0xE0|(59717>>12)), (char)(0x80|((59717>>6)&0x3F)), (char)(0x80|(59717&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E945"); }
+            { const char g[4] = { (char)(0xE0|(59374>>12)), (char)(0x80|((59374>>6)&0x3F)), (char)(0x80|(59374&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7EE"); }
+            { const char g[4] = { (char)(0xE0|(59142>>12)), (char)(0x80|((59142>>6)&0x3F)), (char)(0x80|(59142&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E706"); }
+            { const char g[4] = { (char)(0xE0|(59149>>12)), (char)(0x80|((59149>>6)&0x3F)), (char)(0x80|(59149&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70D"); }
+            { const char g[4] = { (char)(0xE0|(59150>>12)), (char)(0x80|((59150>>6)&0x3F)), (char)(0x80|(59150&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70E"); }
+            ImGui::NewLine();
+        ImGui::End();
+    }
+

@@ -1,5 +1,7 @@
 #include "D3D11App.h"
 
+#include "UiHost.h"
+
 namespace {
 
 enum class PreferredAppMode {
@@ -193,6 +195,8 @@ HRESULT D3D11App::Initialize(HINSTANCE hInstance) {
         refreshUiScale();
         CreateDeviceResources();
 
+        jark::ui::UiHost::instance().init(m_hWnd, m_pD3DDevice, m_pD3DDeviceContext, m_pSwapChain);
+
         BOOL themeMode = GlobalVar::isCurrentUIDarkMode;
         DwmSetWindowAttribute(m_hWnd, 20, &themeMode, sizeof(BOOL));
         DragAcceptFiles(m_hWnd, TRUE);
@@ -280,8 +284,9 @@ void D3D11App::CreateWindowSizeDependentResources() {
     if (!m_pD3DDevice || !m_pSwapChain)
         return;
 
-    // 释放旧暂存纹理
+    // 释放旧暂存纹理与后缓冲视图
     SafeRelease(m_pStagingTexture);
+    SafeRelease(m_pBackBufferRTV);
     m_pD3DDeviceContext->Flush();
 
     RECT rect = { 0 };
@@ -317,6 +322,13 @@ void D3D11App::CreateWindowSizeDependentResources() {
     hr = m_pD3DDevice->CreateTexture2D(&texDesc, nullptr, &m_pStagingTexture);
     assert(hr == S_OK);
 
+    // 后缓冲渲染目标：ImGui 的绘制命令需要一个绑定的 RTV
+    ID3D11Texture2D* pBackBuffer = nullptr;
+    if (SUCCEEDED(m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBuffer))) {
+        m_pD3DDevice->CreateRenderTargetView(pBackBuffer, nullptr, &m_pBackBufferRTV);
+        pBackBuffer->Release();
+    }
+
     m_stagingWidth = width;
     m_stagingHeight = height;
 }
@@ -346,21 +358,42 @@ void D3D11App::PresentCanvas(const uint8_t* data, int width, int height, int str
             }
         }
         m_pD3DDeviceContext->Unmap(m_pStagingTexture, 0);
+    }
+}
 
-        // 将暂存纹理复制到交换链后缓冲
+// 后缓冲 = 最近一次上传的画布；随后叠加 ImGui 界面并 Present
+void D3D11App::PresentFrame() {
+    if (!m_pSwapChain || !m_pD3DDeviceContext)
+        return;
+
+    if (m_pStagingTexture) {
         ID3D11Texture2D* pBackBuffer = nullptr;
-        hr = m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBuffer);
-        if (SUCCEEDED(hr)) {
+        if (SUCCEEDED(m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&pBackBuffer))) {
             m_pD3DDeviceContext->CopyResource(pBackBuffer, m_pStagingTexture);
             pBackBuffer->Release();
         }
     }
 
+    auto& ui = jark::ui::UiHost::instance();
+    if (ui.ready()) {
+        if (m_pBackBufferRTV)
+            m_pD3DDeviceContext->OMSetRenderTargets(1, &m_pBackBufferRTV, nullptr);
+
+        ui.newFrame();
+        DrawUi();
+        ui.renderDrawData();
+    }
+
     m_pSwapChain->Present(0, 0);
+}
+
+void D3D11App::PresentUiOnly() {
+    PresentFrame();
 }
 
 void D3D11App::DiscardDeviceResources() {
     SafeRelease(m_pStagingTexture);
+    SafeRelease(m_pBackBufferRTV);
     SafeRelease(m_pSwapChain);
     SafeRelease(m_pD3DDevice);
     SafeRelease(m_pD3DDeviceContext);
@@ -386,6 +419,9 @@ void D3D11App::OnDestroy() {
 
 
 LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    // ImGui 先记录输入状态（键盘/鼠标/IME/DPI 都由它维护）
+    jark::ui::UiHost::processMessage(hwnd, message, wParam, lParam);
+
     switch (message) {
     case WM_CREATE: {
         LPCREATESTRUCT pcs = (LPCREATESTRUCT)lParam;
@@ -425,12 +461,18 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     if (!pApp)
         return DefWindowProcW(hwnd, message, wParam, lParam);
 
+    // 鼠标/键盘先给界面（ImGui 需要时就不给画布，例如光标落在界面控件上）
+    const bool uiWantsMouse = jark::ui::UiHost::instance().mouseCaptured();
+    const bool uiWantsKeyboard = jark::ui::UiHost::instance().keyboardCaptured();
+
     switch (message)
     {
     case WM_LBUTTONDOWN:
     case WM_MBUTTONDOWN:
     case WM_RBUTTONDOWN:
     case WM_XBUTTONDOWN:
+        if (uiWantsMouse)
+            return S_OK;
         pApp->OnMouseDown(message, LOWORD(lParam), HIWORD(lParam), wParam);
         return S_OK;
 
@@ -438,6 +480,8 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_MBUTTONUP:
     case WM_RBUTTONUP:
     case WM_XBUTTONUP:
+        if (uiWantsMouse)
+            return S_OK;
         pApp->OnMouseUp(message, LOWORD(lParam), HIWORD(lParam), wParam);
         return S_OK;
 
@@ -446,6 +490,8 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             tme.hwndTrack = hwnd;
             TrackMouseEvent(&tme);
         }
+        if (uiWantsMouse)
+            return S_OK;
         pApp->OnMouseMove(message, LOWORD(lParam), HIWORD(lParam));
         return S_OK;
 
@@ -455,14 +501,20 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_MOUSEWHEEL:
+        if (uiWantsMouse)
+            return S_OK;
         pApp->OnMouseWheel(LOWORD(wParam), HIWORD(wParam), LOWORD(lParam), HIWORD(lParam));
         return S_OK;
 
     case WM_KEYDOWN:
+        if (uiWantsKeyboard)
+            return S_OK;
         pApp->OnKeyDown(wParam);
         return S_OK;
 
     case WM_KEYUP:
+        if (uiWantsKeyboard)
+            return S_OK;
         pApp->OnKeyUp(wParam);
         return S_OK;
 
@@ -526,6 +578,7 @@ HMENU D3D11App::CreateContextMenu(HWND hwnd) {
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openFileProperties, getUIStringW(36));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::printImage, getUIStringW(31));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::editImage, getUIStringW(47));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::slideshow, getUIStringW(48));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::batchProcess, getUIStringW(44));
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
