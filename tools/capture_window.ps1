@@ -4,6 +4,7 @@
 #   pwsh tools/capture_window.ps1 -Exe x64/Release/JarkViewer.exe -Argument "img.svg" -Out shot.png
 #   pwsh tools/capture_window.ps1 -Exe ... -Argument "img.png" -Keys "{F1}" -Window smallest -Out settings.png
 #   pwsh tools/capture_window.ps1 -Exe ... -Keys "{F1}" -Window smallest -Click "41,95" -Out clicked.png
+#   pwsh tools/capture_window.ps1 -Exe ... -Argument "img.png" -Hover "20,300" -Out hover.png
 #
 # -Window main      : main window (default)
 # -Window smallest  : smallest visible window (e.g. the settings window opened by F1)
@@ -20,6 +21,7 @@ param(
     [ValidateSet("main", "smallest")]
     [string]$Window = "main",
     [string]$Click = "",
+    [string]$Hover = "",
     [int]$LogicWidth = 1000,
     [int]$WaitMs = 2500,
     [int]$AfterKeysMs = 1200,
@@ -127,6 +129,25 @@ try {
         [JarkCapture]::mouse_event([JarkCapture]::LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
         Start-Sleep -Milliseconds 60
         [JarkCapture]::mouse_event([JarkCapture]::LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds $AfterKeysMs
+    }
+
+    if ($Hover -ne "") {
+        # Hover without clicking: physical client coordinates (for the DPI-aware main window,
+        # client pixels == physical pixels), used to check hover-only overlays.
+        [void](Activate-Window $hwnd)
+
+        $parts = $Hover.Split(",")
+        $point = New-Object JarkCapture+POINT
+        $point.X = [int]$parts[0]
+        $point.Y = [int]$parts[1]
+        [void][JarkCapture]::ClientToScreen($hwnd, [ref]$point)
+
+        [void][JarkCapture]::SetCursorPos($point.X, $point.Y)
+        # Nudge so a WM_MOUSEMOVE is definitely delivered even if the cursor was already there.
+        [void][JarkCapture]::SetCursorPos($point.X + 1, $point.Y + 1)
+        Start-Sleep -Milliseconds 80
+        [void][JarkCapture]::SetCursorPos($point.X, $point.Y)
         Start-Sleep -Milliseconds $AfterKeysMs
     }
 

@@ -27,6 +27,7 @@ public:
     virtual void OnContextMenuCommand(WPARAM wParam) = 0;
 
     virtual void OnResize(UINT width, UINT height) = 0;
+    virtual void OnDpiChanged() { (void)0; } // 默认只需刷新缩放；子类可顺带重建按 DPI 缩放的资源
     virtual void OnRequestExitOtherWindows() = 0;
     virtual void OnDestroy();
 
@@ -43,6 +44,18 @@ protected:
 
     void loadSettings();
     void saveSettings() const;
+
+    // 主窗口是 PerMonitorHighDPIAware，拿到的就是物理像素：叠加 UI（悬停按钮、
+    // EXIF 面板）的尺寸与命中区域都要按所在显示器的 DPI 换算，否则高 DPI 下按钮只有一半大。
+    void refreshUiScale() {
+        UINT dpi = m_hWnd ? GetDpiForWindow(m_hWnd) : 0;
+        if (dpi == 0)
+            dpi = 96;
+        m_uiScale = static_cast<float>(dpi) / 96.0f;
+    }
+
+    float uiScale() const { return m_uiScale; }
+    int dp(int logical) const { return static_cast<int>(std::lround(logical * m_uiScale)); }
 
 protected:
     HINSTANCE m_hAppInst = nullptr;
@@ -65,6 +78,7 @@ protected:
 
     int winWidth = 800;
     int winHeight = 600;
+    float m_uiScale = 1.0f;
     bool hasInitWinSize = false;
     cv::Mat mainCanvas;
 };

@@ -207,19 +207,46 @@ public:
         rc = jarkUtils::GetResource(IDB_PNG_MAIN_RES, L"PNG");
         mainRes = cv::imdecode(cv::Mat(1, (int)rc.size, CV_8UC1, (uint8_t*)rc.ptr), cv::IMREAD_UNCHANGED);
 
-        leftRotate = mainRes({ 0, 0, 50, 50 });
-        rightRotate = mainRes({ 50, 0, 50, 50 });
-
-        printer = mainRes({ 0, 50, 50, 50 });
-        setting = mainRes({ 50, 50, 50, 50 });
-
-        leftArrow = mainRes({ 100, 0, 50, 100 });
-        rightArrow = mainRes({ 150, 0, 50, 100 });
-
-        animationBarPlaying = mainRes({ 0, 100, 200, 50 });
-        animationBarPausing = mainRes({ 0, 150, 200, 50 });
+        rebuild(1.0f);
     }
     ~ExtraUIRes() {}
+
+    // 资源切片是 96DPI 下的尺寸；窗口在高 DPI 显示器上时要放大后再贴图，
+    // 否则按钮只有设计尺寸的一半大。缩放值不变时直接复用。
+    void rebuild(float scale) {
+        if (hasBuilt && std::abs(scale - buildScale) < 0.01f)
+            return;
+
+        hasBuilt = true;
+        buildScale = scale;
+
+        auto slice = [&](cv::Rect rect) -> cv::Mat {
+            cv::Mat part = mainRes(rect);
+            if (std::abs(scale - 1.0f) < 0.01f)
+                return part.clone();
+
+            cv::Mat scaled;
+            cv::resize(part, scaled, cv::Size(), scale, scale,
+                scale > 1.0f ? cv::INTER_LINEAR : cv::INTER_AREA);
+            return scaled;
+            };
+
+        leftRotate = slice({ 0, 0, 50, 50 });
+        rightRotate = slice({ 50, 0, 50, 50 });
+
+        printer = slice({ 0, 50, 50, 50 });
+        setting = slice({ 50, 50, 50, 50 });
+
+        leftArrow = slice({ 100, 0, 50, 100 });
+        rightArrow = slice({ 150, 0, 50, 100 });
+
+        animationBarPlaying = slice({ 0, 100, 200, 50 });
+        animationBarPausing = slice({ 0, 150, 200, 50 });
+    }
+
+private:
+    float buildScale = 0.0f;
+    bool hasBuilt = false;
 };
 
 class JarkViewerApp : public D3D11App {
@@ -253,13 +280,19 @@ public:
 
     JarkViewerApp() {
         m_wndCaption = std::format(L"{} {}", appName, appVersion);
+    }
 
-        HDC hdc = GetDC(nullptr);
-        UINT dpi = hdc ? GetDeviceCaps(hdc, LOGPIXELSX) : 96; // 100%: 96 150%: 144 200%: 192
-        if (hdc) ReleaseDC(nullptr, hdc);
-        if (dpi >= 144) {
-            textDrawer.setSize(dpi < 168 ? 24 : 32);
-        }
+    // 文字尺寸跟随窗口所在显示器的 DPI（100%:16 150%:24 200%:32）
+    void updateTextDrawerScale() {
+        const UINT dpi = static_cast<UINT>(std::lround(96.0f * uiScale()));
+        textDrawer.setSize(dpi >= 168 ? 32 : (dpi >= 144 ? 24 : 16));
+    }
+
+    void OnDpiChanged() override {
+        updateTextDrawerScale();
+        extraUIRes.rebuild(uiScale());
+        if (hasInitWinSize)
+            operateQueue.push({ ActionENUM::refresh });
     }
 
     ~JarkViewerApp() {
@@ -273,6 +306,9 @@ public:
             return S_FALSE;
 
         imgDB.setColorManagementWindow(m_hWnd);
+
+        updateTextDrawerScale();
+        extraUIRes.rebuild(uiScale());
 
         return S_OK;
     }
@@ -354,8 +390,8 @@ public:
     }
 
     inline void handleAnimationControl(int x, int y) {
-        // 按钮ID  0:上一帧  1:暂停/继续  2:下一帧  3:保存该帧
-        int buttonIdx = (x + 100 - winWidth / 2) / 50;
+        // 按钮ID  0:上一帧  1:暂停/继续  2:下一帧  3:保存该帧（宽度按 DPI 缩放，与播放条资源图一致）
+        int buttonIdx = (x + dp(100) - winWidth / 2) / dp(50);
         if (buttonIdx < 0 || 3 < buttonIdx || curPar.imageAssetPtr->format != ImageFormat::Animated)
             return;
 
@@ -503,12 +539,16 @@ public:
     void OnMouseMove(WPARAM btnState, int x, int y) override {
         mousePos = { x, y };
 
+        const int edgeWidth = dp(50);   // 悬停热区宽度按 DPI 缩放，与按钮资源图一致
+        const int edgeHeight = dp(50);
+        const int centerTopWidth = dp(100);
+
         if (mouseIsPressing) {
             cursorPos = CursorPos::centerArea;
         }
         else {
-            if (winWidth >= 500) {
-                if (0 <= x && x < 50) {
+            if (winWidth >= dp(500)) {
+                if (0 <= x && x < edgeWidth) {
                     if (0 <= y && y < (winHeight / 4)) {
                         cursorPos = CursorPos::leftUp;
                     }
@@ -519,7 +559,7 @@ public:
                         cursorPos = CursorPos::leftDown;
                     }
                 }
-                else if (((winWidth - 50) < x && x <= winWidth)) {
+                else if (((winWidth - edgeWidth) < x && x <= winWidth)) {
                     if (0 <= y && y < (winHeight / 4)) {
                         cursorPos = CursorPos::rightUp;
                     }
@@ -562,7 +602,7 @@ public:
                 }
             }
 
-            if (y < 50 && abs(x - winWidth / 2) < 100) {
+            if (y < edgeHeight && abs(x - winWidth / 2) < centerTopWidth) {
                 cursorPos = CursorPos::centerTop;
             }
         }
@@ -1316,9 +1356,9 @@ public:
 
     void drawExifInfo(cv::Mat& canvas) {
         if (showExif) {
-            const int padding = 10;
+            const int padding = dp(10);
             const int areaWidth = (canvas.cols - 2 * padding) / 4;
-            cv::Rect rect{ padding, padding, std::max(areaWidth, 400), canvas.rows - 2 * padding };
+            cv::Rect rect{ padding, padding, std::max(areaWidth, dp(400)), canvas.rows - 2 * padding };
             textDrawer.putAlignLeft(canvas, rect, curPar.imageAssetPtr->exifInfo.c_str(), GlobalVar::currentTheme.FG, true);
         }
     }
@@ -1328,7 +1368,7 @@ public:
         int canvasWidth = canvas.cols;
 
         //窗口尺寸太小则直接退出
-        if (canvasWidth < 100 || canvasHeight < 100 || extraUIFlag == ShowExtraUI::none)
+        if (canvasWidth < dp(100) || canvasHeight < dp(100) || extraUIFlag == ShowExtraUI::none)
             return;
 
         switch (extraUIFlag)

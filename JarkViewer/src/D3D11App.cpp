@@ -190,6 +190,7 @@ HRESULT D3D11App::Initialize(HINSTANCE hInstance) {
     hr = m_hWnd ? S_OK : E_FAIL;
 
     if (SUCCEEDED(hr)) {
+        refreshUiScale();
         CreateDeviceResources();
 
         BOOL themeMode = GlobalVar::isCurrentUIDarkMode;
@@ -394,8 +395,10 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = (MINMAXINFO*)lParam;
-        mmi->ptMinTrackSize.x = 400;
-        mmi->ptMinTrackSize.y = 300;
+        const D3D11App* pApp = (const D3D11App*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+        const float scale = pApp ? pApp->uiScale() : 1.0f;
+        mmi->ptMinTrackSize.x = (LONG)std::lround(400 * scale);
+        mmi->ptMinTrackSize.y = (LONG)std::lround(300 * scale);
         return S_OK;
     }
     case WM_CONTEXTMENU: {
@@ -472,7 +475,14 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_SIZE:
+        pApp->refreshUiScale(); // 跨显示器拖动时 WM_SIZE 先到，保证 OnResize 里画的是新缩放
         pApp->OnResize(LOWORD(lParam), HIWORD(lParam));
+        break;
+
+    case WM_DPICHANGED:
+    case WM_DPICHANGED_AFTERPARENT:
+        pApp->refreshUiScale();
+        pApp->OnDpiChanged();
         break;
 
     case WM_SETTINGCHANGE:
