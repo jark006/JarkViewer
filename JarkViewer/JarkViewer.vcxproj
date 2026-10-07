@@ -158,6 +158,7 @@
   <ItemGroup>
     <ClInclude Include="include\blpDecoder.h" />
     <ClInclude Include="include\AiPrompt.h" />
+    <ClInclude Include="include\AudioOutput.h" />
     <ClInclude Include="include\CanvasRenderer.h" />
     <ClInclude Include="include\ColorManager.h" />
     <ClInclude Include="include\D3D11App.h" />
@@ -168,6 +169,8 @@
     <ClInclude Include="include\FormatSniffer.h" />
     <ClInclude Include="include\ImageDatabase.h" />
     <ClInclude Include="include\LRU.h" />
+    <ClInclude Include="include\MediaDecoder.h" />
+    <ClInclude Include="include\MediaPlayer.h" />
     <ClInclude Include="include\Printer.h" />
     <ClInclude Include="include\Setting.h" />
     <ClInclude Include="include\stringRes.h" />
@@ -184,6 +187,7 @@
   <ItemGroup>
     <ClCompile Include="src\blpDecoder.cpp" />
     <ClCompile Include="src\AiPrompt.cpp" />
+    <ClCompile Include="src\AudioOutput.cpp" />
     <ClCompile Include="src\CanvasRenderer.cpp" />
     <ClCompile Include="src\ColorManager.cpp" />
     <ClCompile Include="src\D3D11App.cpp" />
@@ -192,6 +196,8 @@
     <ClCompile Include="src\FormatSniffer.cpp" />
     <ClCompile Include="src\ImageDatabase.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\MediaDecoder.cpp" />
+    <ClCompile Include="src\MediaPlayer.cpp" />
     <ClCompile Include="src\jarkUtils.cpp" />
     <ClCompile Include="src\stringRes.cpp" />
     <ClCompile Include="src\TextDrawer.cpp" />
