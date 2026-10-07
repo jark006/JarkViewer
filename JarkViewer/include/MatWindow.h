@@ -53,6 +53,22 @@ protected:
         if (!m_hwnd)
             return false;
 
+        // 依据窗口所在显示器的缩放比例调整到物理像素，避免高 DPI 下界面过小
+        {
+            const UINT dpi = ::GetDpiForWindow(m_hwnd);
+            if (dpi >= 48) {
+                m_uiScale = dpi / 96.0f;
+                if (m_uiScale > 1.0f) {
+                    RECT scaled = { 0, 0,
+                        static_cast<LONG>(std::lround(width * m_uiScale)),
+                        static_cast<LONG>(std::lround(height * m_uiScale)) };
+                    AdjustWindowRect(&scaled, style, FALSE);
+                    SetWindowPos(m_hwnd, nullptr, 0, 0, scaled.right - scaled.left, scaled.bottom - scaled.top,
+                        SWP_NOMOVE | SWP_NOZORDER);
+                }
+            }
+        }
+
         jarkUtils::disableWindowResize(m_hwnd);
 
         // 设置图标
@@ -71,6 +87,12 @@ protected:
     }
 
     virtual void drawingUI() = 0;
+
+    // 界面缩放：逻辑像素 -> 物理像素（高 DPI 屏幕下 > 1）
+    float uiScale() const noexcept { return m_uiScale; }
+    int dp(int logical) const noexcept {
+        return static_cast<int>(std::lround(logical * m_uiScale));
+    }
 
     void runMessageLoop() {
         MSG msg;
@@ -179,14 +201,21 @@ protected:
         }
 
         case WM_LBUTTONDOWN:
+            m_x = LOWORD(lParam);
+            m_y = HIWORD(lParam);
             onLButtonDown();
             return 0;
 
         case WM_LBUTTONUP:
+            // 用消息自带坐标：避免没有移动过的点击使用过期坐标
+            m_x = LOWORD(lParam);
+            m_y = HIWORD(lParam);
             onLButtonUp();
             return 0;
 
         case WM_RBUTTONUP:
+            m_x = LOWORD(lParam);
+            m_y = HIWORD(lParam);
             onRButtonUp();
             return 0;
 
@@ -232,6 +261,7 @@ public:
     static constexpr UINT WM_MATWINDOW_DRAW_REQUEST = WM_APP + 1;
     static constexpr UINT WM_MATWINDOW_DRAW_DONE = WM_APP + 2;
     volatile bool requestExitFlag = false;
+    float m_uiScale = 1.0f;
     volatile bool isNeedRefreshUI = true;
     volatile bool isDrawThreadRuning = true;
     volatile bool isDrawDone = false;

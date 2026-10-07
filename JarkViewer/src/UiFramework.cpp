@@ -1,0 +1,377 @@
+#include "UiFramework.h"
+
+#include "TextDrawer.h"
+
+namespace jark::ui {
+namespace {
+
+    constexpr int kCheckBoxSize = 34;
+    constexpr int kCheckBoxInset = 8;
+
+} // namespace
+
+// —— UiCanvas ——
+
+void UiCanvas::fill(Rect rect, Color color) {
+    const cv::Rect clipped = rect.toCv() & cv::Rect(0, 0, target_.cols, target_.rows);
+    if (clipped.width > 0 && clipped.height > 0)
+        cv::rectangle(target_, clipped, jarkUtils::to_cv_scalar(color), -1);
+}
+
+void UiCanvas::stroke(Rect rect, Color color, int thickness) {
+    if (rect.width > 0 && rect.height > 0)
+        cv::rectangle(target_, rect.toCv(), jarkUtils::to_cv_scalar(color), thickness);
+}
+
+void UiCanvas::line(int x0, int y0, int x1, int y1, Color color) {
+    cv::line(target_, { x0, y0 }, { x1, y1 }, jarkUtils::to_cv_scalar(color), 1);
+}
+
+void UiCanvas::text(Rect rect, std::string_view text, Color color, Align align) {
+    if (text.empty() || rect.width <= 0 || rect.height <= 0)
+        return;
+
+    const std::string owned(text);
+    const intUnion textColor(color);
+    switch (align) {
+    case Align::Center: drawer_.putAlignCenter(target_, rect.toCv(), owned.c_str(), textColor); break;
+    case Align::Right:  drawer_.putAlignRight(target_, rect.toCv(), owned.c_str(), textColor); break;
+    default:            drawer_.putAlignLeft(target_, rect.toCv(), owned.c_str(), textColor); break;
+    }
+}
+
+void UiCanvas::image(const cv::Mat& source, Rect destination) {
+    if (source.empty() || destination.width <= 0 || destination.height <= 0)
+        return;
+
+    // 资源图按目标矩形缩放（高 DPI 下窗口是物理像素，直接贴图会显示成一半大小）
+    cv::Mat scaled;
+    const cv::Mat* drawSource = &source;
+    if (source.cols != destination.width || source.rows != destination.height) {
+        cv::resize(source, scaled, { destination.width, destination.height }, 0, 0, cv::INTER_AREA);
+        drawSource = &scaled;
+    }
+
+    jarkUtils::overlayImg(target_, *drawSource, destination.x, destination.y);
+}
+
+int UiCanvas::lineHeight() const {
+    return 30;
+}
+
+// —— Label ——
+
+void Label::draw(UiCanvas& canvas) {
+    const Color color = color_ != 0 ? color_ : canvas.theme().FG;
+    canvas.text(bounds, text_, color, align_);
+}
+
+// —— CheckBox ——
+
+void CheckBox::draw(UiCanvas& canvas) {
+    const int boxSize = canvas.dp(kCheckBoxSize);
+    const int inset = canvas.dp(kCheckBoxInset);
+    const Rect box{ bounds.x + inset, bounds.y + inset, boxSize, boxSize };
+    canvas.stroke(box, canvas.theme().FG_DEEP, canvas.dp(4));
+
+    if (value_ && *value_)
+        canvas.fill(box.inset(inset), canvas.theme().CHECK);
+
+    const Rect textRect{ bounds.x + bounds.height, bounds.y, bounds.width - bounds.height, bounds.height };
+    canvas.text(textRect, text_, canvas.theme().FG);
+}
+
+bool CheckBox::onClick(int x, int y) {
+    if (!value_ || !bounds.contains(x, y))
+        return false;
+
+    *value_ = !*value_;
+    return true;
+}
+
+// —— RadioGroup ——
+
+int RadioGroup::itemWidth() const {
+    const int count = static_cast<int>(options_.size()) + 1; // 首列是标签
+    return count > 0 ? bounds.width / count : bounds.width;
+}
+
+void RadioGroup::draw(UiCanvas& canvas) {
+    if (options_.empty())
+        return;
+
+    const int width = itemWidth();
+    size_t index = value_ ? *value_ : 0;
+    if (index >= options_.size())
+        index = 0;
+
+    const int vInset = canvas.dp(4);
+    const Rect selected{ bounds.x + width * static_cast<int>(1 + index), bounds.y + vInset, width, bounds.height - vInset * 2 };
+    canvas.fill(selected, canvas.theme().CHECK);
+
+    const Rect frame{ bounds.x + width, bounds.y + vInset, bounds.width - width, bounds.height - vInset * 2 };
+    canvas.stroke(frame, canvas.theme().FG_DEEP, canvas.dp(2));
+
+    canvas.text({ bounds.x, bounds.y, width, bounds.height }, label_, canvas.theme().FG, Align::Center);
+
+    for (size_t i = 0; i < options_.size(); ++i) {
+        const Rect item{ bounds.x + width * static_cast<int>(1 + i), bounds.y, width, bounds.height };
+        canvas.text(item, options_[i], canvas.theme().FG, Align::Center);
+    }
+}
+
+bool RadioGroup::onClick(int x, int y) {
+    if (!value_ || options_.empty() || !bounds.contains(x, y))
+        return false;
+
+    const int width = itemWidth();
+    const int index = (x - bounds.x) / (width > 0 ? width : 1) - 1; // 首列是标签
+    if (index < 0 || index >= static_cast<int>(options_.size()) || *value_ == static_cast<uint32_t>(index))
+        return false;
+
+    *value_ = static_cast<uint32_t>(index);
+    return true;
+}
+
+// —— Button ——
+
+void Button::draw(UiCanvas& canvas) {
+    // 主按钮用高亮色，普通按钮用按钮底色（FG_DEEP 是“最深的文字色”，深色主题下是浅色，不能当底色）
+    canvas.fill(bounds, primary_ ? canvas.theme().CHECK : canvas.theme().BG_BTN);
+    canvas.text(bounds, text_, canvas.theme().FG, Align::Center);
+}
+
+bool Button::onClick(int x, int y) {
+    if (!bounds.contains(x, y) || !action_)
+        return false;
+
+    action_();
+    return true;
+}
+
+// —— TabBar ——
+
+void TabBar::draw(UiCanvas& canvas) {
+    if (tabs_.empty())
+        return;
+
+    const int width = bounds.width / static_cast<int>(tabs_.size());
+    for (size_t i = 0; i < tabs_.size(); ++i) {
+        const Rect item{ bounds.x + width * static_cast<int>(i), bounds.y, width, bounds.height };
+        if (index_ && *index_ == static_cast<int>(i))
+            canvas.fill(item, canvas.theme().FG_DEEP);
+
+        canvas.text(item, tabs_[i], canvas.theme().FG, Align::Center);
+    }
+}
+
+bool TabBar::onClick(int x, int y) {
+    if (!index_ || tabs_.empty() || !bounds.contains(x, y))
+        return false;
+
+    const int width = bounds.width / static_cast<int>(tabs_.size());
+    const int tab = (x - bounds.x) / (width > 0 ? width : 1);
+    if (tab < 0 || tab >= static_cast<int>(tabs_.size()) || *index_ == tab)
+        return false;
+
+    *index_ = tab;
+    if (onChanged_)
+        onChanged_();
+    return true;
+}
+
+// —— HotArea ——
+
+bool HotArea::onClick(int x, int y) {
+    if (!bounds.contains(x, y) || !action_)
+        return false;
+
+    action_();
+    return true;
+}
+
+// —— ImageView ——
+
+void ImageView::draw(UiCanvas& canvas) {
+    if (image_ && !image_->empty())
+        canvas.image(*image_, bounds);
+}
+
+// —— CheckGrid ——
+
+Rect CheckGrid::itemRect(int index) const {
+    if (columns_ <= 0 || items_.empty())
+        return {};
+
+    const int rows = (static_cast<int>(items_.size()) + columns_ - 1) / columns_;
+    const int itemWidth = bounds.width / columns_;
+    const int itemHeight = rows > 0 ? bounds.height / rows : 0;
+    return { bounds.x + itemWidth * (index % columns_),
+             bounds.y + itemHeight * (index / columns_),
+             itemWidth, itemHeight };
+}
+
+void CheckGrid::draw(UiCanvas& canvas) {
+    for (size_t i = 0; i < items_.size(); ++i) {
+        const Rect item = itemRect(static_cast<int>(i));
+        if (item.height <= 0 || item.y + item.height > bounds.bottom())
+            break;
+
+        const int margin = canvas.dp(8);
+        const int boxSize = (std::min)(item.height - margin, canvas.dp(28));
+        if (boxSize <= 0)
+            continue;
+
+        const Rect box{ item.x + canvas.dp(4), item.y + (item.height - boxSize) / 2, boxSize, boxSize };
+        canvas.stroke(box, canvas.theme().FG_DEEP, canvas.dp(3));
+
+        if (isChecked_ && isChecked_(items_[i]))
+            canvas.fill(box.inset(canvas.dp(5)), canvas.theme().CHECK);
+
+        canvas.text({ box.right() + canvas.dp(6), item.y, item.width - boxSize - canvas.dp(12), item.height },
+            items_[i], canvas.theme().FG);
+    }
+}
+
+bool CheckGrid::onClick(int x, int y) {
+    if (!bounds.contains(x, y) || !setChecked_)
+        return false;
+
+    for (size_t i = 0; i < items_.size(); ++i) {
+        const Rect item = itemRect(static_cast<int>(i));
+        if (item.height <= 0 || item.y + item.height > bounds.bottom())
+            break;
+
+        if (item.contains(x, y)) {
+            setChecked_(items_[i], !(isChecked_ && isChecked_(items_[i])));
+            return true;
+        }
+    }
+    return false;
+}
+
+// —— Row ——
+
+Row& Row::add(ControlPtr control, int weight) {
+    if (!control)
+        return *this;
+
+    totalWeight += weight > 0 ? weight : 1;
+    entries_.push_back(Entry{ std::move(control), weight > 0 ? weight : 1 });
+    return *this;
+}
+
+void Row::draw(UiCanvas& canvas) {
+    if (entries_.empty() || totalWeight <= 0)
+        return;
+
+    int x = bounds.x;
+    for (size_t i = 0; i < entries_.size(); ++i) {
+        const int width = (i + 1 == entries_.size())
+            ? bounds.right() - x
+            : bounds.width * entries_[i].weight / totalWeight;
+        entries_[i].control->bounds = { x, bounds.y, width, bounds.height };
+        x += width;
+
+        if (entries_[i].control->visible)
+            entries_[i].control->draw(canvas);
+    }
+}
+
+bool Row::onClick(int x, int y) {
+    for (auto& entry : entries_) {
+        Control* control = entry.control.get();
+        if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
+            continue;
+
+        control->onClick(x, y);
+        return true;
+    }
+    return false;
+}
+
+// —— Panel ——
+
+Panel& Panel::add(ControlPtr control, int height, int gap) {
+    if (!control)
+        return *this;
+
+    contentHeight += gap + (height > 0 ? height : control->preferredHeight());
+    entries_.push_back(Entry{ std::move(control), height, gap });
+    return *this;
+}
+
+Panel& Panel::overlay(ControlPtr control, Rect logicalBounds) {
+    if (!control)
+        return *this;
+
+    control->bounds = logicalBounds; // 逻辑坐标，绘制时再换算
+    overlays_.push_back(Entry{ std::move(control), 0, 0 });
+    return *this;
+}
+
+void Panel::draw(UiCanvas& canvas) {
+    int y = bounds.y;
+    for (auto& entry : entries_) {
+        y += canvas.dp(entry.gap);
+        const int height = canvas.dp(entry.height > 0 ? entry.height : entry.control->preferredHeight());
+        entry.control->bounds = { bounds.x, y, bounds.width, height };
+        y += height;
+
+        if (entry.control->visible)
+            entry.control->draw(canvas);
+    }
+
+    for (auto& entry : overlays_) {
+        entry.control->bounds = { bounds.x + canvas.dp(entry.control->bounds.x),
+                                  bounds.y + canvas.dp(entry.control->bounds.y),
+                                  canvas.dp(entry.control->bounds.width),
+                                  canvas.dp(entry.control->bounds.height) };
+        if (entry.control->visible)
+            entry.control->draw(canvas);
+    }
+}
+
+Control* Panel::find(int x, int y) {
+    for (auto& entry : entries_) {
+        if (entry.control->visible && entry.control->enabled && entry.control->bounds.contains(x, y))
+            return entry.control.get();
+    }
+    return nullptr;
+}
+
+bool Panel::onClick(int x, int y) {
+    // 覆盖层优先（后加入者在上）
+    for (auto it = overlays_.rbegin(); it != overlays_.rend(); ++it) {
+        Control* control = it->control.get();
+        if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
+            continue;
+
+        control->onClick(x, y);
+        return true;
+    }
+
+    for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+        Control* control = it->control.get();
+        if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
+            continue;
+
+        control->onClick(x, y); // 命中即消费，避免穿透到下层控件
+        return true;
+    }
+    return false;
+}
+
+bool Panel::onWheel(int x, int y, int delta) {
+    for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+        Control* control = it->control.get();
+        if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
+            continue;
+
+        if (control->onWheel(x, y, delta))
+            return true;
+    }
+    return false;
+}
+
+} // namespace jark::ui

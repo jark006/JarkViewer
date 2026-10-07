@@ -26,6 +26,12 @@ public:
     //Rect {x, y, width, height}
     void putAlignLeft(cv::Mat& img, cv::Rect rect, const char* str, intUnion color, bool isAdaptiveFG = false);
 
+    //Rect {x, y, width, height}
+    void putAlignRight(cv::Mat& img, cv::Rect rect, const char* str, intUnion color, bool isAdaptiveFG = false);
+
+    // 按等宽字体模型估算文本宽度（像素）
+    int measureText(const char* str) const;
+
     // 某个字符是否可以用当前字体绘制（用于判断是否需要回退字体）
     bool hasGlyph(const int codePoint);
 

@@ -1,10 +1,15 @@
-# Capture a single window to a PNG without capturing the rest of the desktop.
+# Capture (and drive) a single window of the launched app, for visual verification.
 #
-# Usage:
-#   pwsh tools/capture_window.ps1 -Exe x64/Release/JarkViewer.exe -Argument "image.svg" -Out shot.png
+# Usage examples:
+#   pwsh tools/capture_window.ps1 -Exe x64/Release/JarkViewer.exe -Argument "img.svg" -Out shot.png
+#   pwsh tools/capture_window.ps1 -Exe ... -Argument "img.png" -Keys "{F1}" -Window smallest -Out settings.png
+#   pwsh tools/capture_window.ps1 -Exe ... -Keys "{F1}" -Window smallest -Click "41,95" -Out clicked.png
 #
-# The target process is started with -Argument, its main window is captured with
-# PrintWindow(PW_RENDERFULLCONTENT) and the process is killed afterwards.
+# -Window main      : main window (default)
+# -Window smallest  : smallest visible window (e.g. the settings window opened by F1)
+# -Click "x,y"      : click at logical client coordinates; physical scale is derived from
+#                     the window width and -LogicWidth (default 1000)
+#
 # NOTE: keep this file ASCII-only (Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI).
 
 param(
@@ -12,17 +17,18 @@ param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Argument = "",
     [string]$Keys = "",
-    [int]$WindowIndex = 0,
+    [ValidateSet("main", "smallest")]
+    [string]$Window = "main",
+    [string]$Click = "",
+    [int]$LogicWidth = 1000,
     [int]$WaitMs = 2500,
     [int]$AfterKeysMs = 1200,
     [int]$TimeoutMs = 15000
 )
 
-Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing, System.Windows.Forms
 Add-Type @"
-using System;
-using System.Runtime.InteropServices;
+using System; using System.Collections.Generic; using System.Runtime.InteropServices;
 public class JarkCapture {
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
@@ -32,23 +38,32 @@ public class JarkCapture {
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc proc, IntPtr param);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
     public delegate bool EnumProc(IntPtr hwnd, IntPtr param);
+    public const uint LEFTDOWN = 0x0002, LEFTUP = 0x0004;
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
 
-    // 取属于该进程的第 index 个可见顶层窗口（0=主窗口）
-    public static IntPtr FindProcessWindow(int pid, int index) {
-        IntPtr result = IntPtr.Zero;
-        int found = 0;
+    public static List<IntPtr> Windows(int pid) {
+        var list = new List<IntPtr>();
         EnumWindows(delegate(IntPtr hwnd, IntPtr param) {
-            uint windowPid;
-            GetWindowThreadProcessId(hwnd, out windowPid);
-            if (windowPid == (uint)pid && IsWindowVisible(hwnd)) {
-                if (found == index) { result = hwnd; return false; }
-                found++;
-            }
+            uint p; GetWindowThreadProcessId(hwnd, out p);
+            if (p == (uint)pid && IsWindowVisible(hwnd)) list.Add(hwnd);
             return true;
         }, IntPtr.Zero);
-        return result;
+        return list;
+    }
+
+    public static IntPtr SmallestWindow(int pid) {
+        IntPtr best = IntPtr.Zero; long bestArea = long.MaxValue;
+        foreach (IntPtr hwnd in Windows(pid)) {
+            RECT r; GetWindowRect(hwnd, out r);
+            long area = (long)(r.Right - r.Left) * (r.Bottom - r.Top);
+            if (area > 0 && area < bestArea) { bestArea = area; best = hwnd; }
+        }
+        return best;
     }
 }
 "@
@@ -56,6 +71,15 @@ public class JarkCapture {
 # The host must be DPI-aware, otherwise GetWindowRect reports virtualized (logical)
 # coordinates and the capture ends up as a downscaled top-left crop of a high-DPI window.
 [void][JarkCapture]::SetProcessDPIAware()
+
+function Activate-Window([IntPtr]$hwnd) {
+    for ($i = 0; $i -lt 10; $i++) {
+        [void][JarkCapture]::SetForegroundWindow($hwnd)
+        Start-Sleep -Milliseconds 200
+        if ([JarkCapture]::GetForegroundWindow() -eq $hwnd) { return $true }
+    }
+    return $false
+}
 
 $proc = Start-Process -FilePath $Exe -ArgumentList $Argument -PassThru
 try {
@@ -72,28 +96,38 @@ try {
     Start-Sleep -Milliseconds $WaitMs
 
     if ($Keys -ne "") {
-        # 前台窗口切换可能被系统拒绝，重试几次
-        $focused = $false
-        for ($attempt = 0; $attempt -lt 10 -and -not $focused; $attempt++) {
-            [void][JarkCapture]::SetForegroundWindow($hwnd)
-            Start-Sleep -Milliseconds 200
-            $focused = ([JarkCapture]::GetForegroundWindow() -eq $hwnd)
-        }
+        [void](Activate-Window $hwnd)
+        [System.Windows.Forms.SendKeys]::SendWait($Keys)
+        Start-Sleep -Milliseconds $AfterKeysMs
+    }
 
-        if ($focused) {
-            [System.Windows.Forms.SendKeys]::SendWait($Keys)
-            Start-Sleep -Milliseconds $AfterKeysMs
-        }
-        else {
-            Write-Warning "window did not come to the foreground; keys skipped"
+    if ($Window -eq "smallest") {
+        $target = [JarkCapture]::SmallestWindow($proc.Id)
+        if ($target -ne [IntPtr]::Zero) {
+            $hwnd = $target
+            Start-Sleep -Milliseconds 400
         }
     }
 
-    if ($WindowIndex -gt 0) {
-        $target = [JarkCapture]::FindProcessWindow($proc.Id, $WindowIndex)
-        if ($target -eq [IntPtr]::Zero) { throw "process window #$WindowIndex not found" }
-        $hwnd = $target
-        Start-Sleep -Milliseconds 400
+    if ($Click -ne "") {
+        [void](Activate-Window $hwnd)
+
+        $windowRect = New-Object JarkCapture+RECT
+        [void][JarkCapture]::GetWindowRect($hwnd, [ref]$windowRect)
+        $scale = ($windowRect.Right - $windowRect.Left) / [double]$LogicWidth
+
+        $parts = $Click.Split(",")
+        $point = New-Object JarkCapture+POINT
+        $point.X = [int]([int]$parts[0] * $scale)
+        $point.Y = [int]([int]$parts[1] * $scale)
+        [void][JarkCapture]::ClientToScreen($hwnd, [ref]$point)
+
+        [void][JarkCapture]::SetCursorPos($point.X, $point.Y)
+        Start-Sleep -Milliseconds 200
+        [JarkCapture]::mouse_event([JarkCapture]::LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 60
+        [JarkCapture]::mouse_event([JarkCapture]::LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds $AfterKeysMs
     }
 
     $rect = New-Object JarkCapture+RECT
