@@ -24,6 +24,8 @@ param(
     [string]$Click = "",
     [string]$Hover = "",
     [string]$Drag = "",
+    [string]$RightClick = "",    # right click at logical client coords (context menu)
+    [string]$MenuKeys = "",      # keys sent to the open popup menu, e.g. "b{ENTER}"
     [int]$SegmentDelayMs = -1,   # delay between drag segments (default: $AfterKeysMs)
     [int]$LogicWidth = 1000,
     [int]$WaitMs = 2500,
@@ -79,7 +81,7 @@ public class JarkCapture {
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
     public delegate bool EnumProc(IntPtr hwnd, IntPtr param);
-    public const uint LEFTDOWN = 0x0002, LEFTUP = 0x0004;
+    public const uint LEFTDOWN = 0x0002, LEFTUP = 0x0004, RIGHTDOWN = 0x0008, RIGHTUP = 0x0010;
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
 
@@ -172,6 +174,34 @@ try {
         Start-Sleep -Milliseconds 60
         [JarkCapture]::mouse_event([JarkCapture]::LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
         Start-Sleep -Milliseconds $AfterKeysMs
+    }
+
+    if ($RightClick -ne "") {
+        # Right click at logical client coordinates (opens the app's Win32 context menu);
+        # -MenuKeys then drives the popup (e.g. "b{ENTER}" picks 批量处理 by accelerator).
+        [void](Activate-Window $hwnd)
+
+        $windowRect = New-Object JarkCapture+RECT
+        [void][JarkCapture]::GetWindowRect($hwnd, [ref]$windowRect)
+        $scale = ($windowRect.Right - $windowRect.Left) / [double]$LogicWidth
+
+        $parts = $RightClick.Split(",")
+        $point = New-Object JarkCapture+POINT
+        $point.X = [int]([int]$parts[0] * $scale)
+        $point.Y = [int]([int]$parts[1] * $scale)
+        [void][JarkCapture]::ClientToScreen($hwnd, [ref]$point)
+
+        [void][JarkCapture]::SetCursorPos($point.X, $point.Y)
+        Start-Sleep -Milliseconds 250
+        [JarkCapture]::mouse_event([JarkCapture]::RIGHTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 80
+        [JarkCapture]::mouse_event([JarkCapture]::RIGHTUP, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 600
+
+        if ($MenuKeys -ne "") {
+            [System.Windows.Forms.SendKeys]::SendWait($MenuKeys)
+            Start-Sleep -Milliseconds $AfterKeysMs
+        }
     }
 
     if ($Hover -ne "") {

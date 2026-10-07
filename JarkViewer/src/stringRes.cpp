@@ -245,6 +245,7 @@ std::string_view UIStringTableWide[STRING_MAX_NUM][jark::kLanguageCount] = {
      "원본 파일을 덮어쓸까요? 이 작업은 되돌릴 수 없습니다."},
     {"编辑与标注 (&E)", "編輯與標註 (&E)", "&Edit and annotate", "編集と注釈 (&E)", "편집 및 주석 (&E)"},
     {"幻灯片播放 (&S)", "幻燈片播放 (&S)", "&Slideshow", "スライドショー (&S)", "슬라이드쇼 (&S)"},
+    {"当前目录下没有可批量处理的图片", "目前資料夾沒有可批次處理的圖片", "No images to batch process in this folder", "このフォルダにバッチ処理できる画像がありません", "이 폴더에 일괄 처리할 이미지가 없습니다"}, // 49
 };
 
 namespace {

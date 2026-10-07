@@ -1896,7 +1896,8 @@ public:
             }
 
             if (batchFiles.empty())
-                MessageBoxW(m_hWnd, getUIStringW(33), getUIStringW(15), MB_OK | MB_ICONINFORMATION);
+                // 49：当前目录下没有可批量处理的图片（原来写的是 33，那是“关于”菜单项）
+                MessageBoxW(m_hWnd, getUIStringW(49), getUIStringW(15), MB_OK | MB_ICONINFORMATION);
             else
                 BatchWindow::instance().open(std::move(batchFiles));
         }
