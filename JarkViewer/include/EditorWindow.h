@@ -343,6 +343,17 @@ private:
             { "", kStrCrop, jark::AnnoTool::Crop },
         };
 
+        // 撤销/重做在最左边，与右侧的绘图工具之间用竖线分开
+        if (ImGui::Button(jark::ui::icon::kUndo, { 44.0f * scale, 0 }))
+            undo();
+        ImGui::SameLine();
+        if (ImGui::Button(jark::ui::icon::kRedo, { 44.0f * scale, 0 }))
+            redo();
+
+        ImGui::SameLine(0.0f, 14.0f * scale);
+        drawVerticalSeparator(scale);
+        ImGui::SameLine(0.0f, 14.0f * scale);
+
         for (size_t index = 0; index < std::size(tools); ++index) {
             if (index > 0)
                 ImGui::SameLine();
@@ -360,12 +371,16 @@ private:
             if (selected)
                 ImGui::PopStyleColor();
         }
+    }
 
-        if (ImGui::Button(jark::ui::icon::kUndo, { 44.0f * scale, 0 }))
-            undo();
-        ImGui::SameLine();
-        if (ImGui::Button(jark::ui::icon::kRedo, { 44.0f * scale, 0 }))
-            redo();
+    // 工具栏里的竖分隔线：ImGui 的 Separator() 只有横线，这里按当前按钮高度画一条并占位。
+    // 用 TextDisabled 色（主题的 Separator 色太暗，分隔不明显）
+    static void drawVerticalSeparator(float scale) {
+        const float height = ImGui::GetFrameHeight();
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        ImGui::GetWindowDrawList()->AddLine(pos, ImVec2(pos.x, pos.y + height),
+            ImGui::GetColorU32(ImGuiCol_TextDisabled), 1.0f * scale);
+        ImGui::Dummy(ImVec2(1.0f * scale, height));
     }
 
     // —— 侧栏 ——
