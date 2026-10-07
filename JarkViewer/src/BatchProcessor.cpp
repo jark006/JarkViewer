@@ -9,12 +9,11 @@
 #include "jarkUtils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <set>
-
-#include <shellapi.h>
 
 namespace jark {
 namespace {
@@ -104,36 +103,57 @@ namespace {
         return bgr;
     }
 
-    bool deleteToRecycleBin(const std::vector<std::wstring>& files, std::wstring& error) {
-        if (files.empty())
-            return true;
-
-        // SHFileOperationW 需要双零结尾的多字符串
-        std::wstring buffer;
-        for (const auto& file : files) {
-            buffer += file;
-            buffer.push_back(L'\0');
+    // 插值方式 → OpenCV 标志；Auto 按缩放方向选：缩小时用面积平均（抗锯齿最干净），
+    // 放大时用 Lanczos（比双三次锐利，且不会像 INTER_AREA 放大那样退化成最近邻）
+    int resolveInterpolation(ImageSize target, ImageSize source, ScaleAlgorithm algorithm) {
+        switch (algorithm) {
+        case ScaleAlgorithm::Nearest: return cv::INTER_NEAREST;
+        case ScaleAlgorithm::Linear: return cv::INTER_LINEAR;
+        case ScaleAlgorithm::Area: return cv::INTER_AREA;
+        case ScaleAlgorithm::Cubic: return cv::INTER_CUBIC;
+        case ScaleAlgorithm::Lanczos: return cv::INTER_LANCZOS4;
+        default:
+            return (static_cast<int64_t>(target.width) * target.height <
+                static_cast<int64_t>(source.width) * source.height) ? cv::INTER_AREA : cv::INTER_LANCZOS4;
         }
-        buffer.push_back(L'\0');
-
-        SHFILEOPSTRUCTW operation{};
-        operation.wFunc = FO_DELETE;
-        operation.pFrom = buffer.c_str();
-        operation.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI;
-
-        const int result = SHFileOperationW(&operation);
-        if (result != 0 || operation.fAnyOperationsAborted) {
-            error = std::format(L"删除失败，错误码 {}",
-                result != 0 ? result : ::GetLastError());
-            return false;
-        }
-        return true;
     }
 
 } // namespace
 
-std::vector<std::wstring> batchOutputExtensions() {
-    return { L"png", L"jpg", L"webp", L"bmp", L"tif" };
+ImageSize scaledSize(ImageSize source, const BatchOptions& options) {
+    if (source.empty())
+        return source;
+
+    const auto scaled = [](double value) {
+        return (std::max)(1, static_cast<int>(std::lround(value)));
+        };
+
+    switch (options.scaleMode) {
+    case ScaleMode::Percent: {
+        const double factor = std::clamp(options.scalePercent, 1, 1000) / 100.0;
+        return { scaled(source.width * factor), scaled(source.height * factor) };
+    }
+    case ScaleMode::Width: {
+        const int width = (std::max)(1, options.scaleWidth);
+        return { width, scaled(static_cast<double>(source.height) * width / source.width) };
+    }
+    case ScaleMode::Height: {
+        const int height = (std::max)(1, options.scaleHeight);
+        return { scaled(static_cast<double>(source.width) * height / source.height), height };
+    }
+    case ScaleMode::Stretch:
+        return { (std::max)(1, options.scaleWidth), (std::max)(1, options.scaleHeight) };
+    case ScaleMode::LongEdge: {
+        const int limit = (std::max)(1, options.scaleMaxEdge);
+        const int longEdge = (std::max)(source.width, source.height);
+        if (longEdge <= limit)
+            return source; // 只缩不放
+        const double factor = static_cast<double>(limit) / longEdge;
+        return { scaled(source.width * factor), scaled(source.height * factor) };
+    }
+    }
+
+    return source;
 }
 
 bool processImageFile(const std::wstring& sourcePath, const std::wstring& targetPath,
@@ -144,13 +164,14 @@ bool processImageFile(const std::wstring& sourcePath, const std::wstring& target
     if (image.empty())
         return false;
 
-    // 缩放（按长边）
-    if (options.maxEdge > 0) {
-        const int longEdge = (std::max)(image.cols, image.rows);
-        if (longEdge > options.maxEdge) {
-            const double scale = static_cast<double>(options.maxEdge) / longEdge;
+    // 缩放
+    if (options.task == BatchTask::Scale) {
+        const ImageSize source{ image.cols, image.rows };
+        const ImageSize target = scaledSize(source, options);
+        if (target != source) {
             cv::Mat resized;
-            cv::resize(image, resized, cv::Size(), scale, scale, cv::INTER_AREA);
+            cv::resize(image, resized, cv::Size(target.width, target.height), 0.0, 0.0,
+                resolveInterpolation(target, source, options.scaleAlgorithm));
             image = std::move(resized);
         }
     }
@@ -199,20 +220,6 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
     if (files.empty())
         return result;
 
-    if (options.task == BatchTask::Delete)
-        return [&]() {
-            BatchResult deleteResult;
-            std::wstring error;
-            if (deleteToRecycleBin(files, error)) {
-                deleteResult.succeeded = files.size();
-            }
-            else {
-                deleteResult.failed = files.size();
-                deleteResult.messages.push_back(error);
-            }
-            return deleteResult;
-        }();
-
     // 本次运行已产出的输出路径（小写），用于避免同名互相覆盖
     std::set<std::wstring> producedTargets;
 
@@ -259,7 +266,7 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
             continue;
         }
 
-        // —— 转换 / 旋转 ——
+        // —— 转换 / 缩放 / 旋转 ——
         const bool inPlace = options.task == BatchTask::Rotate && options.outputDirectory.empty();
 
         std::filesystem::path target;
@@ -301,6 +308,16 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
     }
 
     return result;
+}
+
+bool loadImageSize(const std::wstring& path, ImageSize& size) {
+    std::wstring error;
+    const cv::Mat image = loadImage(path, error);
+    if (image.empty())
+        return false;
+
+    size = { image.cols, image.rows };
+    return true;
 }
 
 } // namespace jark

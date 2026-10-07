@@ -215,7 +215,7 @@ namespace {
     // 语言自检：逐一切换语言并打印若干条文案，验证字符串表与回退逻辑
     std::string runLanguageTest() {
         std::string report;
-        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127 }; // 含关闭/打印/帮助标题（新增文案易错位）
+        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146 }; // 含关闭/打印/帮助标题/缩放/预览（新增文案易错位）
         const uint32_t wideIds[] = { 1, 13, 30, 49 };            // 窗口标题/窗口创建失败/删除到回收站/批量无图提示
 
         const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;
@@ -239,9 +239,15 @@ namespace {
 
     // 批量处理自检：对给定文件执行一次批量任务并输出结果
     std::string runBatchTest(const std::vector<std::wstring>& files, const jark::BatchOptions& options) {
-        std::string report = std::format("批量任务: {} 个文件, 任务类型 {}, 输出格式 {}, 长边上限 {}, 质量 {}\n",
+        std::string report = std::format("批量任务: {} 个文件, 任务类型 {}, 输出格式 {}, 质量 {}\n",
             files.size(), static_cast<int>(options.task),
-            jarkUtils::wstringToUtf8(options.outputExtension), options.maxEdge, options.jpegQuality);
+            jarkUtils::wstringToUtf8(options.outputExtension.empty() ?
+                std::wstring(L"(保持原格式)") : options.outputExtension), options.jpegQuality);
+
+        if (options.task == jark::BatchTask::Scale)
+            report += std::format("缩放: 方式 {}, 算法 {}, 百分比 {}%, 宽 {}, 高 {}, 长边 {}\n",
+                static_cast<int>(options.scaleMode), static_cast<int>(options.scaleAlgorithm),
+                options.scalePercent, options.scaleWidth, options.scaleHeight, options.scaleMaxEdge);
 
         const auto begin = std::chrono::steady_clock::now();
         const auto result = jark::runBatch(files, options);
@@ -603,6 +609,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool annotateTest = false;
     std::wstring annotateOutDir;
     jark::BatchOptions batchOptions;
+    bool outputFormatGiven = false;
 
     for (size_t i = 1; i < argv.size(); ++i) {
         if (argv[i] == L"--probe")
@@ -637,10 +644,47 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--to" && i + 1 < argv.size()) {
             batchOptions.outputExtension = argv[++i];
+            outputFormatGiven = true;
+            continue;
+        }
+        if (argv[i] == L"--scale-percent" && i + 1 < argv.size()) {
+            batchOptions.task = jark::BatchTask::Scale;
+            batchOptions.scaleMode = jark::ScaleMode::Percent;
+            batchOptions.scalePercent = ::_wtoi(argv[++i].c_str());
+            continue;
+        }
+        if (argv[i] == L"--scale-width" && i + 1 < argv.size()) {
+            batchOptions.task = jark::BatchTask::Scale;
+            batchOptions.scaleMode = jark::ScaleMode::Width;
+            batchOptions.scaleWidth = ::_wtoi(argv[++i].c_str());
+            continue;
+        }
+        if (argv[i] == L"--scale-height" && i + 1 < argv.size()) {
+            batchOptions.task = jark::BatchTask::Scale;
+            batchOptions.scaleMode = jark::ScaleMode::Height;
+            batchOptions.scaleHeight = ::_wtoi(argv[++i].c_str());
+            continue;
+        }
+        if (argv[i] == L"--scale-size" && i + 1 < argv.size()) {
+            const std::wstring value = argv[++i];
+            const size_t separator = value.find_first_of(L"xX*");
+            if (separator != std::wstring::npos) {
+                batchOptions.task = jark::BatchTask::Scale;
+                batchOptions.scaleMode = jark::ScaleMode::Stretch;
+                batchOptions.scaleWidth = ::_wtoi(value.substr(0, separator).c_str());
+                batchOptions.scaleHeight = ::_wtoi(value.substr(separator + 1).c_str());
+            }
             continue;
         }
         if (argv[i] == L"--max-edge" && i + 1 < argv.size()) {
-            batchOptions.maxEdge = ::_wtoi(argv[++i].c_str());
+            batchOptions.task = jark::BatchTask::Scale;
+            batchOptions.scaleMode = jark::ScaleMode::LongEdge;
+            batchOptions.scaleMaxEdge = ::_wtoi(argv[++i].c_str());
+            continue;
+        }
+        if (argv[i] == L"--scale-algo" && i + 1 < argv.size()) {
+            batchOptions.scaleAlgorithm = static_cast<jark::ScaleAlgorithm>(
+                std::clamp(::_wtoi(argv[++i].c_str()), 0, 5));
             continue;
         }
         if (argv[i] == L"--quality" && i + 1 < argv.size()) {
@@ -716,9 +760,14 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
 
     if (batchTest) {
         if (targets.empty()) {
-            std::println("usage: JarkViewer.exe --probe --batch <file...> [--out-dir 目录] [--to 格式] [--max-edge N] [--quality N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--overwrite]");
+            std::println("usage: JarkViewer.exe --probe --batch <file...> [--out-dir 目录] [--to 格式] [--quality N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--rename 前缀] [--overwrite]\n"
+                "       缩放: [--scale-percent N | --scale-width N | --scale-height N | --scale-size 宽x高 | --max-edge N] [--scale-algo 0..5]");
             return 2;
         }
+        // 缩放任务不指定 --to 时保持原格式（与界面一致）
+        if (!outputFormatGiven && batchOptions.task == jark::BatchTask::Scale)
+            batchOptions.outputExtension.clear();
+
         const auto text = runBatchTest(targets, batchOptions);
         emit(text);
         return 0;

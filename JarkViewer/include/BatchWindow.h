@@ -1,6 +1,6 @@
 #pragma once
 
-// 批量处理窗口（ImGui 版）：转换/缩放、重命名、旋转翻转、删除到回收站。
+// 批量处理窗口（ImGui 版）：转换格式、缩放、重命名、旋转翻转。
 // 处理逻辑仍在 BatchProcessor（可脱离界面验证），界面由主窗口的 DrawUi() 每帧驱动。
 
 #include "BatchProcessor.h"
@@ -13,8 +13,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <filesystem>
 #include <format>
+#include <mutex>
 #include <set>
 #include <string>
 #include <thread>
@@ -49,6 +51,14 @@ public:
         result_ = {};
         progressValue_ = 0;
         progressMax_ = (std::max)(size_t{ 1 }, files_.size());
+
+        {   // 新的文件列表要重新取缩放预览的样张尺寸
+            std::lock_guard lock(previewMutex_);
+            previewPath_.clear();
+            previewRequest_.clear();
+            previewSource_ = {};
+            previewLoading_ = false;
+        }
 
         visible_ = true;
         focusRequested_ = true;
@@ -137,7 +147,7 @@ private:
     // —— 任务参数 ——
 
     void drawTaskPanel(float scale) {
-        const char* taskNames[] = { ui(kStrConvert), ui(kStrRename), ui(kStrRotate), ui(kStrDelete) };
+        const char* taskNames[] = { ui(kStrConvert), ui(kStrScale), ui(kStrRename), ui(kStrRotate) };
 
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(ui(kStrTask));
@@ -154,33 +164,26 @@ private:
         ImGui::Spacing();
 
         switch (taskIndex_) {
-        case 1: options_.task = jark::BatchTask::Rename; drawRenamePanel(scale); break;
-        case 2: options_.task = jark::BatchTask::Rotate; drawRotatePanel(scale); break;
-        case 3: options_.task = jark::BatchTask::Delete; drawDeletePanel(); break;
-        default: options_.task = jark::BatchTask::Convert; drawConvertPanel(scale); break;
+        case 1:
+            options_.task = jark::BatchTask::Scale;
+            options_.outputExtension.clear(); // 缩放保持原格式，不转格式
+            drawScalePanel(scale);
+            break;
+        case 2: options_.task = jark::BatchTask::Rename; drawRenamePanel(scale); break;
+        case 3: options_.task = jark::BatchTask::Rotate; drawRotatePanel(scale); break;
+        default:
+            options_.task = jark::BatchTask::Convert;
+            options_.outputExtension = jarkUtils::utf8ToWstring(kOutputFormats[formatIndex_]);
+            drawConvertPanel(scale);
+            break;
         }
     }
 
     void drawConvertPanel(float scale) {
-        static const char* formats[] = { "png", "jpg", "webp", "bmp", "tif" };
-        static const int edges[] = { 0, 4096, 2048, 1600, 1280, 800 };
-        static const char* edgeNames[] = { "", "4096", "2048", "1600", "1280", "800" };
-
         int format = static_cast<int>(formatIndex_);
         ImGui::SetNextItemWidth(140.0f * scale);
-        if (ImGui::Combo(ui(kStrOutputFormat), &format, formats, IM_ARRAYSIZE(formats))) {
+        if (ImGui::Combo(ui(kStrOutputFormat), &format, kOutputFormats, IM_ARRAYSIZE(kOutputFormats)))
             formatIndex_ = static_cast<uint32_t>(format);
-            options_.outputExtension = jarkUtils::utf8ToWstring(formats[formatIndex_]);
-        }
-
-        ImGui::SameLine();
-        int edgeIndex = static_cast<int>(maxEdgeIndex_);
-        const char* edgeLabels[] = { ui(kStrKeepSize), edgeNames[1], edgeNames[2], edgeNames[3], edgeNames[4], edgeNames[5] };
-        ImGui::SetNextItemWidth(140.0f * scale);
-        if (ImGui::Combo(ui(41), &edgeIndex, edgeLabels, IM_ARRAYSIZE(edgeLabels))) {
-            maxEdgeIndex_ = static_cast<uint32_t>(edgeIndex);
-            options_.maxEdge = edges[maxEdgeIndex_];
-        }
 
         ImGui::Checkbox(ui(kStrApplyAdjust), &options_.applyAdjustments);
         if (options_.applyAdjustments) {
@@ -202,6 +205,146 @@ private:
             ImGui::Unindent(20.0f * scale);
         }
 
+        drawOutputSection(scale);
+    }
+
+    // —— 缩放 ——
+
+    void drawScalePanel(float scale) {
+        const char* modeNames[] = { ui(kStrByPercent), ui(kStrByWidth), ui(kStrByHeight),
+                                    ui(kStrCustomSize), ui(kStrMaxLongEdge) };
+        const char* algorithmNames[] = { ui(kStrAuto), ui(kStrNearest), ui(kStrBilinear),
+                                         ui(kStrArea), ui(kStrCubic), "Lanczos" };
+
+        int mode = static_cast<int>(scaleModeIndex_);
+        ImGui::SetNextItemWidth(140.0f * scale);
+        if (ImGui::Combo(ui(kStrScaleMode), &mode, modeNames, IM_ARRAYSIZE(modeNames))) {
+            scaleModeIndex_ = static_cast<uint32_t>(mode);
+            options_.scaleMode = static_cast<jark::ScaleMode>(scaleModeIndex_);
+        }
+
+        ImGui::SameLine(0.0f, 24.0f * scale);
+        int algorithm = static_cast<int>(scaleAlgorithmIndex_);
+        ImGui::SetNextItemWidth(140.0f * scale);
+        if (ImGui::Combo(ui(kStrResample), &algorithm, algorithmNames, IM_ARRAYSIZE(algorithmNames))) {
+            scaleAlgorithmIndex_ = static_cast<uint32_t>(algorithm);
+            options_.scaleAlgorithm = static_cast<jark::ScaleAlgorithm>(scaleAlgorithmIndex_);
+        }
+
+        const auto inputSize = [&](const char* label, int* value, int maximum) {
+            ImGui::SetNextItemWidth(120.0f * scale);
+            if (ImGui::InputInt(label, value))
+                *value = std::clamp(*value, 1, maximum);
+            };
+
+        switch (options_.scaleMode) {
+        case jark::ScaleMode::Percent:
+            inputSize(ui(kStrPercent), &options_.scalePercent, 1000);
+            ImGui::SameLine();
+            ImGui::TextDisabled("1 - 1000%%");
+            break;
+        case jark::ScaleMode::Width:
+            inputSize(ui(kStrWidth), &options_.scaleWidth, 30000);
+            break;
+        case jark::ScaleMode::Height:
+            inputSize(ui(kStrHeight), &options_.scaleHeight, 30000);
+            break;
+        case jark::ScaleMode::Stretch:
+            inputSize(ui(kStrWidth), &options_.scaleWidth, 30000);
+            ImGui::SameLine(0.0f, 16.0f * scale);
+            inputSize(ui(kStrHeight), &options_.scaleHeight, 30000);
+            break;
+        default:
+            inputSize(ui(kStrLongEdge), &options_.scaleMaxEdge, 30000);
+            break;
+        }
+
+        drawScalePreview(scale);
+
+        drawOutputSection(scale);
+    }
+
+    // 输出分辨率预览：样张取第一个选中文件（没有选中就用列表第一张）。
+    // 取尺寸要整图解码（几十毫秒到几百毫秒），放到常驻工作线程，界面只读缓存。
+    void drawScalePreview(float scale) {
+        const std::wstring sample = previewSampleFile();
+        if (sample.empty())
+            return;
+
+        bool wakePreviewThread = false;
+        bool loading = false;
+        jark::ImageSize source;
+        {
+            std::lock_guard lock(previewMutex_);
+            if (previewPath_ != sample) {
+                previewPath_ = sample;
+                previewSource_ = {};
+                previewLoading_ = true;
+                previewRequest_ = sample;
+                wakePreviewThread = true;
+            }
+            source = previewSource_;
+            loading = previewLoading_;
+        }
+        if (wakePreviewThread) {
+            ensurePreviewThread();
+            previewCv_.notify_one();
+        }
+
+        const std::string name = jarkUtils::wstringToUtf8(
+            std::filesystem::path(sample).filename().wstring());
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(ui(kStrPreview));
+        ImGui::SameLine();
+        if (source.empty()) {
+            ImGui::TextDisabled("%s  %s", name.c_str(),
+                loading ? ui(kStrLoading) : ui(kStrUnreadableImage));
+            return;
+        }
+
+        const jark::ImageSize target = jark::scaledSize(source, options_);
+        ImGui::TextDisabled("%s  %d × %d → %d × %d", name.c_str(),
+            source.width, source.height, target.width, target.height);
+    }
+
+    std::wstring previewSampleFile() const {
+        if (!selected_.empty()) {
+            const size_t index = *selected_.begin(); // std::set 有序：文件列表中排最前的那个
+            if (index < files_.size())
+                return files_[index];
+        }
+        return files_.empty() ? std::wstring() : files_.front();
+    }
+
+    void ensurePreviewThread() {
+        if (previewThreadStarted_)
+            return;
+        previewThreadStarted_ = true;
+
+        std::thread([this] {
+            for (;;) {
+                std::wstring path;
+                {
+                    std::unique_lock lock(previewMutex_);
+                    previewCv_.wait(lock, [this] { return !previewRequest_.empty(); });
+                    path = std::move(previewRequest_);
+                    previewRequest_.clear();
+                }
+
+                jark::ImageSize size;
+                const bool ok = jark::loadImageSize(path, size);
+
+                std::lock_guard lock(previewMutex_);
+                if (previewPath_ == path) { // 期间换了样张就丢掉这次结果
+                    previewSource_ = ok ? size : jark::ImageSize{};
+                    previewLoading_ = false;
+                }
+            }
+            }).detach();
+    }
+
+    void drawOutputSection(float scale) {
         ImGui::Checkbox(ui(kStrOverwrite), &options_.overwrite);
 
         ImGui::AlignTextToFramePadding();
@@ -251,10 +394,6 @@ private:
         ImGui::Checkbox(ui(kStrFlipH), &options_.flipHorizontal);
         ImGui::SameLine();
         ImGui::Checkbox(ui(kStrFlipV), &options_.flipVertical);
-    }
-
-    void drawDeletePanel() {
-        ImGui::TextWrapped("%s", ui(11));
     }
 
     // —— 进度与操作 ——
@@ -331,14 +470,6 @@ private:
         options_.outputDirectory = outputDirectory_;
         options_.renamePrefix = jarkUtils::utf8ToWstring(renamePrefix_);
 
-        if (options_.task == jark::BatchTask::Delete) {
-            const size_t fileCount = targets.size();
-            auto message = std::vformat(getUIStringW(43).str(), std::make_wformat_args(fileCount));
-            if (MessageBoxW(jark::ui::UiHost::instance().window(), message.c_str(), getUIStringW(42),
-                MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
-                return;
-        }
-
         running_ = true;
         cancelRequested_ = false;
         finished_ = false;
@@ -356,18 +487,24 @@ private:
                 });
             finished_ = true;
             running_ = false;
+            {
+                // 处理可能改写了源文件（就地缩放等），预览要重新取尺寸
+                std::lock_guard lock(previewMutex_);
+                previewPath_.clear();
+            }
             });
         worker.detach();
     }
+
+    // 输出格式（与 BatchProcessor 的 writeEncoded 支持范围一致）
+    static constexpr const char* const kOutputFormats[] = { "png", "jpg", "webp", "bmp", "tif" };
 
     // 字符串表 ID（与 stringRes.cpp 中批量处理段落对应）
     static constexpr uint32_t kStrFileList = 59;
     static constexpr uint32_t kStrConvert = 60;
     static constexpr uint32_t kStrRename = 61;
     static constexpr uint32_t kStrRotate = 62;
-    static constexpr uint32_t kStrDelete = 63;
     static constexpr uint32_t kStrOutputFormat = 64;
-    static constexpr uint32_t kStrKeepSize = 65;
     static constexpr uint32_t kStrColor = 66;
     static constexpr uint32_t kStrGray = 67;
     static constexpr uint32_t kStrDocument = 68;
@@ -395,6 +532,28 @@ private:
     static constexpr uint32_t kStrClose = 124;  // 关闭
     static constexpr uint32_t kStrDigits = 125; // 序号位数
 
+    // 缩放任务（窄表新增条目，追加在表尾）
+    static constexpr uint32_t kStrScale = 129;        // 缩放
+    static constexpr uint32_t kStrScaleMode = 130;    // 缩放方式
+    static constexpr uint32_t kStrByPercent = 131;    // 按百分比
+    static constexpr uint32_t kStrByWidth = 132;      // 按宽度
+    static constexpr uint32_t kStrByHeight = 133;     // 按高度
+    static constexpr uint32_t kStrCustomSize = 134;   // 自定义宽高
+    static constexpr uint32_t kStrMaxLongEdge = 135;  // 限制长边
+    static constexpr uint32_t kStrPercent = 136;      // 百分比
+    static constexpr uint32_t kStrWidth = 137;        // 宽度
+    static constexpr uint32_t kStrHeight = 138;       // 高度
+    static constexpr uint32_t kStrLongEdge = 139;     // 长边
+    static constexpr uint32_t kStrResample = 140;     // 缩放算法
+    static constexpr uint32_t kStrAuto = 141;         // 自动
+    static constexpr uint32_t kStrNearest = 142;      // 最近邻
+    static constexpr uint32_t kStrBilinear = 143;     // 双线性
+    static constexpr uint32_t kStrArea = 144;         // 面积平均
+    static constexpr uint32_t kStrCubic = 145;        // 三次插值
+    static constexpr uint32_t kStrPreview = 146;      // 预览
+    static constexpr uint32_t kStrLoading = 147;      // 读取中...
+    static constexpr uint32_t kStrUnreadableImage = 148; // 无法读取该图像
+
     bool visible_ = false;
     bool focusRequested_ = false;
 
@@ -408,7 +567,8 @@ private:
 
     uint32_t taskIndex_ = 0;
     uint32_t formatIndex_ = 0;
-    uint32_t maxEdgeIndex_ = 0;
+    uint32_t scaleModeIndex_ = 1;       // 默认「按宽度」
+    uint32_t scaleAlgorithmIndex_ = 0;  // 默认「自动」
     uint32_t rotationIndex_ = 0;
     uint32_t colorModeIndex_ = 0;
 
@@ -419,4 +579,13 @@ private:
     jark::BatchResult result_;
     bool finished_ = false;
     bool startFailed_ = false;
+
+    // 输出分辨率预览：工作线程解码样张取尺寸，界面线程只读写这几个字段
+    std::mutex previewMutex_;
+    std::condition_variable previewCv_;
+    std::wstring previewPath_;
+    std::wstring previewRequest_;
+    jark::ImageSize previewSource_;
+    bool previewLoading_ = false;
+    bool previewThreadStarted_ = false;
 };
