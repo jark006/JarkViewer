@@ -90,6 +90,7 @@ using std::unordered_map;
 #include <opencv2/highgui.hpp>
 
 #include "stringRes.h"
+#include "Localization.h"
 
 inline const int MIN_VIDEO_BUFF_SIZE = 65536; // 64KiB 视频数据最小尺寸，过小可能是无效数据
 inline const int MAX_VIDEO_FRAMES = 120;      // 最大解码帧数，过大可能导致内存占用过高
@@ -152,7 +153,7 @@ struct SettingParameter {
     uint32_t pptTimeout = 5;                // 幻灯片模式  切换间隔 1 ~ 300 秒
 
     uint32_t UI_Mode = 0;                   // 界面主题 0:跟随系统  1:浅色  2:深色
-    uint32_t UI_LANG = 0;                   // 界面语言 0:中文  1:English
+    uint32_t UI_LANG = 0;                   // 界面语言：0:简体中文 1:繁體中文 2:English 3:日本語 4:한국어（见 Localization.h）
 
     uint32_t rightClickAction = 0;          // 右键点击行为  0:打开菜单  1:退出程序
 
@@ -162,12 +163,12 @@ struct SettingParameter {
 
     SettingParameter() {
         memcpy(extCheckedListStr, defaultExtList.data(), defaultExtList.length() + 1);
-        UI_LANG = (PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE) ? 0 : 1;
+        UI_LANG = static_cast<uint32_t>(jark::languageToSetting(jark::languageFromSystem()));
     }
 
     SettingParameter(const SettingParameter& other) {
         memcpy(extCheckedListStr, defaultExtList.data(), defaultExtList.length() + 1);
-        UI_LANG = (PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE) ? 0 : 1;
+        UI_LANG = static_cast<uint32_t>(jark::languageToSetting(jark::languageFromSystem()));
 
         memcpy(this, &other, sizeof(SettingParameter));
         ValidateParameters();
@@ -220,8 +221,9 @@ struct SettingParameter {
         // 界面主题检查 (0~2)
         if (UI_Mode > 2) UI_Mode = 0; // 超出范围则设为跟随系统
 
-        // 语言检查，目前仅中英，索引范围0~1
-        if (UI_LANG > 1) UI_LANG = 0;
+        // 语言检查：索引范围为 0 ~ jark::kLanguageCount-1
+        if (UI_LANG >= jark::kLanguageCount)
+            UI_LANG = static_cast<uint32_t>(jark::kSimplifiedChineseIndex);
 
         // 右键点击行为检查 (0~1)
         if (rightClickAction > 1) rightClickAction = 0;

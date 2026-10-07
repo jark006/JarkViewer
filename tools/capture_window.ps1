@@ -12,6 +12,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Argument = "",
     [string]$Keys = "",
+    [int]$WindowIndex = 0,
     [int]$WaitMs = 2500,
     [int]$AfterKeysMs = 1200,
     [int]$TimeoutMs = 15000
@@ -28,7 +29,27 @@ public class JarkCapture {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc proc, IntPtr param);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+    public delegate bool EnumProc(IntPtr hwnd, IntPtr param);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+
+    // 取属于该进程的第 index 个可见顶层窗口（0=主窗口）
+    public static IntPtr FindProcessWindow(int pid, int index) {
+        IntPtr result = IntPtr.Zero;
+        int found = 0;
+        EnumWindows(delegate(IntPtr hwnd, IntPtr param) {
+            uint windowPid;
+            GetWindowThreadProcessId(hwnd, out windowPid);
+            if (windowPid == (uint)pid && IsWindowVisible(hwnd)) {
+                if (found == index) { result = hwnd; return false; }
+                found++;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return result;
+    }
 }
 "@
 
@@ -51,15 +72,28 @@ try {
     Start-Sleep -Milliseconds $WaitMs
 
     if ($Keys -ne "") {
-        [void][JarkCapture]::SetForegroundWindow($hwnd)
-        Start-Sleep -Milliseconds 300
-        if ([JarkCapture]::GetForegroundWindow() -eq $hwnd) {
+        # 前台窗口切换可能被系统拒绝，重试几次
+        $focused = $false
+        for ($attempt = 0; $attempt -lt 10 -and -not $focused; $attempt++) {
+            [void][JarkCapture]::SetForegroundWindow($hwnd)
+            Start-Sleep -Milliseconds 200
+            $focused = ([JarkCapture]::GetForegroundWindow() -eq $hwnd)
+        }
+
+        if ($focused) {
             [System.Windows.Forms.SendKeys]::SendWait($Keys)
             Start-Sleep -Milliseconds $AfterKeysMs
         }
         else {
             Write-Warning "window did not come to the foreground; keys skipped"
         }
+    }
+
+    if ($WindowIndex -gt 0) {
+        $target = [JarkCapture]::FindProcessWindow($proc.Id, $WindowIndex)
+        if ($target -eq [IntPtr]::Zero) { throw "process window #$WindowIndex not found" }
+        $hwnd = $target
+        Start-Sleep -Milliseconds 400
     }
 
     $rect = New-Object JarkCapture+RECT

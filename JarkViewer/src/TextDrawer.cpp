@@ -1,6 +1,8 @@
 #pragma once
 #include "TextDrawer.h"
 
+#include <fstream>
+
 // https://github.com/nothings/stb
 // 整个工程只能一个源文件定义 STB_TRUETYPE_IMPLEMENTATION， 其他地方只需include
 #define STB_TRUETYPE_IMPLEMENTATION
@@ -18,16 +20,17 @@ void TextDrawer::setSize(int newSize) {
     memset(wordBuff.data(), 0, newBufferSize);
     asciiCache.clear();
     asciiCache.resize(256);
+
+    updateScales();
 }
 
 // str : UTF-8
 void TextDrawer::putText(cv::Mat& img, const int x, const int y, const char* str, intUnion color, bool isAdaptiveFG) {
     if (!hasInit) {
-        Init(IDR_TTF_DEFAULT, L"TTF");
-        hasInit = true;
+        hasInit = Init(IDR_TTF_DEFAULT, L"TTF");
     }
-    if (scale == 0)
-        scale = stbtt_ScaleForPixelHeight(&info, (float)fontSize);
+    if (fonts.empty() || !fonts[0].ready)
+        return;
 
     int codePoint = '?';
     int xOffset = x, yOffset = y;
@@ -122,11 +125,10 @@ void TextDrawer::putAlignCenter(cv::Mat& img, cv::Rect rect, const char* str, in
 //Rect {x, y, width, height}
 void TextDrawer::putAlignLeft(cv::Mat& img, cv::Rect rect, const char* str, intUnion color, bool isAdaptiveFG) {
     if (!hasInit) {
-        Init(IDR_TTF_DEFAULT, L"TTF");
-        hasInit = true;
+        hasInit = Init(IDR_TTF_DEFAULT, L"TTF");
     }
-    if (scale == 0)
-        scale = stbtt_ScaleForPixelHeight(&info, (float)fontSize);
+    if (fonts.empty() || !fonts[0].ready)
+        return;
 
     int codePoint = '?';
     int xOffset = rect.x, yOffset = rect.y;
@@ -174,42 +176,126 @@ void TextDrawer::putAlignLeft(cv::Mat& img, cv::Rect rect, const char* str, intU
     }
 }
 
-void TextDrawer::Init(unsigned int idi, const wchar_t* type) {
+bool TextDrawer::Init(unsigned int idi, const wchar_t* type) {
     rc = jarkUtils::GetResource(idi, type);
 
-    if (!stbtt_InitFont(&info, rc.ptr, 0)) {
-        JARK_LOG("stbtt_InitFont failed");
-        if (idi != IDR_TTF_DEFAULT) {
-            JARK_LOG("Reset to IDR_TTF_DEFAULT");
-            Init(IDR_TTF_DEFAULT, L"TTF");
-        }
-        return;
+    FontFace font;
+    if (!rc.ptr || !stbtt_InitFont(&font.info, rc.ptr, 0)) {
+        JARK_LOG("stbtt_InitFont failed (resource {})", idi);
+        return false;
     }
+    font.ready = true;
+    fonts.clear();
+    fonts.push_back(std::move(font));
+
+    updateScales();
 
     auto newBufferSize = 2ULL * fontSize * fontSize;
     wordBuff.resize(newBufferSize);
     memset(wordBuff.data(), 0, newBufferSize);
     asciiCache.clear();
     asciiCache.resize(256);
+
+    return true;
+}
+
+// 读取系统字体文件（用于回退字体）
+bool TextDrawer::loadFontFile(FontFace& face, const std::wstring& path) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+        return false;
+
+    const auto fileSize = static_cast<size_t>(file.tellg());
+    if (fileSize == 0 || fileSize > (64u << 20))
+        return false;
+
+    face.data.resize(fileSize);
+    file.seekg(0);
+    file.read(reinterpret_cast<char*>(face.data.data()), static_cast<std::streamsize>(fileSize));
+
+    // 支持 ttc 字体集合（取第一个字体）
+    const int offset = stbtt_GetFontOffsetForIndex(face.data.data(), 0);
+    if (offset < 0 || !stbtt_InitFont(&face.info, face.data.data(), offset))
+        return false;
+
+    face.ready = true;
+    face.scale = stbtt_ScaleForPixelHeight(&face.info, (float)fontSize);
+    return true;
+}
+
+void TextDrawer::updateScales() {
+    for (auto& font : fonts) {
+        if (font.ready)
+            font.scale = stbtt_ScaleForPixelHeight(&font.info, (float)fontSize);
+    }
+}
+
+bool TextDrawer::hasGlyph(const int codePoint) {
+    if (!hasInit) {
+        hasInit = true;
+        Init(IDR_TTF_DEFAULT, L"TTF");
+    }
+    return pickFont(codePoint) == 0 ?
+        stbtt_FindGlyphIndex(&fonts[0].info, codePoint) != 0 : true;
+}
+
+// 默认字体缺字形时，按需加载系统回退字体（例如韩文需要 Malgun Gothic）
+size_t TextDrawer::pickFont(int codePoint) {
+    if (fonts.empty())
+        return 0;
+
+    if (stbtt_FindGlyphIndex(&fonts[0].info, codePoint) != 0)
+        return 0;
+
+    if (!fallbackLoaded) {
+        fallbackLoaded = true;
+
+        wchar_t windowsDir[MAX_PATH] = {};
+        const UINT length = ::GetWindowsDirectoryW(windowsDir, MAX_PATH);
+        if (length > 0 && length < MAX_PATH) {
+            const std::wstring fontDir = std::wstring(windowsDir) + L"\\Fonts\\";
+            // 韩文/其它默认字体缺失的字形：按顺序尝试系统中常见字体
+            for (const wchar_t* fileName : { L"malgun.ttf", L"gulim.ttc", L"batang.ttc", L"NanumGothic.ttf", L"msyh.ttc" }) {
+                FontFace face;
+                if (!loadFontFile(face, fontDir + fileName))
+                    continue;
+
+                JARK_LOG("字体回退加载: {}", jarkUtils::wstringToUtf8(fileName));
+                fonts.push_back(std::move(face));
+                if (stbtt_FindGlyphIndex(&fonts.back().info, codePoint) != 0)
+                    break;
+            }
+        }
+    }
+
+    for (size_t i = 1; i < fonts.size(); ++i) {
+        if (stbtt_FindGlyphIndex(&fonts[i].info, codePoint) != 0)
+            return i;
+    }
+    return 0;
 }
 
 int TextDrawer::putWord(cv::Mat& img, int x, int y, const int codePoint, intUnion color, bool isAdaptiveFG) {
+    const size_t fontIndex = pickFont(codePoint);
+    const FontFace& font = fonts[fontIndex];
+    const float scale = font.scale;
+
     int c_x0, c_y0, c_x1, c_y1;
-    stbtt_GetCodepointBitmapBox(&info, codePoint, scale, scale, &c_x0, &c_y0, &c_x1, &c_y1);
+    stbtt_GetCodepointBitmapBox(&font.info, codePoint, scale, scale, &c_x0, &c_y0, &c_x1, &c_y1);
 
     int wordWidth = c_x1 - c_x0;
     int wordHigh = c_y1 - c_y0;
 
     uint8_t* wordBuffPtr = nullptr;
-    if (codePoint < 256) {
+    if (codePoint < 256 && fontIndex == 0) { // 仅默认字体缓存 ASCII 字形
         if (asciiCache[codePoint].empty()) {
             asciiCache[codePoint].resize(wordBuff.size());
-            stbtt_MakeCodepointBitmap(&info, asciiCache[codePoint].data(), wordWidth, wordHigh, fontSize, scale, scale, codePoint);
+            stbtt_MakeCodepointBitmap(&font.info, asciiCache[codePoint].data(), wordWidth, wordHigh, fontSize, scale, scale, codePoint);
         }
         wordBuffPtr = asciiCache[codePoint].data();
     }
     else {
-        stbtt_MakeCodepointBitmap(&info, wordBuff.data(), wordWidth, wordHigh, fontSize, scale, scale, codePoint);
+        stbtt_MakeCodepointBitmap(&font.info, wordBuff.data(), wordWidth, wordHigh, fontSize, scale, scale, codePoint);
         wordBuffPtr = wordBuff.data();
     }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MatWindow.h"
+#include "Localization.h"
 #include "TextDrawer.h"
 #include "FileAssociationManager.h"
 
@@ -89,7 +90,7 @@ private:
             generalTabRadioList = {
                 {{50, 400, 600, 50}, {20, 21, 22, 23}, &GlobalVar::settingParameter.switchImageAnimationMode },
                 {{50, 450, 600, 50}, {24, 25, 26, 27}, &GlobalVar::settingParameter.UI_Mode },
-                {{50, 500, 450, 50}, {28, 30, 31}, &GlobalVar::settingParameter.UI_LANG },
+                {{50, 500, 600, 50}, {28, 30, 55, 31, 56, 57}, &GlobalVar::settingParameter.UI_LANG }, // 标签 + 5 种语言
                 {{50, 550, 450, 50}, {36, 37, 38}, &GlobalVar::settingParameter.rightClickAction },
             };
         }
@@ -225,16 +226,16 @@ public:
 
     void refreshHelpTab() {
         if (GlobalVar::isCurrentUIDarkMode)
-            jarkUtils::overlayImg(winCanvas, GlobalVar::settingParameter.UI_LANG == 0 ? helpPageDark : helpPageDarkEN, 0, 50);
+            jarkUtils::overlayImg(winCanvas, jark::prefersChineseResources() ? helpPageDark : helpPageDarkEN, 0, 50);
         else
-            jarkUtils::overlayImg(winCanvas, GlobalVar::settingParameter.UI_LANG == 0 ? helpPage : helpPageEN, 0, 50);
+            jarkUtils::overlayImg(winCanvas, jark::prefersChineseResources() ? helpPage : helpPageEN, 0, 50);
     }
 
     void refreshAboutTab() {
         if (GlobalVar::isCurrentUIDarkMode)
-            jarkUtils::overlayImg(winCanvas, GlobalVar::settingParameter.UI_LANG == 0 ? aboutPageDark : aboutPageDarkEN, 0, 50);
+            jarkUtils::overlayImg(winCanvas, jark::prefersChineseResources() ? aboutPageDark : aboutPageDarkEN, 0, 50);
         else
-            jarkUtils::overlayImg(winCanvas, GlobalVar::settingParameter.UI_LANG == 0 ? aboutPage : aboutPageEN, 0, 50);
+            jarkUtils::overlayImg(winCanvas, jark::prefersChineseResources() ? aboutPage : aboutPageEN, 0, 50);
 
         auto textColor = GlobalVar::currentTheme.VER;
         textDrawer.putAlignCenter(winCanvas, { 0, 530, 400, 40 }, jarkUtils::wstringToUtf8(appVersion).c_str(), textColor);

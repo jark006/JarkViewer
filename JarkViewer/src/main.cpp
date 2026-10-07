@@ -2,6 +2,7 @@
 
 #include "CanvasRenderer.h"
 #include "DecodeProbe.h"
+#include "Localization.h"
 #include "MediaPlayer.h"
 #include "VectorImage.h"
 #include "TextDrawer.h"
@@ -10,6 +11,7 @@
 #include "Setting.h"
 
 #include "D3D11App.h"
+#include <optional>
 #include <ppl.h>
 #include <concrt.h>
 
@@ -1992,6 +1994,7 @@ int WINAPI wWinMain(
 
     // 命令行解析：跳过 --log 等开关，第一个普通参数视为要打开的文件
     wstring filePath = lpCmdLine;
+    std::optional<int> languageOverride;
     {
         int argCount = 0;
         if (LPWSTR* rawArgv = ::CommandLineToArgvW(::GetCommandLineW(), &argCount)) {
@@ -2012,6 +2015,12 @@ int WINAPI wWinMain(
                     jarkUtils::setLogEnabled(true);
                     continue;
                 }
+                if (argList[i] == L"--lang" && i + 1 < argList.size()) {
+                    // 临时指定界面语言：0简体 1繁體 2English 3日本語 4한국어
+                    // 记录待用：设置文件在窗口初始化时才会读入，那时才能覆盖
+                    languageOverride = ::_wtoi(argList[++i].c_str());
+                    continue;
+                }
                 if (filePath.empty())
                     filePath = argList[i];
             }
@@ -2027,6 +2036,12 @@ int WINAPI wWinMain(
 
     JarkViewerApp app;
     if (SUCCEEDED(app.InitWindow(hInstance))) {
+        // 设置文件已在初始化时读入，此处再应用命令行指定的语言
+        if (languageOverride.has_value()) {
+            GlobalVar::settingParameter.UI_LANG =
+                static_cast<uint32_t>(jark::languageFromSetting(*languageOverride));
+        }
+
         app.initOpenFile(filePath);
         app.Run();
     }

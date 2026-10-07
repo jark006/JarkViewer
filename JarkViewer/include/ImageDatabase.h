@@ -1,5 +1,6 @@
 #pragma once
 #include "jarkUtils.h"
+#include "Localization.h"
 #include "LRU.h"
 #include "ColorManager.h"
 #include "FormatSniffer.h"
@@ -318,7 +319,7 @@ public:
             auto rc = jarkUtils::GetResource(IDB_PNG_TIPS, L"PNG");
             cv::Mat imgData(1, (int)rc.size, CV_8UC1, (uint8_t*)rc.ptr);
             auto errorTipsMat = cv::imdecode(imgData, cv::IMREAD_UNCHANGED);
-            if (GlobalVar::settingParameter.UI_LANG == 0) {
+            if (jark::prefersChineseResources()) {
                 errorTipsMatLight = errorTipsMat({ 0, 0, 800, 600 }).clone();
                 errorTipsMatDeep = errorTipsMat({ 0, 600, 800, 600 }).clone();
             }
@@ -336,7 +337,7 @@ public:
             auto rc = jarkUtils::GetResource(IDB_PNG_HOME, L"PNG");
             cv::Mat imgData(1, (int)rc.size, CV_8UC1, (uint8_t*)rc.ptr);
             auto homeMat = cv::imdecode(imgData, cv::IMREAD_UNCHANGED);
-            if (GlobalVar::settingParameter.UI_LANG == 0) {
+            if (jark::prefersChineseResources()) {
                 homeMatLight = homeMat({ 0, 0, 800, 600 }).clone();
                 homeMatDeep = homeMat({ 0, 600, 800, 600 }).clone();
             }
