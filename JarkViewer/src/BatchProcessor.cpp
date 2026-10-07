@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <set>
 
 #include <shellapi.h>
 
@@ -22,6 +23,13 @@ namespace {
     ImageDatabase& batchDecoder() {
         static thread_local ImageDatabase database;
         return database;
+    }
+
+    // Windows 路径不区分大小写，比较/去重前统一转小写
+    std::wstring pathKey(const std::filesystem::path& path) {
+        std::wstring key = path.wstring();
+        std::transform(key.begin(), key.end(), key.begin(), ::towlower);
+        return key;
     }
 
     std::wstring lowerExtension(const std::filesystem::path& path) {
@@ -205,6 +213,9 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
             return deleteResult;
         }();
 
+    // 本次运行已产出的输出路径（小写），用于避免同名互相覆盖
+    std::set<std::wstring> producedTargets;
+
     size_t index = 0;
     for (const auto& sourcePath : files) {
         ++index;
@@ -249,30 +260,28 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
         }
 
         // —— 转换 / 旋转 ——
+        const bool inPlace = options.task == BatchTask::Rotate && options.outputDirectory.empty();
+
         std::filesystem::path target;
-        if (options.outputDirectory.empty()) {
-            if (options.task == BatchTask::Rotate) {
-                target = source; // 就地旋转（界面会提示）
-            }
-            else {
-                const std::wstring extension = options.outputExtension.empty() ?
-                    lowerExtension(source) : options.outputExtension;
-                target = source.parent_path() / (source.stem().wstring() + L"." + extension);
-            }
+        if (inPlace) {
+            target = source; // 就地旋转（界面会提示）
         }
         else {
             const std::wstring extension = options.outputExtension.empty() ?
                 lowerExtension(source) : options.outputExtension;
-            target = std::filesystem::path(options.outputDirectory) /
-                (source.stem().wstring() + L"." + extension);
+            const auto directory = options.outputDirectory.empty() ?
+                source.parent_path() : std::filesystem::path(options.outputDirectory);
+            target = directory / (source.stem().wstring() + L"." + extension);
+
+            // 本次运行里已经有别的源文件产出同名结果（例如 a.png 与 a.jpg 都转成 a.png）：
+            // 自动加序号，避免后者覆盖前者
+            const std::wstring stem = target.stem().wstring();
+            const std::wstring targetExtension = target.extension().wstring();
+            for (int suffix = 1; producedTargets.contains(pathKey(target)); ++suffix)
+                target = directory / (stem + L"_" + std::to_wstring(suffix) + targetExtension);
         }
 
-        if (target == source && !options.overwrite && options.task != BatchTask::Rotate) {
-            ++result.skipped;
-            result.messages.push_back(std::format(L"输出与源文件同名，跳过: {}", sourcePath));
-            continue;
-        }
-        if (options.task != BatchTask::Rotate && !options.overwrite &&
+        if (!inPlace && target != source && !options.overwrite &&
             std::filesystem::exists(target, errorCode)) {
             ++result.skipped;
             result.messages.push_back(std::format(L"目标已存在，跳过: {}", target.wstring()));
@@ -282,6 +291,8 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
         std::wstring error;
         if (processImageFile(sourcePath, target.wstring(), options, error)) {
             ++result.succeeded;
+            if (!inPlace)
+                producedTargets.insert(pathKey(target));
         }
         else {
             ++result.failed;
