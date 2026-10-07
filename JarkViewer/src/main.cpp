@@ -1,5 +1,6 @@
 #include "jarkUtils.h"
 
+#include "DecodeProbe.h"
 #include "TextDrawer.h"
 #include "ImageDatabase.h"
 #include "Printer.h"
@@ -2169,6 +2170,20 @@ int WINAPI wWinMain(
     }
     if (!filePath.empty() && filePath.back() == '\"') {
         filePath.pop_back();
+    }
+
+    // 无界面解码自检：--probe <文件...>，用于在无人眼参与时验证解码路由
+    {
+        int argCount = 0;
+        if (LPWSTR* rawArgv = ::CommandLineToArgvW(::GetCommandLineW(), &argCount)) {
+            std::vector<std::wstring> argList(rawArgv, rawArgv + argCount);
+            ::LocalFree(rawArgv);
+
+            if (argList.size() > 1 && argList[1] == L"--probe") {
+                ::CoUninitialize();
+                return jark::runDecodeProbe(argList);
+            }
+        }
     }
 
     JarkViewerApp app;

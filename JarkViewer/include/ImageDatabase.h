@@ -2,6 +2,7 @@
 #include "jarkUtils.h"
 #include "LRU.h"
 #include "ColorManager.h"
+#include "FormatSniffer.h"
 
 #include "videoDecoder.h"
 #include "SVGPreprocessor.h"
@@ -499,6 +500,26 @@ public:
     ImageAsset loadDDS(wstring_view path, std::span<const uint8_t> buf);
 
     void handleExifOrientation(int orientation, cv::Mat& img);
+
+    // EXIF 后处理策略：不同解码路径对 EXIF 的需求不同（见 decodeByFormat 中的路由表）
+    enum class ExifPolicy : uint8_t {
+        None,                 // 解码器已自行填充 exifInfo 并处理方向
+        SimpleOnly,           // 仅文件基础信息（宽高、文件大小、时间……）
+        Full,                 // 基础信息 + 完整 EXIF
+        FullWithOrientation,  // 完整 EXIF，并按 EXIF 方向旋转像素
+    };
+
+    // 按格式解码；失败返回 format == ImageFormat::None（不含错误提示图，便于继续尝试其它路由）
+    ImageAsset decodeByFormat(jark::FileFormat format, const wstring& path, std::span<const uint8_t> buf);
+
+    // 通用兜底解码：OpenCV → WIC
+    ImageAsset decodeFallback(const wstring& path, std::span<const uint8_t> buf);
+
+    // 统一的 EXIF 后处理，替代原先散落在各分支里的重复代码
+    void applyExifInfo(ImageAsset& imageAsset, const wstring& path, std::span<const uint8_t> buf, ExifPolicy policy);
+
+    static bool isDecodeFailed(const ImageAsset& imageAsset) noexcept;
+
     ImageAsset myLoader(const wstring& path);
     ImageAsset loader(const wstring& path);
 };
