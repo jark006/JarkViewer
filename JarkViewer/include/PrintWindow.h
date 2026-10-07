@@ -58,6 +58,9 @@ public:
     }
 
     void close() {
+        // 关掉窗口就记住这次的调整参数（原来只在另存/打印时记，调完直接关闭会丢）
+        rememberParameters();
+
         visible_ = false;
         previewTexture_ = 0;
     }

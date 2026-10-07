@@ -115,18 +115,17 @@ private:
         const ImVec2 region = ImGui::GetContentRegionAvail();
         canvasRect_ = ImVec4(origin.x, origin.y, region.x, region.y);
 
-        // 视图变换：图像像素 -> 屏幕像素
+        // 视图变换：图像像素 -> 屏幕像素。编辑/标注按适应窗口固定显示，不提供缩放：
+        // 标注坐标与显示一一对应，避免缩放带来的误标与坐标换算问题。
         fitScale_ = (std::min)(region.x / document_.width(), region.y / document_.height());
         if (fitScale_ <= 0.0f)
             fitScale_ = 1.0f;
-        if (zoom_ <= 0.0)
-            zoom_ = 1.0; // 相对适应窗口
 
-        const float viewScale = static_cast<float>(fitScale_ * zoom_);
+        const float viewScale = fitScale_;
         const ImVec2 imageSize(document_.width() * viewScale, document_.height() * viewScale);
         const ImVec2 imagePos(
-            origin.x + (region.x - imageSize.x) * 0.5f + pan_.x,
-            origin.y + (region.y - imageSize.y) * 0.5f + pan_.y);
+            origin.x + (region.x - imageSize.x) * 0.5f,
+            origin.y + (region.y - imageSize.y) * 0.5f);
         imageRect_ = ImVec4(imagePos.x, imagePos.y, imageSize.x, imageSize.y);
         viewScale_ = viewScale;
 
@@ -144,24 +143,9 @@ private:
         drawActiveShape(drawList);
 
         // 交互：整块画布区域都可响应
-        ImGui::InvisibleButton("canvasInput", region,
-            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonMiddle);
+        ImGui::InvisibleButton("canvasInput", region, ImGuiButtonFlags_MouseButtonLeft);
 
         const ImVec2 mouse = ImGui::GetIO().MousePos;
-        if (ImGui::IsItemHovered()) {
-            const float wheel = ImGui::GetIO().MouseWheel;
-            if (wheel != 0.0f)
-                zoomAt(mouse, wheel > 0.0f ? 1.15 : 1.0 / 1.15);
-            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                toggleActualPixels();
-        }
-
-        // 中键平移
-        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-            pan_.x += ImGui::GetIO().MouseDelta.x;
-            pan_.y += ImGui::GetIO().MouseDelta.y;
-        }
-
         handleCanvasDrawing(mouse);
 
         ImGui::EndChild();
@@ -176,36 +160,6 @@ private:
             static_cast<int>(std::lround((screen.x - imageRect_.x) / viewScale_)),
             static_cast<int>(std::lround((screen.y - imageRect_.y) / viewScale_))
         };
-    }
-
-    void zoomAt(const ImVec2& anchor, float factor) {
-        const double before = zoom_;
-        zoom_ = std::clamp(zoom_ * factor, 0.05, 40.0);
-        if (before == zoom_)
-            return;
-
-        // 让光标下的图像点保持不动
-        const float scaleRatio = static_cast<float>(zoom_ / before);
-        pan_.x = (pan_.x + anchor.x - canvasRect_.x) * scaleRatio - (anchor.x - canvasRect_.x);
-        pan_.y = (pan_.y + anchor.y - canvasRect_.y) * scaleRatio - (anchor.y - canvasRect_.y);
-        showZoomStatus();
-    }
-
-    void toggleActualPixels() {
-        const double actualZoom = jark::ui::UiHost::instance().scale() / fitScale_;
-        if (std::abs(zoom_ - actualZoom) < 0.01)
-            zoom_ = 1.0;
-        else
-            zoom_ = actualZoom;
-
-        pan_ = { 0.0f, 0.0f };
-        showZoomStatus();
-    }
-
-    void showZoomStatus() {
-        setStatusText(std::to_string(static_cast<int>(std::lround(zoom_ * fitScale_ * 100.0 /
-            jark::ui::UiHost::instance().scale()))) + "%");
-        statusUntil_ = nowSeconds() + 2.0;
     }
 
     void handleCanvasDrawing(const ImVec2& mouse) {
@@ -518,8 +472,6 @@ private:
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y)) redo();
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) saveAs();
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C)) copyToClipboard();
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_0)) { zoom_ = 1.0; pan_ = { 0, 0 }; }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_1)) toggleActualPixels();
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) close();
     }
 
@@ -558,8 +510,7 @@ private:
     }
 
     void resetView() {
-        zoom_ = 0.0; // 第一帧按适应窗口计算
-        pan_ = { 0.0f, 0.0f };
+        // 画布固定按适应窗口显示，没有视图状态需要重置（保留调用点以便以后加）
     }
 
     void clearSelection() {
@@ -755,11 +706,9 @@ private:
     ImTextureID canvasTexture_ = 0;
     bool textureDirty_ = true;
 
-    // 视图
-    double zoom_ = 0.0;     // 相对适应窗口
+    // 视图（固定适应窗口，不缩放）
     float fitScale_ = 1.0f;
     float viewScale_ = 1.0f;
-    ImVec2 pan_{ 0.0f, 0.0f };
     ImVec4 canvasRect_{ 0.0f, 0.0f, 0.0f, 0.0f }; // x, y, w, h
     ImVec4 imageRect_{ 0.0f, 0.0f, 0.0f, 0.0f };  // x, y, w, h
 

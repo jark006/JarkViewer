@@ -58,7 +58,7 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
 - `JarkViewer/include/BatchProcessor.h` 与 `src/BatchProcessor.cpp` 是批量处理逻辑（转换/缩放/旋转翻转/重命名/删除到回收站）：解码走工程内解码器（HEIC/AVIF/RAW 等也能参与转换），编码用 OpenCV；不依赖窗口，可用命令行 `--probe --batch <文件...> [--out-dir 目录] [--to 格式] [--max-edge N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--rename 前缀] [--overwrite]` 直接验证。
 - `JarkViewer/include/BatchWindow.h` 是批量处理窗口（Ctrl+B 或右键菜单打开，处理当前目录的图片列表），ImGui 界面，处理在工作线程执行、界面轮询进度。
 - `JarkViewer/include/ImageAdjust.h` 与 `src/ImageAdjust.cpp` 存放打印/编辑与批量共用的图像调整（亮度对比度、黑白/黑白文档/黑白抖动、反相、BGRA→白底 BGR），原先内嵌在 Printer.h 中。
-- `JarkViewer/include/ImageAnnotator.h` 与 `src/ImageAnnotator.cpp` 是标注模型与渲染（矩形/椭圆/箭头/直线/画笔/马赛克/文字），含撤销重做与裁剪，纯逻辑不依赖窗口；`--probe --annotate [--annotate-out 目录]` 用合成底图跑 28 项像素断言自检。`JarkViewer/include/EditorWindow.h` 是编辑与标注窗口（主窗口 Ctrl+E 或右键菜单打开）：画布支持拖动绘制、滚轮定点缩放、中键平移、裁剪框选，右侧工具栏提供工具/颜色/线宽/字号/填充/撤销重做/旋转翻转反相/应用裁剪/另存为/复制到剪贴板/覆盖原文件；覆盖保存后置 `GlobalVar::isNeedReloadImageCache` 让主窗口重载。
+- `JarkViewer/include/ImageAnnotator.h` 与 `src/ImageAnnotator.cpp` 是标注模型与渲染（矩形/椭圆/箭头/直线/画笔/马赛克/文字），含撤销重做与裁剪，纯逻辑不依赖窗口；`--probe --annotate [--annotate-out 目录]` 用合成底图跑 28 项像素断言自检。`JarkViewer/include/EditorWindow.h` 是编辑与标注窗口（主窗口 Ctrl+E 或右键菜单打开）：画布**固定按适应窗口显示、不提供缩放/平移**（拖动绘制、裁剪框选，屏幕坐标与图像像素一一对应），右侧工具栏提供工具/颜色/线宽/字号/填充/撤销重做/旋转翻转反相/应用裁剪/另存为/复制到剪贴板/覆盖原文件；覆盖保存后置 `GlobalVar::isNeedReloadImageCache` 让主窗口重载。
 - 界面全部由 **Dear ImGui**（`JarkViewer/vendor/imgui`，Win32 + DX11 后端，随工程静态编译）绘制，
   宿主模块是 `JarkViewer/include/UiHost.h` 与 `src/UiHost.cpp`：创建上下文/后端、深浅两套主题
   （跟随 `GlobalVar::isCurrentUIDarkMode`）、按窗口 DPI 缩放字号与样式、系统字体（Segoe UI +
@@ -90,7 +90,8 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
 - 打印窗口的预览必须**基于 sourceImage_ 的副本**做调整（`refreshPreviewIfNeeded()` 里小图也要
   clone）：`applyImageAdjustments()` 是就地修改的，图小于预览上限时浅拷贝会连着原图一起改，
   预览会叠加前一次的效果、另存和打印也跟着错。`adjustBrightnessContrast()` 里对比度>100 时
-  低灰度会算出负值，`pow(负底数)` 是 NaN（整片变黑），必须先夹到 0~255。
+  低灰度会算出负值，`pow(负底数)` 是 NaN（整片变黑），必须先夹到 0~255。调整参数在
+  `close()` 里用 `rememberParameters()` 记进 `settingParameter`（关窗口就算数，不必先打印）。
 - 主窗口（`D3D11App`/`JarkViewerApp`）是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()`
   给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新）；ImGui 侧由 `UiHost` 统一缩放。
 - 交换链使用**翻转模型**（`DXGI_SWAP_EFFECT_FLIP_DISCARD` + 双缓冲）。旧的
