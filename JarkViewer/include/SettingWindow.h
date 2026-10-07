@@ -375,8 +375,16 @@ private:
             ImGui::SameLine();
             ImGui::BeginGroup();
             ImGui::Dummy({ 0.0f, 8.0f * scale });
+
+            // 标题字号放大：PushFont 要传“未乘全局缩放”的字号，放大会被算两次
+            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.5f);
             ImGui::TextUnformatted("JarkViewer");
-            ImGui::SameLine();
+            const float afterTitleY = ImGui::GetCursorPosY();   // 局部坐标（已在下一行）
+            ImGui::PopFont();
+
+            // 版本号贴着大标题的底边（同行时 ImGui 按行顶对齐，字号不同会显得悬空）
+            ImGui::SameLine(0.0f, 10.0f * scale);
+            ImGui::SetCursorPosY(afterTitleY - ImGui::GetStyle().ItemSpacing.y - ImGui::GetFontSize());
             ImGui::TextDisabled("%s", jarkUtils::wstringToUtf8(appVersion).c_str());
             ImGui::TextDisabled("%s", getUIString(19));
             ImGui::TextDisabled("%s", std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
@@ -398,7 +406,7 @@ private:
         if (ImGui::Button("Jark006", { buttonWidth, 0 }))
             jarkUtils::openUrl(jarkLink.data());
         ImGui::SameLine();
-        if (ImGui::Button("GitHub / Gitee", { buttonWidth, 0 }))
+        if (ImGui::Button("GitHub", { buttonWidth, 0 }))
             jarkUtils::openUrl(RepositoryLink.data());
 
         if (ImGui::Button("百度网盘", { buttonWidth, 0 }))
