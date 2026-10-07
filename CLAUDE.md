@@ -52,24 +52,39 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
 - `JarkViewer/include/D3D11App.h` 与 `JarkViewer/src/D3D11App.cpp` 提供 Win32 窗口、消息分发、Direct3D 11 设备/交换链和 `PresentCanvas()`。业务层通过继承并实现鼠标、键盘、拖放、右键菜单和绘制回调。
 - `JarkViewer/include/ImageDatabase.h` 与 `JarkViewer/src/ImageDatabase.cpp` 负责图片加载、格式分派、EXIF 处理和 LRU 缓存。核心路径是 `ImageDatabase::loader()` → `myLoader()` → **按文件头（魔数）嗅探格式后再分派**：`FormatSniffer` 判定真实格式 → `decodeByFormat()` 调用 JXL/WP2/AVIF/HEIF/RAW/SVG/PSD/OpenCV/WIC/FFmpeg 等解码器 → 统一转为 OpenCV `cv::Mat`；嗅探失败或解码失败时再用扩展名路由兜底，最后才是 OpenCV/WIC 通用兜底。EXIF 后处理统一由 `applyExifInfo()` 按 `ExifPolicy`（None/SimpleOnly/Full/FullWithOrientation）完成，不再散落在各格式分支里。
 - `JarkViewer/include/FormatSniffer.h` 与 `JarkViewer/src/FormatSniffer.cpp` 是纯文件头嗅探模块（不依赖任何第三方库）：扩展名与文件头冲突时以文件头为准，但 RAW/视频/LIVP/LEP/TGA 等扩展名携带文件头无法表达的信息（`isExtensionAuthoritative()`）时优先按扩展名路由。`JarkThumbnailProvider` 里的同名模块与其同源，后续计划合并为两个工程共用的模块。
-- 界面改动可用 `tools/capture_window.ps1` 做视觉验证：`-Window smallest` 截取设置窗口（F1 打开）、`-Click "x,y"` 按逻辑坐标注入鼠标点击、`-Keys "{F1}"` 注入按键。
+- 界面改动可用 `tools/capture_window.ps1` 做视觉验证：`-Keys "{F1}"` 注入按键（窗口都在主窗口内，不再需要 `-Window` 选择）、`-Hover "x,y"` 悬停、`-Drag "x1,y1,x2,y2[;...]"` 拖动或点击（物理客户区坐标）。ImGui 的窗口默认居中于主窗口。
 - 视频相关改动除 `--probe` 外，可用 `--probe --audio-test <文件>` 验证音频链路：它以音量 0 提交音频并观察播放时钟是否按采样率推进（不发出声音）。
 - `JarkViewer/src/DecodeProbe.cpp` 提供无界面解码自检（`--probe`），用于在没有窗口的情况下验证解码路由与 EXIF 处理。
 - `JarkViewer/include/BatchProcessor.h` 与 `src/BatchProcessor.cpp` 是批量处理逻辑（转换/缩放/旋转翻转/重命名/删除到回收站）：解码走工程内解码器（HEIC/AVIF/RAW 等也能参与转换），编码用 OpenCV；不依赖窗口，可用命令行 `--probe --batch <文件...> [--out-dir 目录] [--to 格式] [--max-edge N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--rename 前缀] [--overwrite]` 直接验证。
-- `JarkViewer/include/BatchWindow.h` 是批量处理窗口（Ctrl+B 或右键菜单打开，处理当前目录的图片列表），界面全部由控件树搭建，处理在工作线程执行、界面轮询进度。
+- `JarkViewer/include/BatchWindow.h` 是批量处理窗口（Ctrl+B 或右键菜单打开，处理当前目录的图片列表），ImGui 界面，处理在工作线程执行、界面轮询进度。
 - `JarkViewer/include/ImageAdjust.h` 与 `src/ImageAdjust.cpp` 存放打印/编辑与批量共用的图像调整（亮度对比度、黑白/黑白文档/黑白抖动、反相、BGRA→白底 BGR），原先内嵌在 Printer.h 中。
 - `JarkViewer/include/ImageAnnotator.h` 与 `src/ImageAnnotator.cpp` 是标注模型与渲染（矩形/椭圆/箭头/直线/画笔/马赛克/文字），含撤销重做与裁剪，纯逻辑不依赖窗口；`--probe --annotate [--annotate-out 目录]` 用合成底图跑 28 项像素断言自检。`JarkViewer/include/EditorWindow.h` 是编辑与标注窗口（主窗口 Ctrl+E 或右键菜单打开）：画布支持拖动绘制、滚轮定点缩放、中键平移、裁剪框选，右侧工具栏提供工具/颜色/线宽/字号/填充/撤销重做/旋转翻转反相/应用裁剪/另存为/复制到剪贴板/覆盖原文件；覆盖保存后置 `GlobalVar::isNeedReloadImageCache` 让主窗口重载。
-- `JarkViewer/include/UiFramework.h` 与 `src/UiFramework.cpp` 是轻量 UI 框架：`UiCanvas`（填充/描边/文字/图片，自带逻辑→物理缩放 `dp()`）+ 控件（Label/CheckBox/RadioGroup/Button/TabBar/ImageView/CheckGrid/HotArea/Slider/ImageRadioGroup/TextBox/ProgressBar/CheckList）+ 容器（`Panel` 竖直堆叠、`Row` 水平等分、`overlay()` 绝对定位覆盖层）。控件的尺寸一律写**逻辑像素**，由框架按窗口 DPI 换算；控件自己负责绘制与命中，`Panel::onClick` 只把点击交给**真正处理**它的控件（标签/图片这类装饰控件不会挡住下方按钮），`Panel::onMouseUp` 在未发生拖动捕获时按“点击”派发；拖动类控件（如 Slider）在 `onMouseDown` 返回 true 后由 `Panel::capturedControl` 接管后续移动与抬起；`overlay()` 的坐标始终以逻辑像素保存，避免重绘时被重复换算。设置窗口（`Setting.h`）与打印窗口（`Printer.h`）都已基于它重写：新增控件只需 new 一个对象，不再手写坐标、绘制与命中三份代码。
-- `MatWindow` 会按窗口所在显示器的 DPI 缩放：窗口尺寸 = 逻辑尺寸 × DPI/96，并提供 `dp()`；鼠标消息里的坐标在按下/抬起时也会刷新（避免未移动过的点击使用过期坐标）。
-- 主窗口（`D3D11App`/`JarkViewerApp`）同样是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()` 给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新），主窗口的悬停按钮（`ExtraUIRes::rebuild()` 按缩放值重建资源图切片）、悬停热区、动图播放条命中、EXIF 面板边距与文字字号都按它换算。
+- 界面全部由 **Dear ImGui**（`JarkViewer/vendor/imgui`，Win32 + DX11 后端，随工程静态编译）绘制，
+  宿主模块是 `JarkViewer/include/UiHost.h` 与 `src/UiHost.cpp`：创建上下文/后端、深浅两套主题
+  （跟随 `GlobalVar::isCurrentUIDarkMode`）、按窗口 DPI 缩放字号与样式、系统字体（Segoe UI +
+  微软雅黑 + 图标字体合并，1.92+ 动态字形加载）、以及把 `cv::Mat` 上传成 `ImTextureID` 的纹理池。
+  业务侧只需实现 `D3D11App::DrawUi()` 提交界面，主循环在 `PresentFrame()` 里完成
+  “画布贴后缓冲 → ImGui 一帧 → Present”。
+- 各窗口都是 ImGui 窗口（不再是独立窗口线程）：`SettingWindow.h`（常规/文件关联/帮助/关于）、
+  `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）。
+  主窗口的悬停按钮/动图播放条/EXIF 面板用 `ImGui::GetForegroundDrawList()` 画矢量图标与文字，
+  命中区域仍是原来的 `cursorPos` 逻辑。
+- 主窗口（`D3D11App`/`JarkViewerApp`）是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()`
+  给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新）；ImGui 侧由 `UiHost` 统一缩放。
+- 交换链使用**翻转模型**（`DXGI_SWAP_EFFECT_FLIP_DISCARD` + 双缓冲）。旧的
+  `DXGI_SWAP_EFFECT_DISCARD` + 单缓冲在本机会出现“Present 返回成功但窗口全白”，
+  改回旧模型前请先复现验证；`WM_PAINT` 与尺寸变化会置 `m_presentRequested`，
+  空闲分支据此补一次呈现。
 - `JarkViewer/include/Localization.h` 与 `src/Localization.cpp` 管界面语言（简体中文/繁體中文/English/日本語/한국어）：`UIStringTable[stringID][语言]` 与 `UIStringTableWide[stringID][语言]` 两张表（前者供画布文字、后者供 Win32 API；同 ID 文案不同是历史遗留，新增文案请追加到表尾）。`getUIString()` 按当前语言取用并在缺失时回退到英文、简体中文；`getUIStringW()` 由 UTF-8 转换而来。帮助/关于/提示/首页等资源图只有中英两套，`prefersChineseResources()` 决定用哪套（简繁用中文图，其余语言用英文图）。命令行 `--lang 0..4` 可临时指定语言。
-- 文字绘制（`TextDrawer`）支持**字体回退**：内嵌字体（Microsoft YaHei Mono）没有韩文字形，遇到缺字形时会按需从 `%WINDIR%\Fonts` 加载系统字体（malgun.ttf 等）。因此不要把「新增语言」与「新增内嵌字体」绑在一起。
+- 图像内文字渲染（标注文字等）在 `JarkViewer/include/TextRenderer.h` 与 `src/TextRenderer.cpp`：
+  用 stb_truetype 按**真实字形度量**（进退宽度/字距/bearing）绘制 UTF-8 文本，支持多行与按宽度折行，
+  字形位图按 (字号, 码位) 缓存。字体全部取系统字体（微软雅黑/等线/黑体/宋体…），工程不再内嵌 ttf。
+  界面文字由 ImGui 负责，不要再往 TextRenderer 里加界面相关职责。
 - `JarkViewer/include/MediaDecoder.h` / `MediaPlayer.h` / `AudioOutput.h`（对应 `src/*.cpp`）组成媒体播放链路：`MediaDecoder` 在内存数据上做解复用+解码，按出现顺序产出视频帧或音频批（音频统一重采样为 48kHz 立体声 16 位）；`AudioOutput` 用 XAudio2 输出并提供已播放样本数作为主时钟；`MediaPlayer` 以音频时钟驱动视频帧、一次播完。实况照片（livp / MotionPhoto）与视频文件都走这条路：静态图/首帧作 `ImageAsset::primaryFrame`，视频字节放在 `ImageAsset::videoSource`，由主窗口自动播放一次后回到静态图（不再预解码成帧序列，避免上百 MB 内存）。
 - `JarkViewer/include/CanvasRenderer.h` 与 `JarkViewer/src/CanvasRenderer.cpp` 是从 `JarkViewerApp` 抽出的画布绘制模块：按 `ViewState`（名义尺寸 / 定点缩放 / 平移 / 旋转）把图像绘制到 BGRA 画布，含透明区域棋盘格与图像边框。`JarkViewerApp::drawCanvas()` 只是把 `curPar` 转成 `ViewState` 后调用它。
 - `JarkViewer/include/VectorImage.h` 与 `JarkViewer/src/VectorImage.cpp` 负责矢量图（SVG）的按需光栅化：`ImageAsset::vectorSource` 持有 lunasvg 文档与文档尺寸（intrinsic），位图分辨率随缩放变化（`vectorTargetEdge()` + `refreshVectorRaster()`，滞后阈值 1.25 避免缩放动画中反复渲染，长边上限 4096）。主窗口在画面稳定后（`DrawScene` 空闲分支）调用 `refreshVectorRasterIfNeeded()` 升级分辨率。
 - `JarkViewer/include/jarkUtils.h` 与 `JarkViewer/src/jarkUtils.cpp` 集中放置 Win32/OpenCV 工具、主题/设置全局状态、剪贴板、全屏、资源读取、文件操作和日志。
-- `JarkViewer/include/Printer.h` 和 `JarkViewer/include/Setting.h` 是打印与设置界面，均继承自轻量基类 `JarkViewer/include/MatWindow.h`。`MatWindow` 用纯 Win32 API（`RegisterClassExW` + `CreateWindowExW` + 自己的 `wndProc` 与消息循环）创建独立窗口，子类把 UI 绘制到 `cv::Mat m_uiCanvas` 上，最后通过 GDI `StretchDIBits` 把 BGRA Mat 贴到窗口 DC，这里 OpenCV 只用作画布像素操作（`cv::rectangle`、`cv::cvtColor` 等）。
-- `JarkViewer/src/TextDrawer.cpp`、`stringRes.cpp`、`exifParse.cpp`、`videoDecoder.cpp`、`blpDecoder.cpp` 分别支撑文字绘制、多语言字符串、元数据解析、视频帧解码和 BLP 解码。
+- `JarkViewer/src/TextRenderer.cpp`、`stringRes.cpp`、`exifParse.cpp`、`videoDecoder.cpp`、`blpDecoder.cpp` 分别支撑图像文字渲染、多语言字符串、元数据解析、视频帧解码和 BLP 解码。
 
 ## 代码约定
 
@@ -93,7 +108,7 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
 - `buildRelease.ps1` 必须保持 ASCII-only，且不能用 `ProcessStartInfo.ArgumentList`（Windows PowerShell 5.1 不支持，会静默丢掉全部参数并退化成默认 Debug 构建）。
 - `JarkViewerApp::drawCanvas()` 有两条必须同时成立的规则：**几何尺寸用名义尺寸**（`curPar.width/height`，矢量图 100% 时屏幕上应有的尺寸），**采样密度用位图分辨率**（`srcScaleX/srcScaleY = 位图尺寸 / 名义尺寸`）。矢量图的位图分辨率会随缩放变化，任何"用 `srcImg.cols/rows` 当几何尺寸"或"用 `zoomInvert` 直接换算位图坐标"的写法都会让画面尺寸/位置错乱。
 - Release 构建默认不打印日志，排障时用 `--log` 或 `JARKVIEWER_LOG=1`（写入 `%TEMP%\JarkViewer.log`）；新增诊断日志直接写 `JARK_LOG(...)` 即可，`isLogEnabled()` 为假时不会计算参数。
-- UI 文本来自 `stringRes`，设置/帮助/关于和打印按钮大量使用资源图切片；改文案或布局时要同步检查中文、英文、浅色、深色资源。
+- UI 文本来自 `stringRes`（`UIStringTable[stringID][语言]`）：**新增文案请追加到表尾**，并在使用处写成具名常量（各窗口文件里已有 `kStr*` 常量块）。改动后再跑一次 `--probe --lang-test`，它会打印若干条文案用于确认 ID 没有错位。
 - README 记录的 OpenCV 预编译库带有源码改动：移除 `imgcodecs` 分辨率限制，并将 HighGUI Win32 窗口光标从 `IDC_CROSS` 改为 `IDC_ARROW`；替换或重建 OpenCV 时要保留这些行为。
 - 不要提交 `.vcxproj.user`、`.vs/` 或机器相关的本地库路径。
 - 主窗口渲染路径以 OpenCV `cv::Mat` 作为 CPU 画布，再交给 Direct3D 显示；避免在高频绘制路径中引入阻塞 I/O 或昂贵同步操作。
