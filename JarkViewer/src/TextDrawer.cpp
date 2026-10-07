@@ -25,6 +25,35 @@ void TextDrawer::setSize(int newSize) {
 }
 
 // str : UTF-8
+// 等宽字体模型：半角按 sizeAndGap/2 计宽，全角按 sizeAndGap 计宽
+int TextDrawer::measureText(const char* str) const {
+    if (!str)
+        return 0;
+
+    const int sizeAndGap = int(fontSize * (1 + lineGapPercent));
+    int width = 0;
+    int maxWidth = 0;
+
+    for (const char* cursor = str; *cursor; ++cursor) {
+        if (*cursor == '\n') {
+            maxWidth = maxWidth > width ? maxWidth : width;
+            width = 0;
+        }
+        else if ((*cursor & 0xc0) != 0x80) { // UTF-8 首字节
+            width += (*cursor & 0x80) ? 2 : 1;
+        }
+    }
+
+    maxWidth = maxWidth > width ? maxWidth : width;
+    return sizeAndGap * maxWidth / 2;
+}
+
+void TextDrawer::putAlignRight(cv::Mat& img, cv::Rect rect, const char* str, intUnion color, bool isAdaptiveFG) {
+    const int width = measureText(str);
+    putText(img, rect.x + rect.width - width, rect.y + (rect.height - int(fontSize * (1 + lineGapPercent))) / 2,
+        str, color, isAdaptiveFG);
+}
+
 void TextDrawer::putText(cv::Mat& img, const int x, const int y, const char* str, intUnion color, bool isAdaptiveFG) {
     if (!hasInit) {
         hasInit = Init(IDR_TTF_DEFAULT, L"TTF");

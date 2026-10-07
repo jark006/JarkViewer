@@ -1,0 +1,255 @@
+#pragma once
+
+// 轻量 UI 框架：画布 + 控件树 + 竖直堆叠布局。
+//
+// 背景：设置/打印窗口原先用硬编码像素矩形 + 手工命中判断 + 每个标签页一个绘制函数，
+// 增加一个控件要同时改布局、绘制、命中三处，且坐标靠人肉对齐。
+// 这里改为「控件自己负责绘制与命中」，容器按顺序自动排布，新增控件只需 new 一个对象。
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include <opencv2/opencv.hpp>
+
+#include "jarkUtils.h"
+
+class TextDrawer;
+
+namespace jark::ui {
+
+    using Color = uint32_t; // 0xAARRGGBB，与主题色一致
+
+    struct Rect {
+        int x = 0;
+        int y = 0;
+        int width = 0;
+        int height = 0;
+
+        int right() const { return x + width; }
+        int bottom() const { return y + height; }
+        bool contains(int px, int py) const {
+            return px >= x && px < right() && py >= y && py < bottom();
+        }
+        cv::Rect toCv() const { return { x, y, width, height }; }
+        Rect inset(int delta) const { return { x + delta, y + delta, width - 2 * delta, height - 2 * delta }; }
+    };
+
+    enum class Align { Left, Center, Right };
+
+    // 控件绘制时面对的接口：不直接操作 cv::Mat，避免各处重复写主题色与文字绘制
+    class UiCanvas {
+    public:
+        UiCanvas(cv::Mat& target, TextDrawer& drawer, const ThemeColor& theme, float scale = 1.0f)
+            : target_(target), drawer_(drawer), theme_(theme), scale_(scale > 0.0f ? scale : 1.0f) {}
+
+        // 逻辑像素 -> 物理像素：控件内部尺寸一律用 dp() 表示
+        float scale() const { return scale_; }
+        int dp(int logical) const { return static_cast<int>(std::lround(logical * scale_)); }
+
+        int width() const { return target_.cols; }
+        int height() const { return target_.rows; }
+        const ThemeColor& theme() const { return theme_; }
+        cv::Mat& raw() { return target_; }
+
+        void fill(Rect rect, Color color);
+        void stroke(Rect rect, Color color, int thickness = 2);
+        void line(int x0, int y0, int x1, int y1, Color color);
+        void text(Rect rect, std::string_view text, Color color, Align align = Align::Left);
+        void image(const cv::Mat& source, Rect destination);
+
+        // 一行文字的建议高度（布局用）
+        int lineHeight() const;
+
+    private:
+        cv::Mat& target_;
+        TextDrawer& drawer_;
+        const ThemeColor& theme_;
+        float scale_ = 1.0f;
+    };
+
+    class Control {
+    public:
+        virtual ~Control() = default;
+
+        Rect bounds;
+        bool visible = true;
+        bool enabled = true;
+
+        virtual void draw(UiCanvas& canvas) = 0;
+
+        // 返回 true 表示状态有变化、需要重绘
+        virtual bool onClick(int x, int y) { (void)x; (void)y; return false; }
+        virtual bool onWheel(int x, int y, int delta) { (void)x; (void)y; (void)delta; return false; }
+
+        virtual int preferredHeight() const { return 50; }
+
+        // 是否吃掉这次点击（用于阻止穿透到下层控件）
+        virtual bool hitTest(int x, int y) const { return visible && enabled && bounds.contains(x, y); }
+    };
+
+    using ControlPtr = std::unique_ptr<Control>;
+
+    // —— 具体控件 ——
+
+    class Label : public Control {
+    public:
+        Label(std::string text, Color color = 0, Align align = Align::Left)
+            : text_(std::move(text)), color_(color), align_(align) {}
+
+        void setText(std::string text) { text_ = std::move(text); }
+        void draw(UiCanvas& canvas) override;
+
+    private:
+        std::string text_;
+        Color color_;
+        Align align_;
+    };
+
+    class CheckBox : public Control {
+    public:
+        CheckBox(std::string text, bool* value) : text_(std::move(text)), value_(value) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+    private:
+        std::string text_;
+        bool* value_ = nullptr;
+    };
+
+    // 一行「标签 + 若干选项」，选项由容器均分宽度（与原设置页样式一致）
+    class RadioGroup : public Control {
+    public:
+        RadioGroup(std::string label, std::vector<std::string> options, uint32_t* value)
+            : label_(std::move(label)), options_(std::move(options)), value_(value) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+    private:
+        int itemWidth() const;
+        int labelWidth() const;
+
+        std::string label_;
+        std::vector<std::string> options_;
+        uint32_t* value_ = nullptr;
+    };
+
+    class Button : public Control {
+    public:
+        Button(std::string text, std::function<void()> action, bool primary = false)
+            : text_(std::move(text)), action_(std::move(action)), primary_(primary) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+    private:
+        std::string text_;
+        std::function<void()> action_;
+        bool primary_ = false;
+    };
+
+    class TabBar : public Control {
+    public:
+        TabBar(std::vector<std::string> tabs, int* index, std::function<void()> onChanged)
+            : tabs_(std::move(tabs)), index_(index), onChanged_(std::move(onChanged)) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+    private:
+        std::vector<std::string> tabs_;
+        int* index_ = nullptr;
+        std::function<void()> onChanged_;
+    };
+
+    // 隐形热区：用于图片上已经画好按钮外观的场景（帮助/关于页的链接）
+    class HotArea : public Control {
+    public:
+        explicit HotArea(std::function<void()> action) : action_(std::move(action)) {}
+        void draw(UiCanvas&) override {}
+        bool onClick(int x, int y) override;
+        int preferredHeight() const override { return 0; }
+
+    private:
+        std::function<void()> action_;
+    };
+
+    // 整幅图像（帮助/关于页）
+    class ImageView : public Control {
+    public:
+        explicit ImageView(const cv::Mat* image) : image_(image) {}
+        void draw(UiCanvas& canvas) override;
+
+    private:
+        const cv::Mat* image_ = nullptr;
+    };
+
+    // 扩展名网格（文件关联页）：等宽多列复选
+    class CheckGrid : public Control {
+    public:
+        using IsChecked = std::function<bool(const std::string&)>;
+        using SetChecked = std::function<void(const std::string&, bool)>;
+
+        CheckGrid(std::vector<std::string> items, int columns, IsChecked isChecked, SetChecked setChecked)
+            : items_(std::move(items)), columns_(columns),
+            isChecked_(std::move(isChecked)), setChecked_(std::move(setChecked)) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+    private:
+        Rect itemRect(int index) const;
+
+        std::vector<std::string> items_;
+        int columns_ = 1;
+        IsChecked isChecked_;
+        SetChecked setChecked_;
+    };
+
+    // 水平排布容器：等分宽度（用于按钮行等）
+    class Row : public Control {
+    public:
+        Row& add(ControlPtr control, int weight = 1);
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+    private:
+        struct Entry {
+            ControlPtr control;
+            int weight = 1;
+        };
+        std::vector<Entry> entries_;
+        int totalWeight = 0;
+    };
+
+    // 竖直堆叠容器：按加入顺序自上而下排布（高度/间距为逻辑像素，绘制时按缩放换算）
+    class Panel : public Control {
+    public:
+        Panel& add(ControlPtr control, int height = 0, int gap = 0);
+
+        // 绝对定位（坐标相对 Panel 左上角、逻辑像素），用于图片上叠加的热区/文字
+        Panel& overlay(ControlPtr control, Rect logicalBounds);
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+        bool onWheel(int x, int y, int delta) override;
+
+        Control* find(int x, int y);
+
+    private:
+        struct Entry {
+            ControlPtr control;
+            int height = 0;
+            int gap = 0;
+        };
+        std::vector<Entry> entries_;
+        std::vector<Entry> overlays_;
+        int contentHeight = 0;
+    };
+
+} // namespace jark::ui
