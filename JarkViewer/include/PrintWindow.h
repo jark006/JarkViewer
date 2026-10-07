@@ -73,8 +73,9 @@ public:
 
         const float scale = jark::ui::UiHost::instance().scale();
         ImGui::SetNextWindowSize({ 760.0f * scale, 620.0f * scale }, ImGuiCond_FirstUseEver);
-        // 不能再缩小到藏住颜色模式/反相/另存为/打印这一行和两个滑块
-        ImGui::SetNextWindowSizeConstraints({ 760.0f * scale, 360.0f * scale }, { FLT_MAX, FLT_MAX });
+        // 最小宽度按控件行实际占用算（见 minWidth_）：窄了会把“打印”顶到窗口边缘甚至截断
+        ImGui::SetNextWindowSizeConstraints({ 0.0f, 360.0f * scale }, { FLT_MAX, FLT_MAX },
+            sizeConstraints, this);
         if (focusRequested_) {
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
             focusRequested_ = false;
@@ -109,8 +110,22 @@ private:
         return jarkUtils::wstringToUtf8(getUIStringW(40)) + "###print";
     }
 
+    // 窗口最小尺寸：宽取控件行实际占用（minWidth_），高保证两个滑块 + 一点预览
+    static void sizeConstraints(ImGuiSizeCallbackData* data) {
+        const auto* self = static_cast<const PrintWindow*>(data->UserData);
+        const float scale = jark::ui::UiHost::instance().scale();
+        data->DesiredSize.x = (std::max)(data->DesiredSize.x, self->minWidth_);
+        data->DesiredSize.y = (std::max)(data->DesiredSize.y, 360.0f * scale);
+    }
+
     void drawControls(float scale) {
         const char* colorModes[] = { getUIString(kStrColor), getUIString(kStrGray), getUIString(kStrDocument), getUIString(kStrDither) };
+
+        // 记录两行控件各自的右边界，取最宽的一行作为窗口最小宽度（下一帧生效，见 sizeConstraints）
+        float rowWidth = 0.0f;
+        auto noteRowWidth = [&] {
+            rowWidth = (std::max)(rowWidth, ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x);
+        };
 
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(getUIString(kStrColorMode));
@@ -139,16 +154,21 @@ private:
         if (ImGui::Checkbox(getUIString(kStrInvert), &invert_))
             previewDirty_ = true;
 
-        // 另存为/打印紧跟在“反相”右边
-        const float buttonWidth = 140.0f * scale;
+        // 另存为/打印紧跟在“反相”右边（宽度取原来的一半，至少放得下文字）
+        const float halfButton = 70.0f * scale;
+        auto buttonWidth = [](const char* label, float minWidth) {
+            return (std::max)(ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f, minWidth);
+        };
+
         ImGui::SameLine();
-        if (ImGui::Button(getUIString(kStrSaveAs), { buttonWidth, 0 })) {
+        if (ImGui::Button(getUIString(kStrSaveAs), { buttonWidth(getUIString(kStrSaveAs), halfButton), 0 })) {
             saveToFile();
         }
         ImGui::SameLine();
-        if (ImGui::Button(getUIString(kStrPrint), { buttonWidth, 0 })) {
+        if (ImGui::Button(getUIString(kStrPrint), { buttonWidth(getUIString(kStrPrint), halfButton), 0 })) {
             print();
         }
+        noteRowWidth();
 
         // 标签放在控件左边
         const float sliderWidth = 260.0f * scale;
@@ -166,6 +186,9 @@ private:
         ImGui::SetNextItemWidth(sliderWidth);
         if (ImGui::SliderInt("##contrast", &contrast_, 0, 200, "%d"))
             previewDirty_ = true;
+        noteRowWidth();
+
+        minWidth_ = rowWidth + ImGui::GetStyle().WindowPadding.x + 4.0f * scale;
     }
 
     void drawPreview() {
@@ -354,6 +377,7 @@ private:
 
     bool visible_ = false;
     bool focusRequested_ = false;
+    float minWidth_ = 0.0f; // 控件行实际占用宽度，drawControls 每帧更新
 
     cv::Mat sourceImage_;   // BGR
     cv::Mat previewImage_;
