@@ -64,23 +64,24 @@ namespace jark::ui {
         constexpr Glyph<0x25B6> kNext;          // ▶ 下一张
         constexpr Glyph<0x23F8> kPause;         // ⏸ 暂停
         constexpr Glyph<0x23F5> kPlay;          // ⏵ 继续
-        constexpr Glyph<0x21B6> kUndo;          // ↶ 撤销
-        constexpr Glyph<0x21B7> kRedo;          // ↷ 重做
-        constexpr Glyph<0x27F2> kRotateLeft;    // ⟲ 逆时针
-        constexpr Glyph<0x27F3> kRotateRight;   // ⟳ 顺时针
-        constexpr Glyph<0x2699> kSetting;       // ⚙ 设置
-        constexpr Glyph<0x270E> kPen;           // ✎ 画笔
-        constexpr Glyph<0x25AD> kRect;          // ▭ 矩形
-        constexpr Glyph<0x25EF> kEllipse;       // ◯ 椭圆
         constexpr Glyph<0x2197> kArrow;         // ↗ 箭头
         constexpr Glyph<0x2571> kLine;          // ╱ 直线
         constexpr Glyph<0x25A6> kMosaic;        // ▦ 马赛克
-        constexpr Glyph<0x2702> kCrop;          // ✂ 裁剪
         constexpr Glyph<0x2715> kClose;         // ✕ 关闭
-        constexpr Glyph<0x2713> kCheck;         // ✓ 确定
-        constexpr Glyph<0xE749> kPrint;         // 打印（Segoe Fluent Icons）
+
+        // 以下取自 Segoe Fluent Icons / Segoe MDL2 Assets（已确认字形存在）
+        constexpr Glyph<0xE7A7> kUndo;          // 撤销 / 逆时针
+        constexpr Glyph<0xE7A6> kRedo;          // 重做 / 顺时针
+        constexpr Glyph<0xE749> kPrint;         // 打印
         constexpr Glyph<0xE74E> kSave;          // 保存
         constexpr Glyph<0xE8C8> kCopy;          // 复制
+        constexpr Glyph<0xE713> kSetting;       // 设置
+        constexpr Glyph<0xE74D> kDelete;        // 删除
+        constexpr Glyph<0xE8A3> kZoomIn;        // 放大
+        constexpr Glyph<0xE71F> kZoomOut;       // 缩小
+        constexpr Glyph<0xE8B7> kFolder;        // 文件夹
+        constexpr Glyph<0xE8E5> kOpenFile;      // 打开
+        constexpr Glyph<0xE91B> kPhoto;         // 图片
     }
 
     class UiHost {

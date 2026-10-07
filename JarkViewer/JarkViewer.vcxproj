@@ -175,12 +175,11 @@
     <ClInclude Include="include\LRU.h" />
     <ClInclude Include="include\MediaDecoder.h" />
     <ClInclude Include="include\MediaPlayer.h" />
-    <ClInclude Include="include\Printer.h" />
+    <ClInclude Include="include\PrintWindow.h" />
     <ClInclude Include="include\SettingWindow.h" />
     <ClInclude Include="include\stringRes.h" />
     <ClInclude Include="include\SVGPreprocessor.h" />
     <ClInclude Include="include\TextRenderer.h" />
-    <ClInclude Include="include\UiFramework.h" />
     <ClInclude Include="include\VectorImage.h" />
     <ClInclude Include="include\ThumbnailProviderGuids.h" />
     <ClInclude Include="include\ThumbnailRegistrar.h" />
@@ -213,7 +212,6 @@
     <ClCompile Include="src\Localization.cpp" />
     <ClCompile Include="src\stringRes.cpp" />
     <ClCompile Include="src\TextRenderer.cpp" />
-    <ClCompile Include="src\UiFramework.cpp" />
     <ClCompile Include="src\UiHost.cpp" />
     <ClCompile Include="src\tinyxml2.cpp" />
     <ClCompile Include="vendor\imgui\imgui.cpp" />
@@ -231,10 +229,6 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="file\home.png" />
-    <Image Include="file\mainRes.png" />
-    <Image Include="file\printerRes.png" />
-    <Image Include="file\settingRes.png" />
-    <Image Include="file\tips.png" />
     <Image Include="JarkViewer.ico" />
     <Image Include="small.ico" />
   </ItemGroup>

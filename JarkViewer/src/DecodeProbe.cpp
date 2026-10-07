@@ -215,7 +215,7 @@ namespace {
     // 语言自检：逐一切换语言并打印若干条文案，验证字符串表与回退逻辑
     std::string runLanguageTest() {
         std::string report;
-        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54 };   // 设置/常规/语言/路径/分辨率/优先1:1
+        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127 }; // 含关闭/打印/帮助标题（新增文案易错位）
         const uint32_t wideIds[] = { 1, 13, 30 };                // 窗口标题/窗口创建失败/删除到回收站
 
         const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;

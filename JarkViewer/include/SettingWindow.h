@@ -344,8 +344,8 @@ private:
     }
 
     // 帮助页文案（窄表新增条目）
-    static constexpr uint32_t kStrHelpTitle = 126;
-    static constexpr uint32_t kStrHelpBody = 127;
+    static constexpr uint32_t kStrHelpTitle = 127;
+    static constexpr uint32_t kStrHelpBody = 128;
 
     bool visible_ = false;
     bool focusRequested_ = false;

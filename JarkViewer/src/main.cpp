@@ -10,7 +10,7 @@
 #include "VectorImage.h"
 #include "TextRenderer.h"
 #include "ImageDatabase.h"
-#include "Printer.h"
+#include "PrintWindow.h"
 #include "SettingWindow.h"
 
 #include "D3D11App.h"
@@ -1584,7 +1584,7 @@ public:
 
         switch (extraUIFlag) {
         case ShowExtraUI::rotateLeftButton:
-            drawHudButton(drawList, leftX, winHeight * 0.125f, radius, jark::ui::icon::kRotateLeft, false);
+            drawHudButton(drawList, leftX, winHeight * 0.125f, radius, jark::ui::icon::kUndo, false);
             break;
 
         case ShowExtraUI::leftArrow:
@@ -1604,7 +1604,7 @@ public:
             break;
 
         case ShowExtraUI::rotateRightButton:
-            drawHudButton(drawList, rightX, winHeight * 0.125f, radius, jark::ui::icon::kRotateRight, false);
+            drawHudButton(drawList, rightX, winHeight * 0.125f, radius, jark::ui::icon::kRedo, false);
             break;
 
         case ShowExtraUI::animationBar: {
@@ -1710,12 +1710,15 @@ public:
     void DrawUi() override {
         auto& uiHost = jark::ui::UiHost::instance();
         uiHost.setUiVisible(hasOverlayUi() || showExif || SettingWindow::instance().visible() ||
-            BatchWindow::instance().visible());
+            BatchWindow::instance().visible() || PrintWindow::instance().visible() ||
+            EditorWindow::instance().visible());
 
         drawOverlayUi();
         drawExifPanel();
         SettingWindow::instance().draw();
         BatchWindow::instance().draw();
+        PrintWindow::instance().draw();
+        EditorWindow::instance().draw();
     }
 
     void DrawScene() {
@@ -1760,8 +1763,8 @@ public:
             if (refreshVectorRasterIfNeeded())
                 return;
 
-            // 有界面在显示时要继续出帧（界面上有动画/光标，不能停在上一帧）
-            if (jark::ui::UiHost::instance().uiVisible())
+            // 有界面在显示、或系统要求重绘时要继续出帧（不能停在空白后缓冲上）
+            if (jark::ui::UiHost::instance().uiVisible() || consumePresentRequest())
                 PresentUiOnly();
 
             Sleep(1); // Windows机制限制，实际时长最小只能 15.6ms
@@ -1783,58 +1786,20 @@ public:
         }
 
         if (operateAction.action == ActionENUM::editImage) {
-            JARK_LOG("编辑窗口请求：已在运行={}", static_cast<bool>(EditorWindow::isWorking));
-            if (EditorWindow::isWorking) {
-                jarkUtils::activateWindow(EditorWindow::hwnd);
-            }
-            else {
-                cv::Mat srcImg = currentSourceImage();
-                JARK_LOG("编辑窗口源图 {}x{}", srcImg.cols, srcImg.rows);
-                if (!srcImg.empty()) {
-                    OnRequestExitOtherWindows();
-
-                    const std::wstring path = (curFileIdx >= 0 && curFileIdx < (int)imgFileList.size())
-                        ? imgFileList[curFileIdx] : std::wstring();
-
-                    // 编辑器在覆盖保存后会置 isNeedReloadImageCache，主窗口随之重新加载
-                    std::thread editorThread([path, srcImg]() {
-                        EditorWindow window(path, srcImg);
-                        });
-                    editorThread.detach();
-                }
+            cv::Mat srcImg = currentSourceImage();
+            if (!srcImg.empty()) {
+                const std::wstring path = (curFileIdx >= 0 && curFileIdx < (int)imgFileList.size())
+                    ? imgFileList[curFileIdx] : std::wstring();
+                EditorWindow::instance().open(path, srcImg);
+                operateQueue.push({ ActionENUM::refresh });
             }
             return;
         }
 
         if (operateAction.action == ActionENUM::printImage) {
-            if (Printer::isWorking) {
-                jarkUtils::activateWindow(Printer::hwnd);
-            }
-            else {
-                cv::Mat srcImg = currentSourceImage();
-
-                std::thread printerThread([](cv::Mat image, int rotation) {
-                    cv::Mat rotatedImage;
-
-                    switch (rotation) {
-                    case 1:
-                        cv::rotate(image, rotatedImage, cv::ROTATE_90_COUNTERCLOCKWISE);
-                        break;
-                    case 2:
-                        cv::rotate(image, rotatedImage, cv::ROTATE_180);
-                        break;
-                    case 3:
-                        cv::rotate(image, rotatedImage, cv::ROTATE_90_CLOCKWISE);
-                        break;
-                    default:
-                        rotatedImage = image;
-                        break;
-                    }
-
-                    Printer printer(rotatedImage);
-                    }, srcImg, curPar.rotation);
-                printerThread.detach();
-            }
+            cv::Mat srcImg = currentSourceImage();
+            if (!srcImg.empty())
+                PrintWindow::instance().open(srcImg, curPar.rotation);
             return;
         }
 
@@ -2119,8 +2084,6 @@ public:
     }
 
     void OnRequestExitOtherWindows() {
-        Printer::requestExit();
-        EditorWindow::requestExit();
     }
 };
 

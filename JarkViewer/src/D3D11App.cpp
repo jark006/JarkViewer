@@ -261,10 +261,12 @@ HRESULT D3D11App::CreateDeviceResources() {
         swapChainDesc.SampleDesc.Count = 1;
         swapChainDesc.SampleDesc.Quality = 0;
         swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        swapChainDesc.BufferCount = 1;
+        // 翻转模型（FLIP_DISCARD）：与 DWM 组合更稳，避免旧 DISCARD 模型下
+        // 某些驱动/多显示器场景出现“Present 成功但窗口空白”。
+        swapChainDesc.BufferCount = 2;
         swapChainDesc.OutputWindow = m_hWnd;
         swapChainDesc.Windowed = TRUE;
-        swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         swapChainDesc.Flags = 0;
 
         hr = pDxgiFactory->CreateSwapChain(m_pD3DDevice, &swapChainDesc, &m_pSwapChain);
@@ -298,7 +300,7 @@ void D3D11App::CreateWindowSizeDependentResources() {
 
     // 重设交换链缓冲区
     HRESULT hr = m_pSwapChain->ResizeBuffers(
-        1,
+        0, // 保持创建时的缓冲区数量
         width,
         height,
         DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -331,6 +333,7 @@ void D3D11App::CreateWindowSizeDependentResources() {
 
     m_stagingWidth = width;
     m_stagingHeight = height;
+    m_presentRequested = true; // 后缓冲刚重建，需要重新呈现
 }
 
 void D3D11App::PresentCanvas(const uint8_t* data, int width, int height, int stride) {
@@ -379,12 +382,18 @@ void D3D11App::PresentFrame() {
         if (m_pBackBufferRTV)
             m_pD3DDeviceContext->OMSetRenderTargets(1, &m_pBackBufferRTV, nullptr);
 
-        ui.newFrame();
-        DrawUi();
-        ui.renderDrawData();
+        static const bool skipUi = ::getenv("JARKVIEWER_NO_UI") != nullptr;
+        if (!skipUi) {
+            ui.newFrame();
+            DrawUi();
+            ui.renderDrawData();
+        }
     }
 
-    m_pSwapChain->Present(0, 0);
+    const HRESULT presentResult = m_pSwapChain->Present(0, 0);
+    if (FAILED(presentResult))
+        JARK_LOG("Present 失败 hr=0x{:08X} 设备原因=0x{:08X}", static_cast<uint32_t>(presentResult),
+            static_cast<uint32_t>(m_pD3DDevice ? m_pD3DDevice->GetDeviceRemovedReason() : 0));
 }
 
 void D3D11App::PresentUiOnly() {
@@ -531,10 +540,17 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         pApp->OnResize(LOWORD(lParam), HIWORD(lParam));
         break;
 
+    case WM_PAINT:
+        // 系统要求重绘（刚显示/被遮挡后恢复）：重新呈现一帧后交给 DefWindowProc 校验区域
+        ValidateRect(hwnd, nullptr);
+        pApp->markPresentRequested();
+        return 0;
+
     case WM_DPICHANGED:
     case WM_DPICHANGED_AFTERPARENT:
         pApp->refreshUiScale();
         pApp->OnDpiChanged();
+        pApp->markPresentRequested();
         break;
 
     case WM_SETTINGCHANGE:

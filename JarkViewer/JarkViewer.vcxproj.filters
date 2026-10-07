@@ -120,19 +120,7 @@
     <Image Include="JarkViewer.ico">
       <Filter>resources</Filter>
     </Image>
-    <Image Include="file\tips.png">
-      <Filter>resources</Filter>
-    </Image>
     <Image Include="file\home.png">
-      <Filter>resources</Filter>
-    </Image>
-    <Image Include="file\settingRes.png">
-      <Filter>resources</Filter>
-    </Image>
-    <Image Include="file\mainRes.png">
-      <Filter>resources</Filter>
-    </Image>
-    <Image Include="file\printerRes.png">
       <Filter>resources</Filter>
     </Image>
   </ItemGroup>

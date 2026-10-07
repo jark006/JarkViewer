@@ -369,11 +369,7 @@ void UiHost::renderDrawData() {
 
     ImGui::Render();
 
-    ImDrawData* drawData = ImGui::GetDrawData();
-    JARK_LOG("ImGui 提交：窗口 {} 顶点 {} 列表 {}", drawData ? drawData->CmdListsCount : -1,
-        drawData ? drawData->TotalVtxCount : -1, drawData ? drawData->TotalIdxCount : -1);
-
-    ImGui_ImplDX11_RenderDrawData(drawData);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
     ImGuiIO& io = ImGui::GetIO();
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
@@ -439,8 +435,10 @@ ImTextureID UiHost::textureFromImage(const cv::Mat& image, int slot) {
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-        if (FAILED(device_->CreateTexture2D(&desc, nullptr, &entry.texture)))
+        if (FAILED(device_->CreateTexture2D(&desc, nullptr, &entry.texture))) {
+            JARK_LOG("创建纹理失败 {}x{}", bgra.cols, bgra.rows);
             return 0;
+        }
 
         D3D11_SHADER_RESOURCE_VIEW_DESC viewDesc = {};
         viewDesc.Format = desc.Format;

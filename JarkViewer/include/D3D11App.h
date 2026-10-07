@@ -47,6 +47,15 @@ protected:
     // 画布内容没有变化时只重画界面
     void PresentUiOnly();
 
+    // 交换链重建/收到 WM_PAINT 后需要重新呈现一次（否则空闲时会停在空白后缓冲上）
+    void markPresentRequested() { m_presentRequested = true; }
+
+    bool consumePresentRequest() {
+        const bool requested = m_presentRequested;
+        m_presentRequested = false;
+        return requested;
+    }
+
     template<class Interface>
     void SafeRelease(Interface*& pInterfaceToRelease);
 
@@ -83,6 +92,7 @@ protected:
     UINT m_stagingHeight = 0;
     // 后缓冲渲染目标（ImGui 需要绑定 RTV 才能绘制）
     ID3D11RenderTargetView* m_pBackBufferRTV = nullptr;
+    bool m_presentRequested = true;
     // 所创设备特性等级
     D3D_FEATURE_LEVEL m_featureLevel;
 

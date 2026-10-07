@@ -28,7 +28,8 @@ param(
     [int]$LogicWidth = 1000,
     [int]$WaitMs = 2500,
     [int]$AfterKeysMs = 1200,
-    [int]$TimeoutMs = 15000
+    [int]$TimeoutMs = 15000,
+    [switch]$Screen      # grab from the screen instead of PrintWindow (verifies what is actually shown)
 )
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -241,9 +242,23 @@ try {
 
     $bitmap = New-Object System.Drawing.Bitmap($width, $height)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $hdc = $graphics.GetHdc()
-    $printed = [JarkCapture]::PrintWindow($hwnd, $hdc, 2)   # PW_RENDERFULLCONTENT
-    $graphics.ReleaseHdc($hdc)
+    if ($Screen) {
+        [void](Activate-Window $hwnd)
+        Start-Sleep -Milliseconds 400
+        # 最大化窗口的 Left/Top 可能是负数，取屏幕内可见部分
+        $srcX = [Math]::Max(0, $rect.Left)
+        $srcY = [Math]::Max(0, $rect.Top)
+        $visibleW = [Math]::Min($width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width - $srcX)
+        $visibleH = [Math]::Min($height, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height - $srcY)
+        $graphics.CopyFromScreen($srcX, $srcY, $srcX - $rect.Left, $srcY - $rect.Top,
+            (New-Object System.Drawing.Size($visibleW, $visibleH)))
+        $printed = $true
+    }
+    else {
+        $hdc = $graphics.GetHdc()
+        $printed = [JarkCapture]::PrintWindow($hwnd, $hdc, 2)   # PW_RENDERFULLCONTENT
+        $graphics.ReleaseHdc($hdc)
+    }
     $graphics.Dispose()
 
     $bitmap.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
