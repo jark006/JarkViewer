@@ -77,6 +77,9 @@ bool UiHost::init(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* context,
     io.IniFilename = nullptr;   // 界面布局不落盘（窗口位置由各窗口自己管）
     io.ConfigViewportsNoAutoMerge = false;
     io.ConfigViewportsNoTaskBarIcon = false;
+    // 只允许从右下角那个抓手改窗口尺寸：关掉后四边边框不再能拖，也不再有左下角抓手
+    // （ImGui 原本是「边框 + 两个下角」都能拖，边框在缩放后的窗口上很容易误触）
+    io.ConfigWindowsResizeFromEdges = false;
 
     if (!ImGui_ImplWin32_Init(hwnd) || !ImGui_ImplDX11_Init(device, context)) {
         ImGui::DestroyContext();
