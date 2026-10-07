@@ -9,12 +9,18 @@
 
 class ExifParse {
 public:
+    // 解析结果：显示文本 + 供程序逻辑使用的结构化字段
+    struct Detail {
+        std::string text;      // 完整 EXIF/XMP/IPTC 文本（含 AI 提示词）
+        int orientation = 1;   // Exif.Image.Orientation（1~8），缺省为 1
+    };
+
     static std::string getSimpleInfo(std::wstring_view path, int width, int height, const uint8_t* buf, size_t fileSize);
     static std::string handleMathDiv(std::string_view str);
     static std::string exifDataToString(std::wstring_view path, const Exiv2::ExifData& exifData);
     static std::string xmpDataToString(std::wstring_view path, const Exiv2::XmpData& xmpData);
     static std::string iptcDataToString(std::wstring_view path, const Exiv2::IptcData& IptcData);
-    static std::string parseAiPrompt(std::wstring_view path, const uint8_t* buf, size_t fileSize);
+    static Detail getExifDetail(std::wstring_view path, const uint8_t* buf, size_t fileSize);
     static std::string getExif(std::wstring_view path, const uint8_t* buf, size_t fileSize);
 
 private:

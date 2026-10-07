@@ -337,9 +337,10 @@ struct ImageAsset {
     cv::Mat primaryFrame;                    // 静态图或实况的静态图
     std::vector<cv::Mat> frames;             // 动态图或实况的视频
     std::vector<int> frameDurations;         // 每帧时长
-    string exifInfo;                         // 图像EXIF等信息
+    string exifInfo;                         // 图像EXIF等信息（显示用文本）
     std::vector<uint8_t> iccProfile;         // 图像内嵌ICC配置文件
     std::shared_ptr<jark::VectorImage> vectorSource; // 矢量图源（SVG），按需重新光栅化
+    int orientation = 1;                     // EXIF 方向（1~8），解码器已按此旋转像素
 };
 
 enum class ActionENUM:int64_t {

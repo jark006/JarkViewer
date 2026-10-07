@@ -885,23 +885,23 @@ ImageAsset ImageDatabase::loadLEP(wstring_view path, std::span<const uint8_t> bu
     ImageAsset imageAsset;
     imageAsset.format = ImageFormat::Still;
     imageAsset.primaryFrame = std::move(image);
+    const auto exifDetail = ExifParse::getExifDetail(path, jpeg_data, jpeg_size);
     imageAsset.exifInfo = ExifParse::getSimpleInfo(
         path,
         imageAsset.primaryFrame.cols,
         imageAsset.primaryFrame.rows,
         buf.data(),
         buf.size()) +
-        ExifParse::getExif(path, jpeg_data, jpeg_size);
+        exifDetail.text;
+    imageAsset.orientation = exifDetail.orientation;
+
     if (GlobalVar::settingParameter.enableColorManagement) {
         imageAsset.iccProfile = ColorManager::readEmbeddedIccProfile(
             path,
             std::span<const uint8_t>(jpeg_data, static_cast<size_t>(jpeg_size)));
     }
 
-    const size_t idx = imageAsset.exifInfo.find(getUIString(53));
-    if (idx != string::npos) {
-        handleExifOrientation(imageAsset.exifInfo[idx + strlen(getUIString(53))] - '0', imageAsset.primaryFrame);
-    }
+    handleExifOrientation(imageAsset.orientation, imageAsset.primaryFrame);
 
     free_lepton_buffer(jpeg_data, jpeg_size);
     return imageAsset;
@@ -2902,17 +2902,17 @@ ImageAsset ImageDatabase::loadLivp(wstring_view path, std::span<const uint8_t> f
         img = loadImageOpenCV(path, imageFileData);
     }
 
-    auto exifTmp = ExifParse::getExif(path, imageFileData.data(), imageFileData.size());
+    const auto exifDetail = ExifParse::getExifDetail(path, imageFileData.data(), imageFileData.size());
     if (imageExt == "jpg" || imageExt == "jpeg") { //heic 已经在解码过程应用了裁剪/旋转/镜像等操作
-        const size_t idx = exifTmp.find(getUIString(53));
-        if (idx != string::npos) {
-            handleExifOrientation(exifTmp[idx + strlen(getUIString(53))] - '0', img);
-        }
+        handleExifOrientation(exifDetail.orientation, img);
     }
-    auto exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size()) + exifTmp;
+    const int imageOrientation = exifDetail.orientation;
+    auto exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size()) + exifDetail.text;
 
     if (videoFileData.empty()) {
-        return { ImageFormat::Still, img, {}, {}, exifInfo };
+        ImageAsset stillAsset{ ImageFormat::Still, img, {}, {}, exifInfo };
+        stillAsset.orientation = imageOrientation;
+        return stillAsset;
     }
 
     auto frames = DecodeVideoFrames(videoFileData.data(), videoFileData.size());
@@ -3021,14 +3021,12 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
         return { ImageFormat::None, {}, {}, {}, exifInfo };
     }
 
+    const auto exifDetail = ExifParse::getExifDetail(path, fileBuf.data(), fileBuf.size());
     auto exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size()) +
-        ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
+        exifDetail.text;
 
     if (isJPG) {
-        const size_t idx = exifInfo.find(getUIString(53));
-        if (idx != string::npos) {
-            handleExifOrientation(exifInfo[idx + strlen(getUIString(53))] - '0', img);
-        }
+        handleExifOrientation(exifDetail.orientation, img);
     }
 
     auto videoSize = getVideoSize(exifInfo);
@@ -3042,12 +3040,14 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
 
     if (frames.empty()) {
         ImageAsset imageAsset{ ImageFormat::Still, img, {}, {}, exifInfo };
+        imageAsset.orientation = exifDetail.orientation;
         if (GlobalVar::settingParameter.enableColorManagement && !isJPG)
             imageAsset.iccProfile = readHeifIccProfile(fileBuf);
         return imageAsset;
     }
 
     ImageAsset imageAsset{ ImageFormat::Animated, img, frames, std::vector<int>(frames.size(), 33), exifInfo };
+    imageAsset.orientation = exifDetail.orientation;
     if (GlobalVar::settingParameter.enableColorManagement && !isJPG)
         imageAsset.iccProfile = readHeifIccProfile(fileBuf);
     return imageAsset;
@@ -3091,8 +3091,12 @@ void ImageDatabase::applyExifInfo(ImageAsset& imageAsset, const wstring& path, s
 
     imageAsset.exifInfo = ExifParse::getSimpleInfo(path, width, height, buf.data(), buf.size());
 
-    if (policy == ExifPolicy::Full || policy == ExifPolicy::FullWithOrientation)
-        imageAsset.exifInfo += ExifParse::getExif(path, buf.data(), buf.size());
+    if (policy == ExifPolicy::SimpleOnly)
+        return;
+
+    const auto exifDetail = ExifParse::getExifDetail(path, buf.data(), buf.size());
+    imageAsset.exifInfo += exifDetail.text;
+    imageAsset.orientation = exifDetail.orientation;
 
     if (policy != ExifPolicy::FullWithOrientation || imageAsset.primaryFrame.empty())
         return;
@@ -3101,10 +3105,7 @@ void ImageDatabase::applyExifInfo(ImageAsset& imageAsset, const wstring& path, s
     if (supportRaw.contains(lowerExtension(path)))
         return;
 
-    const char* const orientationLabel = getUIString(53);
-    const size_t idx = imageAsset.exifInfo.find(orientationLabel);
-    if (idx != string::npos)
-        handleExifOrientation(imageAsset.exifInfo[idx + strlen(orientationLabel)] - '0', imageAsset.primaryFrame);
+    handleExifOrientation(exifDetail.orientation, imageAsset.primaryFrame);
 }
 
 // 按格式分派到具体解码器。解码失败统一返回 format == ImageFormat::None（不带错误提示图），

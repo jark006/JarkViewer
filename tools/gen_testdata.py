@@ -72,6 +72,48 @@ def run_ffmpeg(out_dir, name, args, source="testsrc=size=480x360:rate=25:duratio
         failed.append(f"{name}: {exc.stderr.decode('utf-8', 'replace').strip()[:120]}")
 
 
+def _png_text(entries):
+    from PIL.PngImagePlugin import PngInfo
+    info = PngInfo()
+    for key, value in entries.items():
+        info.add_text(key, value)
+    return info
+
+
+def _png_chunk(chunk_type, payload):
+    import zlib as _zlib
+    data = chunk_type + payload
+    return (struct.pack(">I", len(payload)) + data +
+            struct.pack(">I", _zlib.crc32(data) & 0xFFFFFFFF))
+
+
+def _ztxt_chunk(keyword, text):
+    import zlib as _zlib
+    return _png_chunk(b"zTXt", keyword.encode() + b"\x00\x00" + _zlib.compress(text.encode("latin-1", "replace")))
+
+
+def _itxt_chunk(keyword, text, compress=False):
+    import zlib as _zlib
+    body = text.encode("utf-8")
+    if compress:
+        body = _zlib.compress(body)
+    payload = keyword.encode() + b"\x00" + bytes([1 if compress else 0]) + b"\x00" + b"\x00" + b"\x00" + body
+    return _png_chunk(b"iTXt", payload)
+
+
+def _write_png_with_raw_chunk(out_dir, name, image, chunk):
+    """在 IHDR 之后插入一个自定义文本块（即固定偏移解析读不到的位置）。"""
+    import io
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    data = buffer.getvalue()
+    ihdr_end = 8 + 12 + 13  # signature + IHDR(length+type+data+crc)
+    with open(os.path.join(out_dir, name), "wb") as handle:
+        handle.write(data[:ihdr_end] + chunk + data[ihdr_end:])
+    record(name)
+
+
 def main():
     out_dir = sys.argv[1]
     os.makedirs(out_dir, exist_ok=True)
@@ -159,6 +201,26 @@ def main():
         exif = Image.Exif()
         exif[0x0112] = orientation
         save(out_dir, f"ori{orientation}.jpg", img, exif=exif, quality=95)
+
+    # AI 生图提示词：PNG 文本块（tEXt/zTXt/iTXt）与 JPEG EXIF UserComment
+    webui_params = ("masterpiece, best quality, 1girl, silver hair, city lights\n"
+                    "Negative prompt: lowres, bad anatomy, watermark\n"
+                    'Steps: 28, Sampler: DPM++ 2M Karras, CFG scale: 7, Seed: 123456789, '
+                    'Size: 512x768, Model hash: a1b2c3d4, Model: anything-v5')
+    comfy_json = '{"3": {"class_type": "KSampler", "inputs": {"seed": 42, "steps": 20}}, "9": {"class_type": "SaveImage"}}'
+
+    save(out_dir, "ai_webui.png", img, pnginfo=_png_text({"parameters": webui_params}))
+    save(out_dir, "ai_comfy.png", img, pnginfo=_png_text({"prompt": comfy_json}))
+    save(out_dir, "ai_both.png", img, pnginfo=_png_text({"parameters": webui_params, "prompt": comfy_json}))
+
+    # 压缩文本块（zTXt）与 UTF-8 文本块（iTXt）：旧实现按固定偏移读取，这两种布局都读不到
+    _write_png_with_raw_chunk(out_dir, "ai_ztxt.png", img, _ztxt_chunk("parameters", webui_params))
+    _write_png_with_raw_chunk(out_dir, "ai_itxt.png", img, _itxt_chunk("parameters", webui_params))
+    _write_png_with_raw_chunk(out_dir, "ai_itxt_z.png", img, _itxt_chunk("parameters", webui_params, compress=True))
+
+    exif = Image.Exif()
+    exif[0x9286] = b"ASCII\x00\x00\x00" + webui_params.encode("utf-8")
+    save(out_dir, "ai_usercomment.jpg", img, exif=exif, quality=95)
 
     # 损坏 / 非法内容
     with open(os.path.join(out_dir, "corrupt.png"), "wb") as handle:
