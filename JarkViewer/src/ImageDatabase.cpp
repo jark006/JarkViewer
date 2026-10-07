@@ -11,6 +11,7 @@
 #endif
 
 #include "blpDecoder.h"
+#include "VectorImage.h"
 
 #include <intrin.h>
 #include <cwctype>
@@ -1855,8 +1856,7 @@ cv::Mat ImageDatabase::loadSTB(wstring_view path, std::span<const uint8_t> buf) 
 }
 
 
-cv::Mat ImageDatabase::loadSVG(wstring_view path, std::span<const uint8_t> buf) {
-    const int maxEdge = 4000;
+ImageAsset ImageDatabase::loadSVG(wstring_view path, std::span<const uint8_t> buf) {
     static bool isInitFont = false;
 
     if (!isInitFont) {
@@ -1883,33 +1883,36 @@ cv::Mat ImageDatabase::loadSVG(wstring_view path, std::span<const uint8_t> buf) 
         return {};
     }
 
-    if (document->height() == 0 || document->width() == 0) {
-        JARK_LOG("Failed to load SVG: height/width == 0 {}", jarkUtils::wstringToUtf8(path));
+    const double documentWidth = document->width();
+    const double documentHeight = document->height();
+    if (!std::isfinite(documentWidth) || !std::isfinite(documentHeight) ||
+        documentWidth < 1.0 || documentHeight < 1.0) {
+        JARK_LOG("Failed to load SVG: invalid size {}x{} {}",
+            documentWidth, documentHeight, jarkUtils::wstringToUtf8(path));
         return {};
     }
-    // 宽高比例
-    const float AspectRatio = document->width() / document->height();
-    int height, width;
 
-    if (AspectRatio == 1) {
-        height = width = maxEdge;
-    }
-    else if (AspectRatio > 1) {
-        width = maxEdge;
-        height = int(maxEdge / AspectRatio);
-    }
-    else {
-        height = maxEdge;
-        width = int(maxEdge * AspectRatio);
-    }
+    // 保留矢量文档：位图按当前缩放需要的光栅尺寸按需生成（见 VectorImage.h）
+    auto vectorImage = std::make_shared<jark::VectorImage>();
+    vectorImage->document = std::move(document);
+    vectorImage->intrinsicWidth = std::clamp(static_cast<int>(std::llround(documentWidth)),
+        1, jark::VECTOR_RASTER_MAX_EDGE * 4);
+    vectorImage->intrinsicHeight = std::clamp(static_cast<int>(std::llround(documentHeight)),
+        1, jark::VECTOR_RASTER_MAX_EDGE * 4);
 
-    auto bitmap = document->renderToBitmap(width, height);
-    if (bitmap.isNull()) {
+    // 首帧先渲染较小的位图，空闲后会按实际缩放升级到需要的分辨率
+    auto raster = jark::renderVectorImageAtEdge(*vectorImage, jark::initialVectorRasterEdge(*vectorImage));
+    if (raster.empty()) {
         JARK_LOG("Failed to render SVG to bitmap {}", jarkUtils::wstringToUtf8(path));
         return {};
     }
 
-    return cv::Mat(height, width, CV_8UC4, bitmap.data(), bitmap.stride()).clone();
+    vectorImage->rasterWidth = raster.cols;
+    vectorImage->rasterHeight = raster.rows;
+
+    ImageAsset imageAsset{ ImageFormat::Still, std::move(raster) };
+    imageAsset.vectorSource = std::move(vectorImage);
+    return imageAsset;
 }
 
 
@@ -3253,11 +3256,10 @@ ImageAsset ImageDatabase::decodeByFormat(jark::FileFormat format, const wstring&
     }
 
     case jark::FileFormat::Svg: {
-        auto img = loadSVG(path, buf);
-        if (img.empty())
+        auto imageAsset = loadSVG(path, buf);
+        if (isDecodeFailed(imageAsset))
             return {};
 
-        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
         applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
         return imageAsset;
     }

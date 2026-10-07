@@ -1,6 +1,7 @@
 #include "jarkUtils.h"
 
 #include "DecodeProbe.h"
+#include "VectorImage.h"
 #include "TextDrawer.h"
 #include "ImageDatabase.h"
 #include "Printer.h"
@@ -57,7 +58,7 @@ static constexpr auto generate_zoom_list() {
 
 struct CurImageParameter {
     static constexpr auto ZOOM_LIST = generate_zoom_list();
-    static constexpr int64_t ZOOM_BASE = (1 << 16); // 100%缩放
+    static constexpr int64_t ZOOM_BASE = ::ZOOM_BASE; // 100%缩放
 
     int64_t zoomTarget;     // 设定的缩放比例
     int64_t zoomCur;        // 动画播放过程的缩放比例，动画完毕后的值等于zoomTarget
@@ -93,7 +94,12 @@ struct CurImageParameter {
         if (imageAssetPtr) {
             curFrameIdxMax = imageAssetPtr->format == ImageFormat::Animated ? (int)imageAssetPtr->frames.size() - 1 : 1;
 
-            if (imageAssetPtr->format == ImageFormat::Animated) {
+            if (imageAssetPtr->vectorSource) {
+                // 矢量图以文档尺寸为基准（位图分辨率随后按缩放按需变化）
+                width = imageAssetPtr->vectorSource->intrinsicWidth;
+                height = imageAssetPtr->vectorSource->intrinsicHeight;
+            }
+            else if (imageAssetPtr->format == ImageFormat::Animated) {
                 width = imageAssetPtr->frames[0].cols;
                 height = imageAssetPtr->frames[0].rows;
             }
@@ -1083,6 +1089,25 @@ public:
         if (srcH <= 0 || srcW <= 0)
             return;
 
+        // 名义尺寸（100% 缩放时屏幕上应有的尺寸）。矢量图（SVG）的位图分辨率会随缩放
+        // 变化，因此几何尺寸必须按名义尺寸计算，位图分辨率只影响采样密度。
+        int nominalW, nominalH;
+        if (curPar.rotation == 0 || curPar.rotation == 2) {
+            nominalW = curPar.width;
+            nominalH = curPar.height;
+        }
+        else {
+            nominalW = curPar.height;
+            nominalH = curPar.width;
+        }
+        if (nominalW <= 0 || nominalH <= 0) {
+            nominalW = srcW;
+            nominalH = srcH;
+        }
+
+        const float srcScaleX = (float)srcW / (float)nominalW; // 位图分辨率 / 名义尺寸
+        const float srcScaleY = (float)srcH / (float)nominalH;
+
         // 源图和画板canvas均100%缩放且居中重合，此时随机取一个点，先只考虑水平方向
         // 该点与画板中心的距离，等于该点与源图中心的距离
         // 即 canvasW / 2 - x = srcW / 2 - srcX
@@ -1092,8 +1117,8 @@ public:
         // x = canvasW / 2.0 - (srcW / 2.0 - srcX - slide * srcW) * zoom
         // srcX = srcW / 2.0 - ((canvasW / 2.0 - x) / zoom + slide * srcW)
 
-        const double renderedW = (double)srcW * curPar.zoomCur / curPar.ZOOM_BASE;
-        const double renderedH = (double)srcH * curPar.zoomCur / curPar.ZOOM_BASE;
+        const double renderedW = (double)nominalW * curPar.zoomCur / curPar.ZOOM_BASE;
+        const double renderedH = (double)nominalH * curPar.zoomCur / curPar.ZOOM_BASE;
         const int deltaW = curPar.slideCur.x + (int)std::round((canvasW - renderedW) / 2.0);
         const int deltaH = curPar.slideCur.y + (int)std::round((canvasH - renderedH) / 2.0);
 
@@ -1103,6 +1128,11 @@ public:
         int yEnd = (int)std::round(renderedH) + deltaH;
         if (xEnd > canvasW) xEnd = canvasW;
         if (yEnd > canvasH) yEnd = canvasH;
+
+        JARK_LOG("drawCanvas: src={}x{} type={} nominal={}x{} zoom={} slide=({},{}) rect=[{},{}-{},{}] canvas={}x{} srcScale=({}, {})",
+            srcW, srcH, srcImg.type(), nominalW, nominalH, curPar.zoomCur,
+            curPar.slideCur.x, curPar.slideCur.y,
+            xStart, yStart, xEnd, yEnd, canvasW, canvasH, srcScaleX, srcScaleY);
 
         uint32_t* ptrStart = (uint32_t*)canvas.ptr();
         uint32_t* ptrEnd = ptrStart + canvasH * canvasW;
@@ -1140,6 +1170,9 @@ public:
         }
 
         const float zoomInvert = (float)curPar.ZOOM_BASE / curPar.zoomCur;
+        // 采样步长：画布像素 -> 名义像素 -> 位图像素
+        const float zoomInvertX = zoomInvert * srcScaleX;
+        const float zoomInvertY = zoomInvert * srcScaleY;
         isLowZoom = curPar.zoomCur < curPar.ZOOM_BASE;
 
         switch (srcImg.type()) {
@@ -1147,35 +1180,35 @@ public:
             concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * curPar.ZOOM_BASE / curPar.zoomCur); // 2K屏 50%缩放一帧34ms 100%缩放一帧14ms
-                int srcY = (int)((y - deltaH) * zoomInvert); // 快一点  2K屏 50%缩放一帧28ms 100%缩放一帧14ms
+                int srcY = (int)((y - deltaH) * zoomInvertY); // 快一点  2K屏 50%缩放一帧28ms 100%缩放一帧14ms
 
                 srcY = std::clamp(srcY, 0, srcH - 1);
 
                 switch (curPar.rotation) {
                 case 0:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx4(srcImg, srcX, srcY, x, y);
                     }
                     break;
                 case 1:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx4(srcImg, srcH - 1 - srcY, srcX, x, y);
                     }
                     break;
                 case 2:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx4(srcImg, srcW - 1 - srcX, srcH - 1 - srcY, x, y);
                     }
                     break;
                 default:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx4(srcImg, srcY, srcW - 1 - srcX, x, y);
                     }
@@ -1188,35 +1221,35 @@ public:
             concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * curPar.ZOOM_BASE / curPar.zoomCur);
-                int srcY = (int)((y - deltaH) * zoomInvert);
+                int srcY = (int)((y - deltaH) * zoomInvertY);
 
                 srcY = std::clamp(srcY, 0, srcH - 1);
 
                 switch (curPar.rotation) {
                 case 0:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx3(srcImg, srcX, srcY);
                     }
                     break;
                 case 1:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx3(srcImg, srcH - 1 - srcY, srcX);
                     }
                     break;
                 case 2:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx3(srcImg, srcW - 1 - srcX, srcH - 1 - srcY);
                     }
                     break;
                 default:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx3(srcImg, srcY, srcW - 1 - srcX);
                     }
@@ -1229,35 +1262,35 @@ public:
             concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * curPar.ZOOM_BASE / curPar.zoomCur);
-                int srcY = (int)((y - deltaH) * zoomInvert);
+                int srcY = (int)((y - deltaH) * zoomInvertY);
 
                 srcY = std::clamp(srcY, 0, srcH - 1);
 
                 switch (curPar.rotation) {
                 case 0:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx1(srcImg, srcX, srcY);
                     }
                     break;
                 case 1:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx1(srcImg, srcH - 1 - srcY, srcX);
                     }
                     break;
                 case 2:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx1(srcImg, srcW - 1 - srcX, srcH - 1 - srcY);
                     }
                     break;
                 default:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvert);
+                        int srcX = (int)((x - deltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx1(srcImg, srcY, srcW - 1 - srcX);
                     }
@@ -1629,6 +1662,20 @@ public:
     std::chrono::steady_clock::time_point lastTimestamp = std::chrono::steady_clock::now();
 
 
+    // 矢量图（SVG）在缩放稳定后按需重新光栅化；返回 true 表示位图已更新、需要重绘
+    bool refreshVectorRasterIfNeeded() {
+        if (!curPar.imageAssetPtr || !curPar.imageAssetPtr->vectorSource)
+            return false;
+
+        const int targetEdge = jark::vectorTargetEdge(
+            *curPar.imageAssetPtr, curPar.zoomCur, CurImageParameter::ZOOM_BASE);
+        if (!jark::refreshVectorRaster(*curPar.imageAssetPtr, targetEdge))
+            return false;
+
+        operateQueue.push({ ActionENUM::refresh });
+        return true;
+    }
+
     void DrawScene() {
         if (GlobalVar::isNeedUpdateTheme) {
             GlobalVar::isNeedUpdateTheme = false;
@@ -1661,8 +1708,12 @@ public:
         if (operateAction.action == ActionENUM::none &&
             curPar.zoomCur == curPar.zoomTarget &&
             curPar.slideCur == curPar.slideTarget &&
-            (curPar.imageAssetPtr->format != ImageFormat::Animated || 
+            (curPar.imageAssetPtr->format != ImageFormat::Animated ||
                 (curPar.imageAssetPtr->format == ImageFormat::Animated && curPar.isAnimationPause))) {
+
+            // 画面已经稳定：此时才把矢量图升级到当前缩放需要的分辨率
+            if (refreshVectorRasterIfNeeded())
+                return;
 
             Sleep(1); // Windows机制限制，实际时长最小只能 15.6ms
             return;
@@ -2147,6 +2198,15 @@ int WINAPI wWinMain(
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
+    // Release 下也可开启日志：命令行 --log 或环境变量 JARKVIEWER_LOG=1
+    // （Debug 默认开启；开启后日志同时写入 %TEMP%\JarkViewer.log）
+    {
+        wchar_t envValue[8] = {};
+        const DWORD envLength = ::GetEnvironmentVariableW(L"JARKVIEWER_LOG", envValue, 8);
+        if (envLength > 0 && envLength < 8 && envValue[0] != L'0' && envValue[0] != 0)
+            jarkUtils::setLogEnabled(true);
+    }
+
     //test();
 
     // 限制 PPL 默认调度器最多 4 线程, 必须在任何 concurrency::parallel_* 调用之前设置。
@@ -2164,25 +2224,36 @@ int WINAPI wWinMain(
     if (!SUCCEEDED(::CoInitialize(nullptr)))
         return 0;
 
+    // 命令行解析：跳过 --log 等开关，第一个普通参数视为要打开的文件
     wstring filePath = lpCmdLine;
-    if (!filePath.empty() && filePath.front() == '\"') {
-        filePath = filePath.substr(1);
-    }
-    if (!filePath.empty() && filePath.back() == '\"') {
-        filePath.pop_back();
-    }
-
-    // 无界面解码自检：--probe <文件...>，用于在无人眼参与时验证解码路由
     {
         int argCount = 0;
         if (LPWSTR* rawArgv = ::CommandLineToArgvW(::GetCommandLineW(), &argCount)) {
             std::vector<std::wstring> argList(rawArgv, rawArgv + argCount);
             ::LocalFree(rawArgv);
 
+            // 无界面解码自检：--probe <文件...>，用于在无人眼参与时验证解码路由
             if (argList.size() > 1 && argList[1] == L"--probe") {
                 ::CoUninitialize();
                 return jark::runDecodeProbe(argList);
             }
+
+            filePath.clear();
+            for (size_t i = 1; i < argList.size(); ++i) {
+                if (argList[i] == L"--log") {
+                    jarkUtils::setLogEnabled(true);
+                    continue;
+                }
+                if (filePath.empty())
+                    filePath = argList[i];
+            }
+        }
+        else {
+            // 解析失败时退回旧的去引号逻辑
+            if (!filePath.empty() && filePath.front() == '\"')
+                filePath = filePath.substr(1);
+            if (!filePath.empty() && filePath.back() == '\"')
+                filePath.pop_back();
         }
     }
 
