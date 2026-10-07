@@ -4,6 +4,7 @@
 #include "ImageDatabase.h"
 #include "AudioOutput.h"
 #include "Localization.h"
+#include "BatchProcessor.h"
 #include "MediaDecoder.h"
 #include "VectorImage.h"
 #include "jarkUtils.h"
@@ -235,6 +236,25 @@ namespace {
         return report;
     }
 
+    // 批量处理自检：对给定文件执行一次批量任务并输出结果
+    std::string runBatchTest(const std::vector<std::wstring>& files, const jark::BatchOptions& options) {
+        std::string report = std::format("批量任务: {} 个文件, 任务类型 {}, 输出格式 {}, 长边上限 {}, 质量 {}\n",
+            files.size(), static_cast<int>(options.task),
+            jarkUtils::wstringToUtf8(options.outputExtension), options.maxEdge, options.jpegQuality);
+
+        const auto begin = std::chrono::steady_clock::now();
+        const auto result = jark::runBatch(files, options);
+        const auto elapsedMs = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - begin).count();
+
+        report += std::format("成功 {} / 跳过 {} / 失败 {}，用时 {:.0f}ms\n",
+            result.succeeded, result.skipped, result.failed, elapsedMs);
+        for (const auto& message : result.messages)
+            report += std::format("  {}\n", jarkUtils::wstringToUtf8(message));
+
+        return report;
+    }
+
     std::string runAudioTest(const std::wstring& path) {
         std::string report;
 
@@ -317,6 +337,8 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool fullExif = false;
     bool audioTest = false;
     bool languageTest = false;
+    bool batchTest = false;
+    jark::BatchOptions batchOptions;
 
     for (size_t i = 1; i < argv.size(); ++i) {
         if (argv[i] == L"--probe")
@@ -331,6 +353,62 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--lang-test") {
             languageTest = true;
+            continue;
+        }
+        if (argv[i] == L"--batch") {
+            batchTest = true;
+            continue;
+        }
+        if (argv[i] == L"--out-dir" && i + 1 < argv.size()) {
+            batchOptions.outputDirectory = argv[++i];
+            continue;
+        }
+        if (argv[i] == L"--to" && i + 1 < argv.size()) {
+            batchOptions.outputExtension = argv[++i];
+            continue;
+        }
+        if (argv[i] == L"--max-edge" && i + 1 < argv.size()) {
+            batchOptions.maxEdge = ::_wtoi(argv[++i].c_str());
+            continue;
+        }
+        if (argv[i] == L"--quality" && i + 1 < argv.size()) {
+            batchOptions.jpegQuality = ::_wtoi(argv[++i].c_str());
+            continue;
+        }
+        if (argv[i] == L"--rotate" && i + 1 < argv.size()) {
+            batchOptions.task = jark::BatchTask::Rotate;
+            batchOptions.rotationDegrees = ::_wtoi(argv[++i].c_str());
+            continue;
+        }
+        if (argv[i] == L"--flip-h") {
+            batchOptions.task = jark::BatchTask::Rotate;
+            batchOptions.flipHorizontal = true;
+            continue;
+        }
+        if (argv[i] == L"--flip-v") {
+            batchOptions.task = jark::BatchTask::Rotate;
+            batchOptions.flipVertical = true;
+            continue;
+        }
+        if (argv[i] == L"--gray") {
+            batchOptions.applyAdjustments = true;
+            batchOptions.colorMode = 1;
+            continue;
+        }
+        if (argv[i] == L"--invert") {
+            batchOptions.applyAdjustments = true;
+            batchOptions.invertColors = true;
+            continue;
+        }
+        if (argv[i] == L"--rename") {
+            batchOptions.task = jark::BatchTask::Rename;
+            if (i + 1 < argv.size() && argv[i + 1].starts_with(L"--") == false) {
+                batchOptions.renamePrefix = argv[++i];
+            }
+            continue;
+        }
+        if (argv[i] == L"--overwrite") {
+            batchOptions.overwrite = true;
             continue;
         }
         if (argv[i] == L"--out" && i + 1 < argv.size()) {
@@ -354,6 +432,16 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
 
     if (languageTest) {
         emit(runLanguageTest());
+        return 0;
+    }
+
+    if (batchTest) {
+        if (targets.empty()) {
+            std::println("usage: JarkViewer.exe --probe --batch <file...> [--out-dir 目录] [--to 格式] [--max-edge N] [--quality N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--overwrite]");
+            return 2;
+        }
+        const auto text = runBatchTest(targets, batchOptions);
+        emit(text);
         return 0;
     }
 

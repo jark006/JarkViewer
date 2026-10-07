@@ -515,6 +515,7 @@ HMENU D3D11App::CreateContextMenu(HWND hwnd) {
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::deleteImage, getUIStringW(30));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openFileProperties, getUIStringW(36));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::printImage, getUIStringW(31));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::batchProcess, getUIStringW(44));
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::toggleFullScreen, getUIStringW(38));

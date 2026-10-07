@@ -59,6 +59,11 @@ int UiCanvas::lineHeight() const {
     return 30;
 }
 
+int UiCanvas::measureText(std::string_view text) const {
+    const std::string owned(text);
+    return drawer_.measureText(owned.c_str());
+}
+
 // —— Label ——
 
 void Label::draw(UiCanvas& canvas) {
@@ -220,9 +225,12 @@ void Slider::draw(UiCanvas& canvas) {
         canvas.fill(fill, 0xFF3F48CC);
     }
 
-    // 数值画在轨道左侧的标签区之后（与背景资源图上的标题错开）
-    const int valueX = canvas.dp(trackX_ - 130);
-    canvas.text({ bounds.x + valueX, bounds.y, canvas.dp(120), bounds.height },
+    // 标签在轨道左侧，数值紧随其后（与背景资源图上的标题错开）
+    if (!label_.empty())
+        canvas.text({ bounds.x, bounds.y, canvas.dp(trackX_ - 20), bounds.height },
+            label_, canvas.theme().FG, Align::Left);
+
+    canvas.text({ bounds.x + canvas.dp(trackX_ - 130), bounds.y, canvas.dp(120), bounds.height },
         std::format("{:3} %", value), canvas.theme().FG, Align::Left);
 }
 
@@ -318,6 +326,152 @@ bool ImageRadioGroup::onClick(int x, int y) {
     return true;
 }
 
+// —— ProgressBar ——
+
+void ProgressBar::draw(UiCanvas& canvas) {
+    if (!value_)
+        return;
+
+    canvas.stroke(bounds, canvas.theme().FG_DEEP, canvas.dp(2));
+
+    const int value = std::clamp(*value_, 0, maxValue_);
+    const int filled = bounds.width * value / maxValue_;
+    if (filled > 0) {
+        Rect fill = bounds.inset(canvas.dp(2));
+        fill.width = filled - canvas.dp(4);
+        if (fill.width > 0)
+            canvas.fill(fill, canvas.theme().CHECK);
+    }
+
+    canvas.text(bounds, std::format("{} / {}", value, maxValue_), canvas.theme().FG, Align::Center);
+}
+
+// —— TextBox ——
+
+void TextBox::draw(UiCanvas& canvas) {
+    canvas.stroke(bounds, focused() ? canvas.theme().CHECK : canvas.theme().FG_DEEP, canvas.dp(2));
+
+    const Rect textRect = bounds.inset(canvas.dp(10));
+    if (text_ && !text_->empty()) {
+        canvas.text(textRect, *text_, canvas.theme().FG);
+    }
+    else {
+        canvas.text(textRect, placeholder_, canvas.theme().FG_DEEP);
+    }
+
+    if (focused_) {
+        // 光标画在文本末尾
+        const int width = text_ ? canvas.measureText(*text_) : 0;
+        const int cursorX = (std::min)(textRect.right() - canvas.dp(2), textRect.x + width + canvas.dp(2));
+        canvas.fill({ cursorX, textRect.y + canvas.dp(4), canvas.dp(2), textRect.height - canvas.dp(8) },
+            canvas.theme().FG);
+    }
+}
+
+bool TextBox::onClick(int x, int y) {
+    if (!bounds.contains(x, y)) {
+        focused_ = false;
+        return false;
+    }
+
+    focused_ = true;
+    return true;
+}
+
+bool TextBox::onKeyChar(wchar_t character) {
+    if (!focused_ || !text_)
+        return false;
+
+    if (character == L'\b') {
+        if (!text_->empty()) {
+            text_->pop_back();
+            return true;
+        }
+        return false;
+    }
+
+    // 只接受可见 ASCII（界面已禁用 IME）
+    if (character >= 32 && character < 127) {
+        text_->push_back(static_cast<char>(character));
+        return true;
+    }
+    return false;
+}
+
+bool TextBox::onKeyDown(int virtualKey) {
+    if (!focused_)
+        return false;
+
+    if (virtualKey == VK_ESCAPE) {
+        focused_ = false;
+        return true;
+    }
+    return false;
+}
+
+// —— CheckList ——
+
+size_t CheckList::checkedCount() const {
+    if (!isChecked_)
+        return 0;
+
+    size_t count = 0;
+    for (const auto& item : items_) {
+        if (isChecked_(item))
+            ++count;
+    }
+    return count;
+}
+
+void CheckList::draw(UiCanvas& canvas) {
+    const int rowHeight = canvas.dp(40);
+    rowHeightPixels = rowHeight;
+    visibleRows_ = rowHeight > 0 ? bounds.height / rowHeight : 0;
+    scrollOffset_ = std::clamp(scrollOffset_, 0, (std::max)(0, (int)items_.size() - visibleRows_));
+
+    canvas.fill(bounds, canvas.theme().BG_DEEP);
+
+    for (int row = 0; row < visibleRows_; ++row) {
+        const int index = scrollOffset_ + row;
+        if (index >= (int)items_.size())
+            break;
+
+        const Rect item{ bounds.x, bounds.y + row * rowHeight, bounds.width, rowHeight };
+        const int boxSize = (std::min)(rowHeight - canvas.dp(12), canvas.dp(26));
+        const Rect box{ item.x + canvas.dp(8), item.y + (rowHeight - boxSize) / 2, boxSize, boxSize };
+
+        canvas.stroke(box, canvas.theme().FG_DEEP, canvas.dp(2));
+        if (isChecked_ && isChecked_(items_[index]))
+            canvas.fill(box.inset(canvas.dp(4)), canvas.theme().CHECK);
+
+        canvas.text({ box.right() + canvas.dp(8), item.y, item.width - boxSize - canvas.dp(20), rowHeight },
+            items_[index], canvas.theme().FG);
+    }
+}
+
+bool CheckList::onClick(int x, int y) {
+    if (!bounds.contains(x, y) || !setChecked_ || rowHeightPixels <= 0)
+        return false;
+
+    const int row = (y - bounds.y) / rowHeightPixels;
+    const int index = scrollOffset_ + row;
+    if (index < 0 || index >= (int)items_.size())
+        return false;
+
+    setChecked_(items_[index], !(isChecked_ && isChecked_(items_[index])));
+    return true;
+}
+
+bool CheckList::onWheel(int x, int y, int delta) {
+    if (!bounds.contains(x, y) || rowHeightPixels <= 0)
+        return false;
+
+    const int before = scrollOffset_;
+    scrollOffset_ += delta > 0 ? -3 : 3;
+    scrollOffset_ = std::clamp(scrollOffset_, 0, (std::max)(0, (int)items_.size() - visibleRows_));
+    return scrollOffset_ != before;
+}
+
 // —— HotArea ——
 
 bool HotArea::onClick(int x, int y) {
@@ -390,13 +544,14 @@ bool CheckGrid::onClick(int x, int y) {
 
 // —— Row ——
 
-Row& Row::add(ControlPtr control, int weight) {
+Control* Row::add(ControlPtr control, int weight) {
     if (!control)
-        return *this;
+        return nullptr;
 
+    Control* raw = control.get();
     totalWeight += weight > 0 ? weight : 1;
     entries_.push_back(Entry{ std::move(control), weight > 0 ? weight : 1 });
-    return *this;
+    return raw;
 }
 
 void Row::draw(UiCanvas& canvas) {
@@ -422,43 +577,47 @@ bool Row::onClick(int x, int y) {
         if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
             continue;
 
-        control->onClick(x, y);
-        return true;
+        if (control->onClick(x, y))
+            return true;
     }
     return false;
 }
 
 // —— Panel ——
 
-Panel& Panel::add(ControlPtr control, int height, int gap) {
+Control* Panel::add(ControlPtr control, int height, int gap) {
     if (!control)
-        return *this;
+        return nullptr;
 
+    Control* raw = control.get();
     contentHeight += gap + (height > 0 ? height : control->preferredHeight());
-    entries_.push_back(Entry{ std::move(control), height, gap });
-    return *this;
+    entries_.push_back(Entry{ std::move(control), height, gap, {} });
+    return raw;
 }
 
-Panel& Panel::overlay(ControlPtr control, Rect logicalBounds) {
+Control* Panel::overlay(ControlPtr control, Rect logicalBounds) {
     if (!control)
-        return *this;
+        return nullptr;
 
+    Control* raw = control.get();
     Entry entry{ std::move(control), 0, 0, logicalBounds };
     entry.control->bounds = logicalBounds;
     overlays_.push_back(std::move(entry));
-    return *this;
+    return raw;
 }
 
 void Panel::draw(UiCanvas& canvas) {
     int y = bounds.y;
     for (auto& entry : entries_) {
+        // 不可见控件不占位：按任务类型切换参数区时不会留下空洞
+        if (!entry.control->visible)
+            continue;
+
         y += canvas.dp(entry.gap);
         const int height = canvas.dp(entry.height > 0 ? entry.height : entry.control->preferredHeight());
         entry.control->bounds = { bounds.x, y, bounds.width, height };
         y += height;
-
-        if (entry.control->visible)
-            entry.control->draw(canvas);
+        entry.control->draw(canvas);
     }
 
     for (auto& entry : overlays_) {
@@ -496,14 +655,15 @@ Control* Panel::find(int x, int y) {
 }
 
 bool Panel::onClick(int x, int y) {
-    // 覆盖层优先（后加入者在上）
+    // 覆盖层优先（后加入者在上）；只有真正处理了点击的控件才消费事件，
+    // 纯装饰控件（标签、图片）不阻塞其下方的按钮
     for (auto it = overlays_.rbegin(); it != overlays_.rend(); ++it) {
         Control* control = it->control.get();
         if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
             continue;
 
-        control->onClick(x, y);
-        return true;
+        if (control->onClick(x, y))
+            return true;
     }
 
     for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
@@ -511,8 +671,8 @@ bool Panel::onClick(int x, int y) {
         if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
             continue;
 
-        control->onClick(x, y); // 命中即消费，避免穿透到下层控件
-        return true;
+        if (control->onClick(x, y))
+            return true;
     }
     return false;
 }
@@ -539,11 +699,14 @@ bool Panel::onMouseMove(int x, int y) {
 
 bool Panel::onMouseUp(int x, int y) {
     if (capturedControl) {
+        // 拖动结束：值已在按下/移动时更新
         capturedControl->onMouseUp(x, y);
         capturedControl = nullptr;
         return true;
     }
-    return false;
+
+    // 未捕获拖动的控件（按钮、复选、单选等）在抬起时视为一次点击
+    return onClick(x, y);
 }
 
 bool Panel::onWheel(int x, int y, int delta) {

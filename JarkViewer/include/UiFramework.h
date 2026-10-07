@@ -64,6 +64,9 @@ namespace jark::ui {
         // 一行文字的建议高度（布局用）
         int lineHeight() const;
 
+        // 文本像素宽度（等宽字体模型，与绘制一致）
+        int measureText(std::string_view text) const;
+
     private:
         cv::Mat& target_;
         TextDrawer& drawer_;
@@ -219,6 +222,61 @@ namespace jark::ui {
         bool drawSelectedOnly_ = false;
     };
 
+    // 进度条：setValue 后由界面重绘
+    class ProgressBar : public Control {
+    public:
+        ProgressBar(int* value, int maxValue) : value_(value), maxValue_(maxValue > 0 ? maxValue : 1) {}
+
+        void draw(UiCanvas& canvas) override;
+
+    private:
+        int* value_ = nullptr;
+        int maxValue_ = 100;
+    };
+
+    // 单行文本框：点选聚焦，支持 ASCII 输入与退格（界面禁用 IME，够用）
+    class TextBox : public Control {
+    public:
+        TextBox(std::string* text, std::string placeholder = {})
+            : text_(text), placeholder_(std::move(placeholder)) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+        bool onKeyChar(wchar_t character);
+        bool onKeyDown(int virtualKey);
+        bool focused() const { return focused_; }
+
+    private:
+        std::string* text_ = nullptr;
+        std::string placeholder_;
+        bool focused_ = false;
+    };
+
+    // 可滚动复选列表：单列显示长文件名，滚轮滚动
+    class CheckList : public Control {
+    public:
+        using IsChecked = std::function<bool(const std::string&)>;
+        using SetChecked = std::function<void(const std::string&, bool)>;
+
+        CheckList(std::vector<std::string> items, IsChecked isChecked, SetChecked setChecked)
+            : items_(std::move(items)), isChecked_(std::move(isChecked)), setChecked_(std::move(setChecked)) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+        bool onWheel(int x, int y, int delta) override;
+
+        size_t checkedCount() const;
+
+    private:
+        int rowHeightPixels = 0;
+        int scrollOffset_ = 0;   // 首行索引
+        int visibleRows_ = 0;
+
+        std::vector<std::string> items_;
+        IsChecked isChecked_;
+        SetChecked setChecked_;
+    };
+
     // 隐形热区：用于图片上已经画好按钮外观的场景（帮助/关于页的链接）
     class HotArea : public Control {
     public:
@@ -266,7 +324,7 @@ namespace jark::ui {
     // 水平排布容器：等分宽度（用于按钮行等）
     class Row : public Control {
     public:
-        Row& add(ControlPtr control, int weight = 1);
+        Control* add(ControlPtr control, int weight = 1);
         void draw(UiCanvas& canvas) override;
         bool onClick(int x, int y) override;
 
@@ -282,10 +340,11 @@ namespace jark::ui {
     // 竖直堆叠容器：按加入顺序自上而下排布（高度/间距为逻辑像素，绘制时按缩放换算）
     class Panel : public Control {
     public:
-        Panel& add(ControlPtr control, int height = 0, int gap = 0);
+        // 返回控件裸指针，便于调用方按任务/状态切换 visible 等属性（所有权仍在容器）
+        Control* add(ControlPtr control, int height = 0, int gap = 0);
 
         // 绝对定位（坐标相对 Panel 左上角、逻辑像素），用于图片上叠加的热区/文字
-        Panel& overlay(ControlPtr control, Rect logicalBounds);
+        Control* overlay(ControlPtr control, Rect logicalBounds);
 
         void draw(UiCanvas& canvas) override;
         bool onClick(int x, int y) override;
