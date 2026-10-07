@@ -200,6 +200,57 @@ struct CurImageParameter {
 };
 
 
+// 主窗口叠加按钮的图标资源：file/mainRes.png 是一张 200x200 的雪碧图，图标按 96DPI 设计。
+// 贴图交给 ImGui 按当前 DPI 拉伸绘制（保持原有的缩放机制），这里只负责切片与上传。
+class OverlayIcons {
+public:
+    struct Slice {
+        float x, y, w, h; // 在雪碧图中的位置与尺寸（96DPI 基准）
+    };
+
+    static constexpr Slice rotateLeft{ 0.0f, 0.0f, 50.0f, 50.0f };
+    static constexpr Slice rotateRight{ 50.0f, 0.0f, 50.0f, 50.0f };
+    static constexpr Slice printer{ 0.0f, 50.0f, 50.0f, 50.0f };
+    static constexpr Slice setting{ 50.0f, 50.0f, 50.0f, 50.0f };
+    static constexpr Slice leftArrow{ 100.0f, 0.0f, 50.0f, 100.0f };
+    static constexpr Slice rightArrow{ 150.0f, 0.0f, 50.0f, 100.0f };
+    static constexpr Slice barPlaying{ 0.0f, 100.0f, 200.0f, 50.0f }; // 播放中：条上是暂停按钮
+    static constexpr Slice barPaused{ 0.0f, 150.0f, 200.0f, 50.0f };  // 已暂停：条上是继续按钮
+
+    // 上传雪碧图（只上传一次；贴图还没准备好时返回 0，调用方跳过绘制）
+    ImTextureID texture() {
+        if (texture_ == 0 && !sheet_.empty())
+            texture_ = jark::ui::UiHost::instance().textureFromImage(sheet_, textureSlot);
+        return texture_;
+    }
+
+    static constexpr ImVec2 uv0(const Slice& slice) {
+        return { slice.x / sheetWidth, slice.y / sheetHeight };
+    }
+
+    static constexpr ImVec2 uv1(const Slice& slice) {
+        return { (slice.x + slice.w) / sheetWidth, (slice.y + slice.h) / sheetHeight };
+    }
+
+private:
+    static constexpr float sheetWidth = 200.0f;
+    static constexpr float sheetHeight = 200.0f;
+    static constexpr int textureSlot = 3; // 纹理槽：1=打印预览、2=编辑画布
+
+    static cv::Mat loadSheet() {
+        auto rc = jarkUtils::GetResource(IDB_PNG_MAIN_RES, L"PNG");
+        if (!rc.size || !rc.ptr)
+            return {};
+
+        cv::Mat pngData(1, static_cast<int>(rc.size), CV_8UC1, static_cast<uint8_t*>(rc.ptr));
+        return cv::imdecode(pngData, cv::IMREAD_UNCHANGED);
+    }
+
+    cv::Mat sheet_ = loadSheet();
+    ImTextureID texture_ = 0;
+};
+
+
 class JarkViewerApp : public D3D11App {
 public:
 
@@ -1541,8 +1592,10 @@ public:
         return true;
     }
 
-    // —— 叠加界面：用 ImGui 的前景绘制列表画矢量图标与信息面板 ——
+    // —— 叠加界面：用 ImGui 的前景绘制列表贴 mainRes 雪碧图与信息面板 ——
     // 命中区域仍由 cursorPos 决定（见 OnMouseMove），这里只负责画。
+
+    OverlayIcons overlayIcons;
 
     static ImU32 imColor(uint32_t argb, float alphaScale = 1.0f) {
         const int alpha = static_cast<int>(((argb >> 24) & 0xFF) * alphaScale);
@@ -1553,77 +1606,69 @@ public:
         return extraUIFlag != ShowExtraUI::none && winWidth >= dp(100) && winHeight >= dp(100);
     }
 
-    // 圆形按钮：底 + 描边 + 居中图标
-    void drawHudButton(ImDrawList* drawList, float centerX, float centerY, float radius,
-        const char* icon, bool emphasized) {
-        const ImVec2 center(centerX, centerY);
+    // 客户区坐标 → ImGui 坐标。多视口模式下主视口的原点是"客户区左上角在屏幕上的位置"，
+    // 直接按客户区坐标绘制会让整个叠加层偏移（动画控制条甚至会有一半被顶到客户区上边）。
+    static ImVec2 uiPos(float x, float y) {
+        const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+        return { origin.x + x, origin.y + y };
+    }
 
-        const ImU32 background = emphasized
-            ? imColor(GlobalVar::currentTheme.CHECK, 0.92f)
-            : imColor(GlobalVar::currentTheme.BG_DEEP, 0.75f);
-        const ImU32 border = imColor(GlobalVar::currentTheme.FG_LIGHT, 0.30f);
-        const ImU32 foreground = imColor(GlobalVar::currentTheme.FG_LIGHT, 1.0f);
+    // 把一块资源切片贴到客户区坐标 (x, y)：尺寸按 DPI 缩放，与热区保持一致
+    void drawOverlayIcon(const OverlayIcons::Slice& slice, float x, float y) {
+        const ImTextureID texture = overlayIcons.texture();
+        if (texture == 0)
+            return;
 
-        drawList->AddCircleFilled(center, radius, background, 48);
-        drawList->AddCircle(center, radius, border, 48, 2.0f * uiScale());
-
-        const ImVec2 textSize = ImGui::CalcTextSize(icon);
-        drawList->AddText({ centerX - textSize.x * 0.5f, centerY - textSize.y * 0.5f }, foreground, icon);
+        const float scale = uiScale();
+        ImGui::GetForegroundDrawList()->AddImage(texture, uiPos(x, y),
+            uiPos(x + slice.w * scale, y + slice.h * scale),
+            OverlayIcons::uv0(slice), OverlayIcons::uv1(slice));
     }
 
     void drawOverlayUi() {
         if (!hasOverlayUi())
             return;
 
-        ImDrawList* drawList = ImGui::GetForegroundDrawList();
         const float scale = uiScale();
-        const float radius = 22.0f * scale;
-        const float margin = 6.0f * scale;
-        const float leftX = radius + margin;
-        const float rightX = winWidth - radius - margin;
+        const float winW = static_cast<float>(winWidth);
+        const float winH = static_cast<float>(winHeight);
+
+        // 左右边缘的图标：水平贴边，垂直居中于给定的中心线
+        auto drawEdgeIcon = [&](const OverlayIcons::Slice& slice, bool rightEdge, float centerY) {
+            const float x = rightEdge ? winW - slice.w * scale : 0.0f;
+            drawOverlayIcon(slice, x, centerY - slice.h * scale * 0.5f);
+        };
 
         switch (extraUIFlag) {
         case ShowExtraUI::rotateLeftButton:
-            drawHudButton(drawList, leftX, winHeight * 0.125f, radius, jark::ui::icon::kUndo, false);
+            drawEdgeIcon(OverlayIcons::rotateLeft, false, winH * 0.125f);
             break;
 
         case ShowExtraUI::leftArrow:
-            drawHudButton(drawList, leftX, winHeight * 0.5f, radius, jark::ui::icon::kPrev, false);
+            drawEdgeIcon(OverlayIcons::leftArrow, false, winH * 0.5f);
             break;
 
         case ShowExtraUI::printer:
-            drawHudButton(drawList, leftX, winHeight * 0.875f, radius, jark::ui::icon::kPrint, false);
+            drawEdgeIcon(OverlayIcons::printer, false, winH * 0.875f);
             break;
 
         case ShowExtraUI::setting:
-            drawHudButton(drawList, rightX, winHeight * 0.875f, radius, jark::ui::icon::kSetting, false);
+            drawEdgeIcon(OverlayIcons::setting, true, winH * 0.875f);
             break;
 
         case ShowExtraUI::rightArrow:
-            drawHudButton(drawList, rightX, winHeight * 0.5f, radius, jark::ui::icon::kNext, false);
+            drawEdgeIcon(OverlayIcons::rightArrow, true, winH * 0.5f);
             break;
 
         case ShowExtraUI::rotateRightButton:
-            drawHudButton(drawList, rightX, winHeight * 0.125f, radius, jark::ui::icon::kRedo, false);
+            drawEdgeIcon(OverlayIcons::rotateRight, true, winH * 0.125f);
             break;
 
         case ShowExtraUI::animationBar: {
-            // 4 个按钮：上一帧 / 暂停继续 / 下一帧 / 保存当前帧
-            const float slot = 50.0f * scale;
-            const float barWidth = slot * 4.0f;
-            const float barHeight = slot;
-            const float left = (winWidth - barWidth) * 0.5f;
-            const float centerY = barHeight * 0.5f;
-
-            drawList->AddRectFilled({ left, 0 }, { left + barWidth, barHeight },
-                imColor(GlobalVar::currentTheme.BG_DEEP, 0.78f), barHeight * 0.5f);
-
-            const bool paused = curPar.isAnimationPause;
-            drawHudButton(drawList, left + slot * 0.5f, centerY, radius * 0.82f, jark::ui::icon::kPrev, false);
-            drawHudButton(drawList, left + slot * 1.5f, centerY, radius * 0.82f,
-                paused ? jark::ui::icon::kPlay : jark::ui::icon::kPause, true);
-            drawHudButton(drawList, left + slot * 2.5f, centerY, radius * 0.82f, jark::ui::icon::kNext, false);
-            drawHudButton(drawList, left + slot * 3.5f, centerY, radius * 0.82f, jark::ui::icon::kSave, false);
+            // 整条 200x50：上一帧 / 暂停继续 / 下一帧 / 保存当前帧（热区按 4 段 50 宽切分）
+            const OverlayIcons::Slice& bar = curPar.isAnimationPause
+                ? OverlayIcons::barPaused : OverlayIcons::barPlaying;
+            drawOverlayIcon(bar, (winW - bar.w * scale) * 0.5f, 0.0f);
         } break;
         }
     }
@@ -1641,15 +1686,13 @@ public:
         const float panelWidth = (winWidth - padding * 2.0f) / 4.0f;
         const float panelHeight = winHeight - padding * 2.0f;
 
-        drawList->AddRectFilled({ padding, padding }, { padding + panelWidth, padding + panelHeight },
+        drawList->AddRectFilled(uiPos(padding, padding), uiPos(padding + panelWidth, padding + panelHeight),
             imColor(GlobalVar::currentTheme.BG_DEEP, 0.82f), 8.0f * uiScale());
 
-        const float lineHeight = ImGui::GetTextLineHeight();
         const float textLeft = padding + dp(10);
         const float textRight = padding + panelWidth - dp(10);
         drawWrappedText(drawList, textLeft, padding + dp(8), textRight, panelHeight - dp(16),
             curPar.imageAssetPtr->exifInfo, imColor(GlobalVar::currentTheme.FG));
-        (void)lineHeight;
     }
 
     // 按宽度折行绘制（CJK 逐字断行即可；拉丁文尽量在空格处断开）
@@ -1663,12 +1706,11 @@ public:
         float y = top;
         size_t index = 0;
         std::string line;
-        std::string lastBreakCandidate; // 记录可断行处（空格后）
 
         auto flushLine = [&](const std::string& value) {
             if (value.empty())
                 return;
-            drawList->AddText({ left, y }, color, value.c_str());
+            drawList->AddText(uiPos(left, y), color, value.c_str());
             y += lineHeight;
         };
 

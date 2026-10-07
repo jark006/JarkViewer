@@ -562,9 +562,6 @@ public:
 
     static void ToggleFullScreen(HWND hwnd);
 
-    // 假设 canvas 完全没有透明像素
-    static void overlayImg(cv::Mat& canvas, const cv::Mat& img, int xOffset, int yOffset);
-
     // 选取文件
     static std::wstring SelectFile(HWND hWnd);
 

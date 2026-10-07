@@ -531,51 +531,6 @@ void jarkUtils::ToggleFullScreen(HWND hwnd) {
     isFullScreen = !isFullScreen;
 }
 
-// 假设 canvas 完全没有透明像素
-void jarkUtils::overlayImg(cv::Mat& canvas, const cv::Mat& img, int xOffset, int yOffset) {
-    if (canvas.type() != CV_8UC4 || img.type() != CV_8UC4)
-        return;
-
-    int canvasHeight = canvas.rows;
-    int canvasWidth = canvas.cols;
-    int imgHeight = img.rows;
-    int imgWidth = img.cols;
-
-    for (int y = 0; y < imgHeight; y++) {
-        int canvasY = yOffset + y;
-        if (canvasY < 0)
-            continue;
-        if (canvasHeight <= canvasY)
-            break;
-
-        auto canvasPtr = canvas.ptr<intUnion>(canvasY);
-        auto imgPtr = img.ptr<intUnion>(y);
-        for (int x = 0; x < imgWidth; x++) {
-            int canvasX = xOffset + x;
-            if (canvasX < 0)
-                continue;
-            if (canvasWidth <= canvasX)
-                break;
-
-            auto& canvasPx = canvasPtr[canvasX];
-            auto imgPx = imgPtr[x];
-            uint32_t alpha = imgPx[3];
-
-            if (alpha == 255) {
-                canvasPx = imgPx;
-            }
-            else if (alpha) {
-                uint32_t inv_alpha = 255 - alpha;
-                canvasPx = {
-                (uint8_t)(((canvasPx[0] * inv_alpha + imgPx[0] * alpha) + 128) >> 8), // +128 四舍五入
-                (uint8_t)(((canvasPx[1] * inv_alpha + imgPx[1] * alpha) + 128) >> 8),
-                (uint8_t)(((canvasPx[2] * inv_alpha + imgPx[2] * alpha) + 128) >> 8),
-                255 };
-            }
-        }
-    }
-}
-
 std::wstring jarkUtils::SelectFile(HWND hWnd) {
     OPENFILENAMEW ofn;
     wchar_t szFile[1024] = { 0 };

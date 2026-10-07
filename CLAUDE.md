@@ -67,8 +67,12 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   “画布贴后缓冲 → ImGui 一帧 → Present”。
 - 各窗口都是 ImGui 窗口（不再是独立窗口线程）：`SettingWindow.h`（常规/文件关联/帮助/关于）、
   `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）。
-  主窗口的悬停按钮/动图播放条/EXIF 面板用 `ImGui::GetForegroundDrawList()` 画矢量图标与文字，
-  命中区域仍是原来的 `cursorPos` 逻辑。
+  主窗口的悬停按钮/动图播放条用 `ImGui::GetForegroundDrawList()` 贴 `file/mainRes.png`
+  雪碧图（200x200，切片见 `main.cpp` 的 `OverlayIcons`，按 `uiScale()` 拉伸绘制，
+  换图标只改这张图或切片表），EXIF 面板仍用前景列表排版文字；命中区域仍是原来的 `cursorPos` 逻辑。
+  **叠加层必须经 `JarkViewerApp::uiPos()` 换算坐标**：多视口模式下主视口原点是“客户区左上角在
+  屏幕上的位置”（`ImGui::GetMainViewport()->Pos`），直接按客户区坐标绘制会整体偏移，
+  动图播放条会有一半被顶到客户区上边。
 - 主窗口（`D3D11App`/`JarkViewerApp`）是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()`
   给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新）；ImGui 侧由 `UiHost` 统一缩放。
 - 交换链使用**翻转模型**（`DXGI_SWAP_EFFECT_FLIP_DISCARD` + 双缓冲）。旧的

@@ -229,6 +229,7 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="file\home.png" />
+    <Image Include="file\mainRes.png" />
     <Image Include="file\tips.png" />
     <Image Include="JarkViewer.ico" />
     <Image Include="small.ico" />
