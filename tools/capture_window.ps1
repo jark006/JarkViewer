@@ -33,7 +33,9 @@ param(
     [string]$Keys2 = "",          # second key batch, sent after -Keys2DelayMs (e.g. Esc to close a dialog)
     [int]$Keys2DelayMs = 1500,
     [int]$TimeoutMs = 15000,
-    [switch]$Screen      # grab from the screen instead of PrintWindow (verifies what is actually shown)
+    [switch]$Screen,      # grab from the screen instead of PrintWindow (verifies what is actually shown)
+    [switch]$DragHold     # keep the left button down after the last -Drag segment (capture an in-progress drag),
+                          # released right after the capture
 )
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -229,7 +231,10 @@ try {
         # an empty segment (same start/end) acts as a plain click.
         [void](Activate-Window $hwnd)
 
-        foreach ($segment in $Drag.Split(";")) {
+        $segments = $Drag.Split(";")
+        for ($index = 0; $index -lt $segments.Count; $index++) {
+            $segment = $segments[$index]
+            $holdThisSegment = $DragHold -and ($index -eq $segments.Count - 1)
             $parts = $segment.Split(",")
             $from = New-Object JarkCapture+POINT
             $from.X = [int]$parts[0]
@@ -260,9 +265,14 @@ try {
                 Start-Sleep -Milliseconds 100
             }
 
-            [JarkCapture]::mouse_event([JarkCapture]::LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
-            if ($SegmentDelayMs -ge 0) { Start-Sleep -Milliseconds $SegmentDelayMs }
-            else { Start-Sleep -Milliseconds $AfterKeysMs }
+            if (-not $holdThisSegment) {
+                [JarkCapture]::mouse_event([JarkCapture]::LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+                if ($SegmentDelayMs -ge 0) { Start-Sleep -Milliseconds $SegmentDelayMs }
+                else { Start-Sleep -Milliseconds $AfterKeysMs }
+            }
+            else {
+                Start-Sleep -Milliseconds $AfterKeysMs
+            }
         }
     }
 
@@ -303,6 +313,11 @@ try {
 
     $bitmap.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
     $bitmap.Dispose()
+
+    if ($DragHold) {
+        # -DragHold 时鼠标还按着，截图已存盘，这里补一个抬起，别把系统鼠标留在按下状态
+        [JarkCapture]::mouse_event([JarkCapture]::LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+    }
 
     "captured=$printed size=${width}x${height} out=$Out"
 }

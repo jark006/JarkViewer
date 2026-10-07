@@ -72,9 +72,6 @@ public:
             return;
         }
 
-        if (textureDirty_)
-            rebuildTexture();
-
         drawToolbar(scale);
 
         const ImVec2 available = ImGui::GetContentRegionAvail();
@@ -130,6 +127,12 @@ private:
             origin.y + (region.y - imageSize.y) * 0.5f);
         imageRect_ = ImVec4(imagePos.x, imagePos.y, imageSize.x, imageSize.y);
         viewScale_ = viewScale;
+
+        // 纹理重建放在这里：棋盘格宽度按 16 屏幕像素换算成图内像素，依赖 fitScale_，
+        // 必须在算出显示比例之后重建，否则重建时用的是上一次的比例（初始为 1），
+        // 格子尺寸会在首次绘制/首次重建后跳一下
+        if (textureDirty_)
+            rebuildTexture();
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         drawList->AddRectFilled({ origin.x, origin.y }, { origin.x + region.x, origin.y + region.y },
@@ -285,11 +288,12 @@ private:
         } break;
 
         case jark::AnnoTool::Mosaic: {
-            // 马赛克在松开时才真正生效，这里先给个虚线示意
+            // 马赛克在松开时才真正生效：拖框期间用裁剪那种白色框示意，但不压暗框外（不整幅变暗）。
+            // 少了压暗就没有对比，白框压在浅色图上会看不见，所以底下再垫一圈黑边
             const ImVec2 min((std::min)(from.x, to.x), (std::min)(from.y, to.y));
             const ImVec2 max((std::max)(from.x, to.x), (std::max)(from.y, to.y));
-            drawList->AddRectFilled(min, max, IM_COL32(0, 0, 0, 60));
-            drawList->AddRect(min, max, color, 0.0f, 0, thickness);
+            drawList->AddRect(min, max, IM_COL32(0, 0, 0, 150), 0.0f, 0, 4.0f);
+            drawList->AddRect(min, max, IM_COL32(255, 255, 255, 230), 0.0f, 0, 2.0f);
         } break;
 
         case jark::AnnoTool::Text: {

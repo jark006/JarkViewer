@@ -68,7 +68,7 @@ namespace jark::ui {
         constexpr Glyph<0x2571> kLine;          // ╱ 直线
         constexpr Glyph<0x25A6> kMosaic;        // ▦ 马赛克
         constexpr Glyph<0x2715> kClose;         // ✕ 关闭
-        constexpr Glyph<0x25A1> kRect;          // □ 矩形（标注工具）
+        constexpr Glyph<0x25AC> kRect;          // ▬ 矩形（标注工具；空心长方形 25AD ▭ 字体里没有）
         constexpr Glyph<0x25CB> kEllipse;       // ○ 椭圆（标注工具）
         constexpr Glyph<0x3030> kPen;           // 〰 画笔（标注工具）
         constexpr Glyph<0x25A3> kCrop;          // ▣ 裁剪（标注工具）
