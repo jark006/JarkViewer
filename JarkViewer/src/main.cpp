@@ -707,10 +707,12 @@ public:
 
             case 'B': { // Ctrl + B 批量处理
                 operateQueue.push({ ActionENUM::batchProcess });
+                ctrlIsPressing = false; // 上面弹出窗口导致收不到CTRL键释放的消息
             }break;
 
             case 'E': { // Ctrl + E 图像编辑与标注
                 operateQueue.push({ ActionENUM::editImage });
+                ctrlIsPressing = false; // 上面弹出窗口导致收不到CTRL键释放的消息
             }break;
 
             case 'S': { // Ctrl + S  动图或实况图视频 批量保存每一帧到png图片
@@ -761,6 +763,12 @@ public:
 
             case 'W': { // Ctrl + W 退出
                 operateQueue.push({ ActionENUM::requestExit });
+                ctrlIsPressing = false;
+            }break;
+
+            default: {
+                // 没绑定的组合键：顺手清掉状态。界面窗口会吃掉 CTRL 释放消息，
+                // 不清的话后续所有按键都会被当成“按住 Ctrl 的组合键”而失灵。
                 ctrlIsPressing = false;
             }break;
             }
@@ -922,8 +930,10 @@ public:
                 operateQueue.push({ ActionENUM::setting, 3 });
             }break;
 
-            case VK_ESCAPE: { // ESC：播放中先停止播放，否则退出
-                if (slideshowActive)
+            case VK_ESCAPE: { // ESC：有窗口先关窗口（失焦时 ImGui 收不到 Esc），播放中先停止播放，否则退出
+                if (closeTopWindow())
+                    operateQueue.push({ ActionENUM::refresh });
+                else if (slideshowActive)
                     operateQueue.push({ ActionENUM::slideshow });
                 else
                     operateQueue.push({ ActionENUM::requestExit });
@@ -1749,18 +1759,46 @@ public:
         flushLine(line);
     }
 
-    void DrawUi() override {
-        auto& uiHost = jark::ui::UiHost::instance();
-        uiHost.setUiVisible(hasOverlayUi() || showExif || SettingWindow::instance().visible() ||
-            BatchWindow::instance().visible() || PrintWindow::instance().visible() ||
-            EditorWindow::instance().visible());
+    // 是否有界面窗口（设置/批量/打印/编辑）在显示
+    static bool anyWindowVisible() {
+        return SettingWindow::instance().visible() || BatchWindow::instance().visible() ||
+            PrintWindow::instance().visible() || EditorWindow::instance().visible();
+    }
 
+    bool hasVisibleWindows() const override { return anyWindowVisible(); }
+
+    // ESC 关掉最前面的一个界面窗口（窗口失焦时 ImGui 收不到 Esc，这里兜底）；返回是否关掉了
+    static bool closeTopWindow() {
+        if (EditorWindow::instance().visible()) {
+            EditorWindow::instance().close();
+            return true;
+        }
+        if (PrintWindow::instance().visible()) {
+            PrintWindow::instance().close();
+            return true;
+        }
+        if (BatchWindow::instance().visible()) {
+            BatchWindow::instance().close();
+            return true;
+        }
+        if (SettingWindow::instance().visible()) {
+            SettingWindow::instance().close();
+            return true;
+        }
+        return false;
+    }
+
+    void DrawUi() override {
         drawOverlayUi();
         drawExifPanel();
         SettingWindow::instance().draw();
         BatchWindow::instance().draw();
         PrintWindow::instance().draw();
         EditorWindow::instance().draw();
+
+        // 在窗口绘制之后取可见性：本帧被关掉的窗口立刻把输入还给画布
+        auto& uiHost = jark::ui::UiHost::instance();
+        uiHost.setUiVisible(hasOverlayUi() || showExif || anyWindowVisible());
     }
 
     void DrawScene() {
@@ -1805,8 +1843,11 @@ public:
             if (refreshVectorRasterIfNeeded())
                 return;
 
-            // 有界面在显示、或系统要求重绘时要继续出帧（不能停在空白后缓冲上）
-            if (jark::ui::UiHost::instance().uiVisible() || consumePresentRequest())
+            // 有界面在显示、或系统要求重绘时要继续出帧（不能停在空白后缓冲上）。
+            // 窗口的可见性要单独看：刚被打开的窗口还没经过一帧，uiVisible() 还是旧值，
+            // 少了这一项就要等鼠标动了才会画出来。
+            if (anyWindowVisible() || jark::ui::UiHost::instance().uiVisible() ||
+                consumePresentRequest())
                 PresentUiOnly();
 
             Sleep(1); // Windows机制限制，实际时长最小只能 15.6ms

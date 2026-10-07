@@ -34,6 +34,10 @@ public:
     // 界面（ImGui）：每帧在 PresentFrame() 里被调用，子类在这里提交窗口与控件
     virtual void DrawUi() {}
 
+    // 是否有界面窗口在显示（设置/批量/打印/编辑）。ImGui 只在有窗口时才独占鼠标键盘：
+    // 窗口关掉后 ImGui 自己的 WantCapture* 不会跟着复位，只看它会永久吞掉主窗口的输入。
+    virtual bool hasVisibleWindows() const { return false; }
+
 protected:
     HRESULT CreateDeviceResources();
     void CreateWindowSizeDependentResources();

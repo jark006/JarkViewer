@@ -107,8 +107,11 @@ namespace jark::ui {
         ImTextureID textureFromImage(const cv::Mat& image, int slot);
         void releaseTextures();
 
-        bool mouseCaptured() const;
-        bool keyboardCaptured() const;
+        // ImGui 是否要独占鼠标/键盘。windowVisible 由调用方传入“是否有界面窗口在显示”
+        // （见 D3D11App::hasVisibleWindows()）：ImGui 在最后一个窗口关闭后不会自己复位
+        // WantCapture*，只看它会永久吞掉主窗口的输入。
+        bool mouseCaptured(bool windowVisible) const;
+        bool keyboardCaptured(bool windowVisible) const;
 
         // Win32 消息先过这里，让 ImGui 记录输入状态
         static void processMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

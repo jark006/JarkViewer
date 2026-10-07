@@ -28,6 +28,8 @@ param(
     [int]$LogicWidth = 1000,
     [int]$WaitMs = 2500,
     [int]$AfterKeysMs = 1200,
+    [string]$Keys2 = "",          # second key batch, sent after -Keys2DelayMs (e.g. Esc to close a dialog)
+    [int]$Keys2DelayMs = 1500,
     [int]$TimeoutMs = 15000,
     [switch]$Screen      # grab from the screen instead of PrintWindow (verifies what is actually shown)
 )
@@ -232,6 +234,14 @@ try {
             if ($SegmentDelayMs -ge 0) { Start-Sleep -Milliseconds $SegmentDelayMs }
             else { Start-Sleep -Milliseconds $AfterKeysMs }
         }
+    }
+
+    # Second key batch, sent after the pause above: "open dialog -> click -> press Esc/next key"
+    if ($Keys2 -ne "") {
+        [void](Activate-Window $hwnd)
+        Start-Sleep -Milliseconds $Keys2DelayMs
+        [System.Windows.Forms.SendKeys]::SendWait($Keys2)
+        Start-Sleep -Milliseconds $AfterKeysMs
     }
 
     $rect = New-Object JarkCapture+RECT

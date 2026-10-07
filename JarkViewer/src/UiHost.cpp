@@ -378,12 +378,12 @@ void UiHost::renderDrawData() {
     }
 }
 
-bool UiHost::mouseCaptured() const {
-    return initialized_ && ImGui::GetIO().WantCaptureMouse;
+bool UiHost::mouseCaptured(bool windowVisible) const {
+    return initialized_ && windowVisible && ImGui::GetIO().WantCaptureMouse;
 }
 
-bool UiHost::keyboardCaptured() const {
-    return initialized_ && ImGui::GetIO().WantCaptureKeyboard;
+bool UiHost::keyboardCaptured(bool windowVisible) const {
+    return initialized_ && windowVisible && ImGui::GetIO().WantCaptureKeyboard;
 }
 
 void UiHost::processMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

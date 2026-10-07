@@ -470,9 +470,11 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     if (!pApp)
         return DefWindowProcW(hwnd, message, wParam, lParam);
 
-    // 鼠标/键盘先给界面（ImGui 需要时就不给画布，例如光标落在界面控件上）
-    const bool uiWantsMouse = jark::ui::UiHost::instance().mouseCaptured();
-    const bool uiWantsKeyboard = jark::ui::UiHost::instance().keyboardCaptured();
+    // 鼠标/键盘先给界面（ImGui 需要时就不给画布，例如光标落在界面控件上）。
+    // 窗口可见性在这里实时取：窗口刚被关掉时，ImGui 的捕获状态还停在上一帧，不能据此拦截。
+    const bool windowVisible = pApp->hasVisibleWindows();
+    const bool uiWantsMouse = jark::ui::UiHost::instance().mouseCaptured(windowVisible);
+    const bool uiWantsKeyboard = jark::ui::UiHost::instance().keyboardCaptured(windowVisible);
 
     switch (message)
     {

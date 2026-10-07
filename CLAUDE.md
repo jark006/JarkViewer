@@ -73,6 +73,13 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   **叠加层必须经 `JarkViewerApp::uiPos()` 换算坐标**：多视口模式下主视口原点是“客户区左上角在
   屏幕上的位置”（`ImGui::GetMainViewport()->Pos`），直接按客户区坐标绘制会整体偏移，
   动图播放条会有一半被顶到客户区上边。
+- 输入分发的硬性规则：**只有确实有界面窗口在显示时，ImGui 才能独占鼠标键盘**
+  （`D3D11App::hasVisibleWindows()` → `UiHost::mouseCaptured()/keyboardCaptured()`，实时判断）。
+  ImGui 在最后一个窗口关闭后不会复位 `WantCapture*`（导航窗口、活动控件等状态还在），
+  只按它拦截会让主窗口再也收不到任何操作。同理，用 Ctrl 组合键打开的窗口会吃掉 CTRL 的
+  释放消息，这些分支必须清 `ctrlIsPressing`；`ESC` 在有窗口时先关窗口（`closeTopWindow()`），
+  窗口失焦时也能兜住，不会直接退出程序。另外，空闲分支要靠 `anyWindowVisible()` 出帧，
+  否则刚打开的窗口要等鼠标动了才画出来。
 - 主窗口（`D3D11App`/`JarkViewerApp`）是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()`
   给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新）；ImGui 侧由 `UiHost` 统一缩放。
 - 交换链使用**翻转模型**（`DXGI_SWAP_EFFECT_FLIP_DISCARD` + 双缓冲）。旧的
