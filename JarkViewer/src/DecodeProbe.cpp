@@ -229,7 +229,7 @@ namespace {
                 report += std::format("{} | ", getUIString(id));
             report += "\n     宽字符: ";
             for (const uint32_t id : wideIds)
-                report += std::format("{} | ", jarkUtils::wstringToUtf8(getUIStringW(id)));
+                report += std::format("{} | ", jarkUtils::wstringToUtf8(getUIStringW(id).c_str()));
             report += std::format("\n     资源图使用{}文案", jark::prefersChineseResources() ? "中文" : "英文");
         }
 

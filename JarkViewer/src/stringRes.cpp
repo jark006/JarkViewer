@@ -276,12 +276,10 @@ const char* const getUIString(const uint32_t stringidx) {
     return text.empty() ? "" : text.data();
 }
 
-const wchar_t* const getUIStringW(const uint32_t stringidx) {
+// 宽字符版本由 UTF-8 文案转换而来，按值返回（见 stringRes.h：共用缓冲会互相覆盖）
+UIStringWide getUIStringW(const uint32_t stringidx) {
     if (stringidx >= STRING_MAX_NUM)
-        return L"NULL";
+        return UIStringWide(L"NULL");
 
-    // 宽字符版本由 UTF-8 文案转换而来（线程局部缓冲，直接取用安全）
-    static thread_local std::wstring buffer;
-    buffer = jarkUtils::utf8ToWstring(pick(UIStringTableWide[stringidx], languageColumn()));
-    return buffer.c_str();
+    return UIStringWide(jarkUtils::utf8ToWstring(pick(UIStringTableWide[stringidx], languageColumn())));
 }

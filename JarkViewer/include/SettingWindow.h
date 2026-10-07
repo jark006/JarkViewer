@@ -54,7 +54,7 @@ public:
             return;
 
         const float scale = jark::ui::UiHost::instance().scale();
-        const std::string title = jarkUtils::wstringToUtf8(getUIStringW(39)) + "###settings";
+        const std::string title = jarkUtils::wstringToUtf8(getUIStringW(39).c_str()) + "###settings";
 
         ImGui::SetNextWindowSize({ 660.0f * scale, 540.0f * scale }, ImGuiCond_FirstUseEver);
         // 不能再缩小到藏住页签与底部按钮

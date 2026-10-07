@@ -302,7 +302,7 @@ bool jarkUtils::limitSizeTo16K(cv::Mat& image) {
         int newWidth = static_cast<int>(image.cols * scale);
         int newHeight = static_cast<int>(image.rows * scale);
         cv::resize(image, image, cv::Size(newWidth, newHeight), 0, 0, cv::INTER_LINEAR);
-        MessageBoxW(nullptr, std::format(L"{} {}x{}", getUIStringW(16), image.cols, image.rows).c_str(), getUIStringW(15), MB_OK | MB_ICONWARNING);
+        MessageBoxW(nullptr, std::format(L"{} {}x{}", getUIStringW(16).c_str(), image.cols, image.rows).c_str(), getUIStringW(15), MB_OK | MB_ICONWARNING);
     }
     return true;
 }
@@ -360,7 +360,7 @@ void jarkUtils::copyImageToClipboard(const cv::Mat& image) {
             processedImage = image.clone();
         }
         else {
-            MessageBoxW(nullptr, std::format(L"{} {}", getUIStringW(18), processedImage.channels()).c_str(), getUIStringW(19), MB_OK | MB_ICONERROR);
+            MessageBoxW(nullptr, std::format(L"{} {}", getUIStringW(18).c_str(), processedImage.channels()).c_str(), getUIStringW(19), MB_OK | MB_ICONERROR);
             return;
         }
     }

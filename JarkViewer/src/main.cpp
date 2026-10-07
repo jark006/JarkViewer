@@ -413,7 +413,7 @@ public:
                 operateQueue.push({ ActionENUM::refresh });
             }break;
             case 3: {
-                auto [filePath, isJPG] = jarkUtils::saveImageDialogW(getUIStringW(4));
+                auto [filePath, isJPG] = jarkUtils::saveImageDialogW(getUIStringW(4).c_str());
                 if (filePath.length() <= 2)
                     break;
 
@@ -724,7 +724,7 @@ public:
 
                 if (IDYES == MessageBoxW(
                     m_hWnd,
-                    std::format(L"{}{}", getUIStringW(5), frames.size()).c_str(),
+                    std::format(L"{}{}", getUIStringW(5).c_str(), frames.size()).c_str(),
                     getUIStringW(6),
                     MB_YESNO | MB_ICONQUESTION
                 )) {
@@ -1390,7 +1390,7 @@ public:
         std::wstring str;
         if (curPar.imageAssetPtr->format == ImageFormat::Animated && curPar.isAnimationPause) {
             str = std::format(L"{} [{}/{}] {}% {}  ",
-                getUIStringW(9),
+                getUIStringW(9).c_str(),
                 curPar.curFrameIdx + 1, curPar.curFrameIdxMax + 1,
                 curPar.zoomCur * 100ULL / curPar.ZOOM_BASE,
                 imgFileList[curFileIdx]);
@@ -2073,7 +2073,7 @@ public:
 
             bool shouldDelete = true;
             if (GlobalVar::settingParameter.isNoteBeforeDelete) {
-                auto tips = std::format(L"{}\n\n{}", getUIStringW(7), target);
+                auto tips = std::format(L"{}\n\n{}", getUIStringW(7).c_str(), target);
                 shouldDelete = MessageBoxW(m_hWnd, tips.c_str(), getUIStringW(1),
                     MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) == IDYES;
             }
@@ -2093,7 +2093,7 @@ public:
             int opResult = SHFileOperationW(&fileOp);
             if (opResult != 0 || fileOp.fAnyOperationsAborted) {
                 DWORD lastError = opResult != 0 ? (DWORD)opResult : GetLastError();
-                auto errMsg = std::format(L"{} 0x{:08X}", getUIStringW(8), lastError);
+                auto errMsg = std::format(L"{} 0x{:08X}", getUIStringW(8).c_str(), lastError);
                 MessageBoxW(m_hWnd, errMsg.c_str(), getUIStringW(1), MB_OK | MB_ICONERROR);
                 break;
             }

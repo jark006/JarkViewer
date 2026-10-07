@@ -621,7 +621,7 @@ private:
     }
 
     void saveAs() {
-        auto [path, isJpg] = jarkUtils::saveImageDialogW(getUIStringW(kStrSaveAs));
+        auto [path, isJpg] = jarkUtils::saveImageDialogW(getUIStringW(kStrSaveAs).c_str());
         if (path.size() <= 2)
             return;
 

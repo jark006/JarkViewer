@@ -107,7 +107,7 @@ private:
     PrintWindow() = default;
 
     static std::string title() {
-        return jarkUtils::wstringToUtf8(getUIStringW(40)) + "###print";
+        return jarkUtils::wstringToUtf8(getUIStringW(40).c_str()) + "###print";
     }
 
     // 窗口最小尺寸：宽取控件行实际占用（minWidth_），高保证两个滑块 + 一点预览
@@ -240,7 +240,7 @@ private:
     }
 
     void saveToFile() {
-        auto [filePath, isJpg] = jarkUtils::saveImageDialogW(getUIStringW(23));
+        auto [filePath, isJpg] = jarkUtils::saveImageDialogW(getUIStringW(23).c_str());
         if (filePath.empty())
             return;
 

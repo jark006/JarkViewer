@@ -98,7 +98,7 @@ private:
     BatchWindow() = default;
 
     static std::string title() {
-        return jarkUtils::wstringToUtf8(getUIStringW(42)) + "###batch";
+        return jarkUtils::wstringToUtf8(getUIStringW(42).c_str()) + "###batch";
     }
 
     static const char* ui(uint32_t id) { return getUIString(id); }
@@ -297,8 +297,11 @@ private:
     }
 
     void chooseOutputDirectory() {
+        // 用 owning 的局部变量：指针要活到对话框结束，不能指向临时对象
+        const std::wstring browseTitle = getUIStringW(kStrOutputDir).str();
+
         BROWSEINFOW browse{};
-        browse.lpszTitle = getUIStringW(kStrOutputDir);
+        browse.lpszTitle = browseTitle.c_str();
         browse.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
         if (LPITEMIDLIST item = SHBrowseForFolderW(&browse)) {
@@ -330,7 +333,7 @@ private:
 
         if (options_.task == jark::BatchTask::Delete) {
             const size_t fileCount = targets.size();
-            auto message = std::vformat(getUIStringW(43), std::make_wformat_args(fileCount));
+            auto message = std::vformat(getUIStringW(43).str(), std::make_wformat_args(fileCount));
             if (MessageBoxW(jark::ui::UiHost::instance().window(), message.c_str(), getUIStringW(42),
                 MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
                 return;
