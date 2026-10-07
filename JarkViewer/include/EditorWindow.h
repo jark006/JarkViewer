@@ -366,8 +366,6 @@ private:
         ImGui::SameLine();
         if (ImGui::Button(jark::ui::icon::kRedo, { 44.0f * scale, 0 }))
             redo();
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", ui(kStrDone));
     }
 
     // —— 侧栏 ——
