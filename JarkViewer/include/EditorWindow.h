@@ -56,7 +56,7 @@ public:
             return;
 
         const float scale = jark::ui::UiHost::instance().scale();
-        ImGui::SetNextWindowSize({ 1100.0f * scale, 700.0f * scale }, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({ 1100.0f * scale, 760.0f * scale }, ImGuiCond_FirstUseEver);
         // 不能再缩小到藏住工具栏/侧栏
         ImGui::SetNextWindowSizeConstraints({ 840.0f * scale, 520.0f * scale }, { FLT_MAX, FLT_MAX });
         if (focusRequested_) {
@@ -387,8 +387,11 @@ private:
     void drawSidebar(float scale) {
         ImGui::BeginChild("editorSidebar", { 0, 0 }, ImGuiChildFlags_None);
 
-        // 颜色
+        // 颜色：色块按可用宽度均分，固定尺寸会顶出侧栏（第 7 个被切掉）
         ImGui::TextUnformatted(ui(kStrColor));
+        const float swatchSpacing = ImGui::GetStyle().ItemSpacing.x;
+        const float swatchSize = std::floor((ImGui::GetContentRegionAvail().x -
+            swatchSpacing * static_cast<float>(std::size(kColors) - 1)) / std::size(kColors));
         for (size_t index = 0; index < std::size(kColors); ++index) {
             if (index > 0)
                 ImGui::SameLine();
@@ -398,7 +401,7 @@ private:
             if (index == colorIndex_)
                 ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 2.0f * scale);
 
-            if (ImGui::ColorButton("##swatch", color, ImGuiColorEditFlags_NoTooltip, { 26.0f * scale, 26.0f * scale }))
+            if (ImGui::ColorButton("##swatch", color, ImGuiColorEditFlags_NoTooltip, { swatchSize, swatchSize }))
                 colorIndex_ = static_cast<uint32_t>(index);
 
             if (index == colorIndex_)
@@ -407,10 +410,8 @@ private:
         }
 
         ImGui::Spacing();
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::SliderInt(ui(kStrWidth), &lineWidth_, 1, 40, "%d");
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::SliderInt(ui(kStrFontSize), &fontSize_, 8, 200, "%d");
+        drawSidebarSlider(kStrWidth, &lineWidth_, 1, 40, "%d");
+        drawSidebarSlider(kStrFontSize, &fontSize_, 8, 200, "%d");
         ImGui::Checkbox(ui(kStrFilled), &filled_);
 
         ImGui::Spacing();
@@ -476,13 +477,38 @@ private:
         if (ImGui::Button(ui(kStrOverwrite), { -1.0f, 0 }))
             overwriteSource();
 
-        ImGui::Spacing();
-        if (!statusText_.empty() && nowSeconds() < statusUntil_)
-            ImGui::TextWrapped("%s", statusText_.c_str());
-        else
-            ImGui::TextDisabled("%s", ui(kStrHint));
+        // 状态提示（已保存/已复制…）画在侧栏底部但不占布局：
+        // 侧栏内容刚好占满，多一行就会挤出上下滚动条
+        if (!statusText_.empty() && nowSeconds() < statusUntil_) {
+            const ImGuiStyle& style = ImGui::GetStyle();
+            const ImVec2 windowPos = ImGui::GetWindowPos();
+            const ImVec2 windowSize = ImGui::GetWindowSize();
+            const ImVec2 textSize = ImGui::CalcTextSize(statusText_.c_str());
+            const ImVec2 textPos(windowPos.x + style.WindowPadding.x,
+                windowPos.y + windowSize.y - style.WindowPadding.y - textSize.y);
+
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            drawList->AddRectFilled(ImVec2(textPos.x - 6.0f * scale, textPos.y - 4.0f * scale),
+                ImVec2(textPos.x + textSize.x + 6.0f * scale, textPos.y + textSize.y + 4.0f * scale),
+                ImGui::GetColorU32(ImGuiCol_PopupBg), 4.0f * scale);
+            drawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), statusText_.c_str());
+        }
 
         ImGui::EndChild();
+    }
+
+    // 侧栏的「标签 + 滑块」：标签放左边、滑块占满剩余宽度。
+    // 标签写在滑块后面会被挤出可视区（滑块是 SetNextItemWidth(-1) 占满整行），
+    // 结果就是"必须横向滚动才看得到线宽/字号"。
+    void drawSidebarSlider(uint32_t labelId, int* value, int minimum, int maximum, const char* format) {
+        const float labelWidth = (std::max)(ImGui::CalcTextSize(ui(kStrWidth)).x,
+            ImGui::CalcTextSize(ui(kStrFontSize)).x) + ImGui::GetStyle().ItemSpacing.x;
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(ui(labelId));
+        ImGui::SameLine(labelWidth);
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::SliderInt(("##" + std::string(ui(labelId))).c_str(), value, minimum, maximum, format);
     }
 
     void handleShortcuts() {
@@ -736,7 +762,6 @@ private:
     static constexpr uint32_t kStrCopied = 112;
     static constexpr uint32_t kStrSaved = 113;
     static constexpr uint32_t kStrSaveFailed = 114;
-    static constexpr uint32_t kStrHint = 115;
     static constexpr uint32_t kStrTextPrompt = 116;
     static constexpr uint32_t kStrDone = 117;
     static constexpr uint32_t kStrNeedSelection = 119;
