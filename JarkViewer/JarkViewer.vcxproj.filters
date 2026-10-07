@@ -39,7 +39,7 @@
     <ClInclude Include="include\jarkUtils.h">
       <Filter>include</Filter>
     </ClInclude>
-    <ClInclude Include="include\Setting.h">
+    <ClInclude Include="include\SettingWindow.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\FileAssociationNaming.h">

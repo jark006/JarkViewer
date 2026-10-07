@@ -176,7 +176,7 @@
     <ClInclude Include="include\MediaDecoder.h" />
     <ClInclude Include="include\MediaPlayer.h" />
     <ClInclude Include="include\Printer.h" />
-    <ClInclude Include="include\Setting.h" />
+    <ClInclude Include="include\SettingWindow.h" />
     <ClInclude Include="include\stringRes.h" />
     <ClInclude Include="include\SVGPreprocessor.h" />
     <ClInclude Include="include\TextRenderer.h" />

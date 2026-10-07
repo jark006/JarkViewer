@@ -149,6 +149,39 @@ std::string_view UIStringTable[STRING_MAX_NUM][jark::kLanguageCount] = {
     {"顺序", "順序", "Forward", "順方向", "순방향"},                                                  // 121
     {"逆序", "逆序", "Backward", "逆方向", "역방향"},
     {"随机", "隨機", "Random", "ランダム", "무작위"},
+
+    // —— 帮助页（改成文字排版，不再用资源图）——
+    {"快捷键与操作", "快速鍵與操作", "Shortcuts and controls", "ショートカットと操作", "단축키와 조작"},
+    {"滚轮：缩放　　中键：EXIF 信息　　右键：菜单　　左键拖动：平移\n"
+     "窗口左右边缘：上一张 / 下一张　　窗口四角：旋转 / 打印 / 设置\n"
+     "Ctrl+O 打开　　Ctrl+B 批量处理　　Ctrl+E 编辑与标注\n"
+     "Ctrl+S 保存动图帧　　Ctrl+C 复制图像　　Ctrl+P 打印　　Ctrl+W 退出\n"
+     "Q / E 旋转　　A / W / S / D 平移　　F 适应窗口　　P 幻灯片播放\n"
+     "J / K / L 动图上一帧 / 暂停 / 下一帧　　F11 全屏　　ESC 退出",
+     "滚輪：縮放　　中鍵：EXIF 資訊　　右鍵：選單　　左鍵拖曳：平移\n"
+     "視窗左右邊緣：上一張 / 下一張　　視窗四角：旋轉 / 列印 / 設定\n"
+     "Ctrl+O 開啟　　Ctrl+B 批次處理　　Ctrl+E 編輯與標註\n"
+     "Ctrl+S 儲存動圖影格　　Ctrl+C 複製影像　　Ctrl+P 列印　　Ctrl+W 結束\n"
+     "Q / E 旋轉　　A / W / S / D 平移　　F 適應視窗　　P 幻燈片播放\n"
+     "J / K / L 動圖上一格 / 暫停 / 下一格　　F11 全螢幕　　ESC 結束",
+     "Wheel: zoom    Middle: EXIF    Right: menu    Left drag: pan\n"
+     "Window edges: previous / next    Window corners: rotate / print / settings\n"
+     "Ctrl+O open    Ctrl+B batch    Ctrl+E edit and annotate\n"
+     "Ctrl+S save frames    Ctrl+C copy image    Ctrl+P print    Ctrl+W quit\n"
+     "Q / E rotate    A / W / S / D pan    F fit    P slideshow\n"
+     "J / K / L frame step / pause / next    F11 fullscreen    ESC quit",
+     "ホイール：ズーム　　中ボタン：EXIF　　右ボタン：メニュー　　左ドラッグ：移動\n"
+     "ウィンドウ左右端：前/次の画像　　四隅：回転 / 印刷 / 設定\n"
+     "Ctrl+O 開く　　Ctrl+B バッチ処理　　Ctrl+E 編集と注釈\n"
+     "Ctrl+S フレーム保存　　Ctrl+C 画像をコピー　　Ctrl+P 印刷　　Ctrl+W 終了\n"
+     "Q / E 回転　　A / W / S / D 移動　　F ウィンドウに合わせる　　P スライドショー\n"
+     "J / K / L コマ送り / 一時停止 / 次へ　　F11 全画面　　ESC 終了",
+     "휠: 확대/축소　　가운데: EXIF　　오른쪽: 메뉴　　왼쪽 드래그: 이동\n"
+     "창 좌우 가장자리: 이전 / 다음　　창 네 모서리: 회전 / 인쇄 / 설정\n"
+     "Ctrl+O 열기　　Ctrl+B 일괄 처리　　Ctrl+E 편집 및 주석\n"
+     "Ctrl+S 프레임 저장　　Ctrl+C 이미지 복사　　Ctrl+P 인쇄　　Ctrl+W 종료\n"
+     "Q / E 회전　　A / W / S / D 이동　　F 창에 맞춤　　P 슬라이드쇼\n"
+     "J / K / L 프레임 이동 / 일시정지 / 다음　　F11 전체 화면　　ESC 종료"},
 };
 
 // 供 Win32 API（窗口标题/消息框/右键菜单）使用的字符串表，ID 与窄表相互独立

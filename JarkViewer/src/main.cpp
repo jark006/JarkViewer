@@ -11,7 +11,7 @@
 #include "TextRenderer.h"
 #include "ImageDatabase.h"
 #include "Printer.h"
-#include "Setting.h"
+#include "SettingWindow.h"
 
 #include "D3D11App.h"
 #include <optional>
@@ -200,58 +200,6 @@ struct CurImageParameter {
 };
 
 
-class ExtraUIRes {
-public:
-    cv::Mat mainRes, leftArrow, rightArrow, leftRotate, rightRotate, printer, setting, animationBarPlaying, animationBarPausing;
-
-    ExtraUIRes() {
-        rcFileInfo rc;
-
-        rc = jarkUtils::GetResource(IDB_PNG_MAIN_RES, L"PNG");
-        mainRes = cv::imdecode(cv::Mat(1, (int)rc.size, CV_8UC1, (uint8_t*)rc.ptr), cv::IMREAD_UNCHANGED);
-
-        rebuild(1.0f);
-    }
-    ~ExtraUIRes() {}
-
-    // 资源切片是 96DPI 下的尺寸；窗口在高 DPI 显示器上时要放大后再贴图，
-    // 否则按钮只有设计尺寸的一半大。缩放值不变时直接复用。
-    void rebuild(float scale) {
-        if (hasBuilt && std::abs(scale - buildScale) < 0.01f)
-            return;
-
-        hasBuilt = true;
-        buildScale = scale;
-
-        auto slice = [&](cv::Rect rect) -> cv::Mat {
-            cv::Mat part = mainRes(rect);
-            if (std::abs(scale - 1.0f) < 0.01f)
-                return part.clone();
-
-            cv::Mat scaled;
-            cv::resize(part, scaled, cv::Size(), scale, scale,
-                scale > 1.0f ? cv::INTER_LINEAR : cv::INTER_AREA);
-            return scaled;
-            };
-
-        leftRotate = slice({ 0, 0, 50, 50 });
-        rightRotate = slice({ 50, 0, 50, 50 });
-
-        printer = slice({ 0, 50, 50, 50 });
-        setting = slice({ 50, 50, 50, 50 });
-
-        leftArrow = slice({ 100, 0, 50, 100 });
-        rightArrow = slice({ 150, 0, 50, 100 });
-
-        animationBarPlaying = slice({ 0, 100, 200, 50 });
-        animationBarPausing = slice({ 0, 150, 200, 50 });
-    }
-
-private:
-    float buildScale = 0.0f;
-    bool hasBuilt = false;
-};
-
 class JarkViewerApp : public D3D11App {
 public:
 
@@ -278,7 +226,6 @@ public:
     int lastSeenFileIndex = -1;
 
     CurImageParameter curPar;
-    ExtraUIRes extraUIRes;
     std::chrono::steady_clock::time_point lastClickTimestamp{}, lastWinResizeTimestamp{};
 
     JarkViewerApp() {
@@ -293,7 +240,6 @@ public:
 
     void OnDpiChanged() override {
         updateTextDrawerScale();
-        extraUIRes.rebuild(uiScale());
         if (hasInitWinSize)
             operateQueue.push({ ActionENUM::refresh });
     }
@@ -311,7 +257,6 @@ public:
         imgDB.setColorManagementWindow(m_hWnd);
 
         updateTextDrawerScale();
-        extraUIRes.rebuild(uiScale());
 
         return S_OK;
     }
@@ -1076,7 +1021,6 @@ public:
             cv::Mat srcImg = currentSourceImage();
 
             drawCanvas(srcImg, mainCanvas);
-            drawExifInfo(mainCanvas);
         }
         else {
             hasInitWinSize = true;
@@ -1140,8 +1084,6 @@ public:
             auto start_clock = steady_clock::now();
             auto view = rotateImage(tmpCanvas, i)(cv::Rect((maxEdge - winWidth) / 4, (maxEdge - winHeight) / 4, winWidth / 2, winHeight / 2));
             cv::resize(view, mainCanvas, mainCanvas.size(), 0, 0, cv::INTER_NEAREST);
-            drawExifInfo(mainCanvas);
-            drawExtraUI(mainCanvas);
 
             updateMainCanvas();
 
@@ -1168,8 +1110,6 @@ public:
             auto start_clock = steady_clock::now();
             auto view = rotateImage(tmpCanvas, i)(cv::Rect((maxEdge - winWidth) / 4, (maxEdge - winHeight) / 4, winWidth / 2, winHeight / 2));
             cv::resize(view, mainCanvas, mainCanvas.size(), 0, 0, cv::INTER_NEAREST);
-            drawExifInfo(mainCanvas);
-            drawExtraUI(mainCanvas);
 
             updateMainCanvas();
 
@@ -1232,7 +1172,6 @@ public:
 
         auto nextmainCanvas = cv::Mat(mainCanvas.size(), mainCanvas.type());
         drawCanvas(srcImg, nextmainCanvas);
-        drawExifInfo(nextmainCanvas);
 
         cv::Mat smallMainCanvas;
         cv::resize(mainCanvas, smallMainCanvas, cv::Size(winWidth / 4, winHeight / 4), 0, 0, cv::INTER_NEAREST);
@@ -1253,7 +1192,6 @@ public:
 
             cv::Mat view = panorama(cv::Rect(x, 0, frame_width, frame_height));
             cv::resize(view, mainCanvas, mainCanvas.size(), 0, 0, cv::INTER_NEAREST);
-            drawExtraUI(mainCanvas);
 
             updateMainCanvas();
 
@@ -1270,7 +1208,6 @@ public:
 
         auto nextmainCanvas = cv::Mat(mainCanvas.size(), mainCanvas.type());
         drawCanvas(srcImg, nextmainCanvas);
-        drawExifInfo(nextmainCanvas);
 
         cv::Mat smallMainCanvas;
         cv::resize(mainCanvas, smallMainCanvas, cv::Size(winWidth / 4, winHeight / 4), 0, 0, cv::INTER_NEAREST);
@@ -1291,7 +1228,6 @@ public:
 
             cv::Mat view = panorama(cv::Rect(x, 0, frame_width, frame_height));
             cv::resize(view, mainCanvas, mainCanvas.size(), 0, 0, cv::INTER_NEAREST);
-            drawExtraUI(mainCanvas);
 
             updateMainCanvas();
 
@@ -1308,7 +1244,6 @@ public:
 
         auto nextmainCanvas = cv::Mat(mainCanvas.size(), mainCanvas.type());
         drawCanvas(srcImg, nextmainCanvas);
-        drawExifInfo(nextmainCanvas);
 
         cv::Mat smallMainCanvas;
         cv::resize(mainCanvas, smallMainCanvas, cv::Size(winWidth / 4, winHeight / 4), 0, 0, cv::INTER_NEAREST);
@@ -1329,7 +1264,6 @@ public:
 
             cv::Mat view = panorama(cv::Rect(0, y, frame_width, frame_height));
             cv::resize(view, mainCanvas, mainCanvas.size(), 0, 0, cv::INTER_NEAREST);
-            drawExtraUI(mainCanvas);
 
             updateMainCanvas();
 
@@ -1346,7 +1280,6 @@ public:
 
         auto nextmainCanvas = cv::Mat(mainCanvas.size(), mainCanvas.type());
         drawCanvas(srcImg, nextmainCanvas);
-        drawExifInfo(nextmainCanvas);
 
         cv::Mat smallMainCanvas;
         cv::resize(mainCanvas, smallMainCanvas, cv::Size(winWidth / 4, winHeight / 4), 0, 0, cv::INTER_NEAREST);
@@ -1367,68 +1300,11 @@ public:
 
             cv::Mat view = panorama(cv::Rect(0, y, frame_width, frame_height));
             cv::resize(view, mainCanvas, mainCanvas.size(), 0, 0, cv::INTER_NEAREST);
-            drawExtraUI(mainCanvas);
 
             updateMainCanvas();
 
             if (duration_cast<milliseconds>(steady_clock::now() - start_clock).count() < 10)
                 Sleep(1);
-        }
-    }
-
-    void drawExifInfo(cv::Mat& canvas) {
-        if (showExif) {
-            const int padding = dp(10);
-            const int areaWidth = (canvas.cols - 2 * padding) / 4;
-            cv::Rect rect{ padding, padding, std::max(areaWidth, dp(400)), canvas.rows - 2 * padding };
-            textDrawer.putAlignLeft(canvas, rect, curPar.imageAssetPtr->exifInfo.c_str(), GlobalVar::currentTheme.FG, true);
-        }
-    }
-
-    void drawExtraUI(cv::Mat& canvas) {
-        int canvasHeight = canvas.rows;
-        int canvasWidth = canvas.cols;
-
-        //窗口尺寸太小则直接退出
-        if (canvasWidth < dp(100) || canvasHeight < dp(100) || extraUIFlag == ShowExtraUI::none)
-            return;
-
-        switch (extraUIFlag)
-        {
-        case ShowExtraUI::rotateLeftButton: {
-            auto& img = extraUIRes.leftRotate;
-            jarkUtils::overlayImg(canvas, img, 0, (canvasHeight / 4 - img.rows) / 2);
-        } break;
-
-        case ShowExtraUI::leftArrow: {
-            auto& img = extraUIRes.leftArrow;
-            jarkUtils::overlayImg(canvas, img, 0, (canvasHeight - img.rows) / 2);
-        } break;
-
-        case ShowExtraUI::printer: {
-            auto& img = extraUIRes.printer;
-            jarkUtils::overlayImg(canvas, img, 0, (canvasHeight * 7 / 4 - img.rows) / 2);
-        } break;
-
-        case ShowExtraUI::setting: {
-            auto& img = extraUIRes.setting;
-            jarkUtils::overlayImg(canvas, img, canvasWidth - img.cols, (canvasHeight * 7 / 4 - img.rows) / 2);
-        } break;
-
-        case ShowExtraUI::rightArrow: {
-            auto& img = extraUIRes.rightArrow;
-            jarkUtils::overlayImg(canvas, img, canvasWidth - img.cols, (canvasHeight - img.rows) / 2);
-        } break;
-
-        case ShowExtraUI::rotateRightButton: {
-            auto& img = extraUIRes.rightRotate;
-            jarkUtils::overlayImg(canvas, img, canvasWidth - img.cols, (canvasHeight / 4 - img.rows) / 2);
-        } break;
-
-        case ShowExtraUI::animationBar: {
-            auto& img = curPar.isAnimationPause ? extraUIRes.animationBarPausing : extraUIRes.animationBarPlaying;
-            jarkUtils::overlayImg(canvas, img, (canvasWidth - img.cols)/2, 0);
-        } break;
         }
     }
 
@@ -1544,7 +1420,6 @@ public:
             cv::Mat srcImg = currentSourceImage();
 
             drawCanvas(srcImg, mainCanvas); //先更新无额外按钮UI的原图
-            drawExifInfo(mainCanvas);
         }
 
         // 播放过的实况图，状态会变成静态图，切走前恢复一下
@@ -1666,95 +1541,179 @@ public:
         return true;
     }
 
-    void DrawUi() override {
-        // 临时：带标签的图标码位浏览（由 tools/gen_icon_probe.py 生成）
-        jark::ui::UiHost::instance().setUiVisible(true);
-        ImGui::SetNextWindowSize({ 620, 760 }, ImGuiCond_Always);
-        ImGui::Begin("icon candidates");
-        if (ImGui::BeginTable("cand", 8, ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59155>>12)), (char)(0x80|((59155>>6)&0x3F)), (char)(0x80|(59155&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E713"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59213>>12)), (char)(0x80|((59213>>6)&0x3F)), (char)(0x80|(59213&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74D"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59151>>12)), (char)(0x80|((59151>>6)&0x3F)), (char)(0x80|(59151&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70F"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59592>>12)), (char)(0x80|((59592>>6)&0x3F)), (char)(0x80|(59592&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8C8"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59304>>12)), (char)(0x80|((59304>>6)&0x3F)), (char)(0x80|(59304&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7A8"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59280>>12)), (char)(0x80|((59280>>6)&0x3F)), (char)(0x80|(59280&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E790"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59675>>12)), (char)(0x80|((59675>>6)&0x3F)), (char)(0x80|(59675&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E91B"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59621>>12)), (char)(0x80|((59621>>6)&0x3F)), (char)(0x80|(59621&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8E5"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59575>>12)), (char)(0x80|((59575>>6)&0x3F)), (char)(0x80|(59575&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8B7"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59198>>12)), (char)(0x80|((59198>>6)&0x3F)), (char)(0x80|(59198&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E73E"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59602>>12)), (char)(0x80|((59602>>6)&0x3F)), (char)(0x80|(59602&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8D2"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59689>>12)), (char)(0x80|((59689>>6)&0x3F)), (char)(0x80|(59689&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E929"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59331>>12)), (char)(0x80|((59331>>6)&0x3F)), (char)(0x80|(59331&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7C3"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59568>>12)), (char)(0x80|((59568>>6)&0x3F)), (char)(0x80|(59568&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8B0"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59305>>12)), (char)(0x80|((59305>>6)&0x3F)), (char)(0x80|(59305&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7A9"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59215>>12)), (char)(0x80|((59215>>6)&0x3F)), (char)(0x80|(59215&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74F"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59225>>12)), (char)(0x80|((59225>>6)&0x3F)), (char)(0x80|(59225&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E759"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59227>>12)), (char)(0x80|((59227>>6)&0x3F)), (char)(0x80|(59227&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E75B"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59366>>12)), (char)(0x80|((59366>>6)&0x3F)), (char)(0x80|(59366&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7E6"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59865>>12)), (char)(0x80|((59865>>6)&0x3F)), (char)(0x80|(59865&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E9D9"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59959>>12)), (char)(0x80|((59959>>6)&0x3F)), (char)(0x80|(59959&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("EA37"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59567>>12)), (char)(0x80|((59567>>6)&0x3F)), (char)(0x80|(59567&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8AF"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59559>>12)), (char)(0x80|((59559>>6)&0x3F)), (char)(0x80|(59559&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8A7"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59147>>12)), (char)(0x80|((59147>>6)&0x3F)), (char)(0x80|(59147&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70B"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59160>>12)), (char)(0x80|((59160>>6)&0x3F)), (char)(0x80|(59160&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E718"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59163>>12)), (char)(0x80|((59163>>6)&0x3F)), (char)(0x80|(59163&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E71B"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59212>>12)), (char)(0x80|((59212>>6)&0x3F)), (char)(0x80|(59212&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E74C"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59269>>12)), (char)(0x80|((59269>>6)&0x3F)), (char)(0x80|(59269&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E785"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59337>>12)), (char)(0x80|((59337>>6)&0x3F)), (char)(0x80|(59337&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7C9"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59645>>12)), (char)(0x80|((59645>>6)&0x3F)), (char)(0x80|(59645&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8FD"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59717>>12)), (char)(0x80|((59717>>6)&0x3F)), (char)(0x80|(59717&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E945"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59374>>12)), (char)(0x80|((59374>>6)&0x3F)), (char)(0x80|(59374&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7EE"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59142>>12)), (char)(0x80|((59142>>6)&0x3F)), (char)(0x80|(59142&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E706"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59149>>12)), (char)(0x80|((59149>>6)&0x3F)), (char)(0x80|(59149&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70D"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59150>>12)), (char)(0x80|((59150>>6)&0x3F)), (char)(0x80|(59150&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E70E"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59631>>12)), (char)(0x80|((59631>>6)&0x3F)), (char)(0x80|(59631&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8EF"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59449>>12)), (char)(0x80|((59449>>6)&0x3F)), (char)(0x80|(59449&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E839"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59329>>12)), (char)(0x80|((59329>>6)&0x3F)), (char)(0x80|(59329&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E7C1"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(59577>>12)), (char)(0x80|((59577>>6)&0x3F)), (char)(0x80|(59577&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("E8B9"); }
-            ImGui::TableNextColumn();
-            { const char g[4] = { (char)(0xE0|(60319>>12)), (char)(0x80|((60319>>6)&0x3F)), (char)(0x80|(60319&0x3F)), 0 }; ImGui::Button(g, ImVec2(52, 34)); ImGui::SameLine(); ImGui::TextUnformatted("EB9F"); }
-            ImGui::EndTable();
+    // —— 叠加界面：用 ImGui 的前景绘制列表画矢量图标与信息面板 ——
+    // 命中区域仍由 cursorPos 决定（见 OnMouseMove），这里只负责画。
+
+    static ImU32 imColor(uint32_t argb, float alphaScale = 1.0f) {
+        const int alpha = static_cast<int>(((argb >> 24) & 0xFF) * alphaScale);
+        return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, alpha);
+    }
+
+    bool hasOverlayUi() const {
+        return extraUIFlag != ShowExtraUI::none && winWidth >= dp(100) && winHeight >= dp(100);
+    }
+
+    // 圆形按钮：底 + 描边 + 居中图标
+    void drawHudButton(ImDrawList* drawList, float centerX, float centerY, float radius,
+        const char* icon, bool emphasized) {
+        const ImVec2 center(centerX, centerY);
+
+        const ImU32 background = emphasized
+            ? imColor(GlobalVar::currentTheme.CHECK, 0.92f)
+            : imColor(GlobalVar::currentTheme.BG_DEEP, 0.75f);
+        const ImU32 border = imColor(GlobalVar::currentTheme.FG_LIGHT, 0.30f);
+        const ImU32 foreground = imColor(GlobalVar::currentTheme.FG_LIGHT, 1.0f);
+
+        drawList->AddCircleFilled(center, radius, background, 48);
+        drawList->AddCircle(center, radius, border, 48, 2.0f * uiScale());
+
+        const ImVec2 textSize = ImGui::CalcTextSize(icon);
+        drawList->AddText({ centerX - textSize.x * 0.5f, centerY - textSize.y * 0.5f }, foreground, icon);
+    }
+
+    void drawOverlayUi() {
+        if (!hasOverlayUi())
+            return;
+
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        const float scale = uiScale();
+        const float radius = 22.0f * scale;
+        const float margin = 6.0f * scale;
+        const float leftX = radius + margin;
+        const float rightX = winWidth - radius - margin;
+
+        switch (extraUIFlag) {
+        case ShowExtraUI::rotateLeftButton:
+            drawHudButton(drawList, leftX, winHeight * 0.125f, radius, jark::ui::icon::kRotateLeft, false);
+            break;
+
+        case ShowExtraUI::leftArrow:
+            drawHudButton(drawList, leftX, winHeight * 0.5f, radius, jark::ui::icon::kPrev, false);
+            break;
+
+        case ShowExtraUI::printer:
+            drawHudButton(drawList, leftX, winHeight * 0.875f, radius, jark::ui::icon::kPrint, false);
+            break;
+
+        case ShowExtraUI::setting:
+            drawHudButton(drawList, rightX, winHeight * 0.875f, radius, jark::ui::icon::kSetting, false);
+            break;
+
+        case ShowExtraUI::rightArrow:
+            drawHudButton(drawList, rightX, winHeight * 0.5f, radius, jark::ui::icon::kNext, false);
+            break;
+
+        case ShowExtraUI::rotateRightButton:
+            drawHudButton(drawList, rightX, winHeight * 0.125f, radius, jark::ui::icon::kRotateRight, false);
+            break;
+
+        case ShowExtraUI::animationBar: {
+            // 4 个按钮：上一帧 / 暂停继续 / 下一帧 / 保存当前帧
+            const float slot = 50.0f * scale;
+            const float barWidth = slot * 4.0f;
+            const float barHeight = slot;
+            const float left = (winWidth - barWidth) * 0.5f;
+            const float centerY = barHeight * 0.5f;
+
+            drawList->AddRectFilled({ left, 0 }, { left + barWidth, barHeight },
+                imColor(GlobalVar::currentTheme.BG_DEEP, 0.78f), barHeight * 0.5f);
+
+            const bool paused = curPar.isAnimationPause;
+            drawHudButton(drawList, left + slot * 0.5f, centerY, radius * 0.82f, jark::ui::icon::kPrev, false);
+            drawHudButton(drawList, left + slot * 1.5f, centerY, radius * 0.82f,
+                paused ? jark::ui::icon::kPlay : jark::ui::icon::kPause, true);
+            drawHudButton(drawList, left + slot * 2.5f, centerY, radius * 0.82f, jark::ui::icon::kNext, false);
+            drawHudButton(drawList, left + slot * 3.5f, centerY, radius * 0.82f, jark::ui::icon::kSave, false);
+        } break;
         }
-        ImGui::End();
+    }
+
+    // EXIF/AI 提示词面板：半透明底 + 自动折行的文本
+    void drawExifPanel() {
+        if (!showExif || winWidth < dp(100) || winHeight < dp(100))
+            return;
+
+        if (!curPar.imageAssetPtr || curPar.imageAssetPtr->exifInfo.empty())
+            return;
+
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        const float padding = static_cast<float>(dp(12));
+        const float panelWidth = (winWidth - padding * 2.0f) / 4.0f;
+        const float panelHeight = winHeight - padding * 2.0f;
+
+        drawList->AddRectFilled({ padding, padding }, { padding + panelWidth, padding + panelHeight },
+            imColor(GlobalVar::currentTheme.BG_DEEP, 0.82f), 8.0f * uiScale());
+
+        const float lineHeight = ImGui::GetTextLineHeight();
+        const float textLeft = padding + dp(10);
+        const float textRight = padding + panelWidth - dp(10);
+        drawWrappedText(drawList, textLeft, padding + dp(8), textRight, panelHeight - dp(16),
+            curPar.imageAssetPtr->exifInfo, imColor(GlobalVar::currentTheme.FG));
+        (void)lineHeight;
+    }
+
+    // 按宽度折行绘制（CJK 逐字断行即可；拉丁文尽量在空格处断开）
+    void drawWrappedText(ImDrawList* drawList, float left, float top, float right, float maxHeight,
+        const std::string& text, ImU32 color) {
+        const float lineHeight = ImGui::GetTextLineHeight();
+        const float wrapWidth = right - left;
+        if (wrapWidth <= 8.0f)
+            return;
+
+        float y = top;
+        size_t index = 0;
+        std::string line;
+        std::string lastBreakCandidate; // 记录可断行处（空格后）
+
+        auto flushLine = [&](const std::string& value) {
+            if (value.empty())
+                return;
+            drawList->AddText({ left, y }, color, value.c_str());
+            y += lineHeight;
+        };
+
+        while (index < text.size() && y + lineHeight <= top + maxHeight) {
+            const size_t charStart = index;
+            const unsigned char byte = static_cast<unsigned char>(text[index]);
+
+            size_t charLength = 1;
+            if ((byte & 0xE0) == 0xC0) charLength = 2;
+            else if ((byte & 0xF0) == 0xE0) charLength = 3;
+            else if ((byte & 0xF8) == 0xF0) charLength = 4;
+            charLength = (std::min)(charLength, text.size() - index);
+
+            const std::string character = text.substr(charStart, charLength);
+            const int codePoint = charLength == 1 ? byte : -1;
+
+            if (codePoint == '\n') {
+                flushLine(line);
+                line.clear();
+                index += charLength;
+                continue;
+            }
+
+            line += character;
+
+            if (ImGui::CalcTextSize(line.c_str()).x > wrapWidth) {
+                // 超宽：退掉最后一个字符，输出当前行，把它挪到下一行
+                line.resize(line.size() - character.size());
+                flushLine(line);
+                line = character;
+            }
+
+            index += charLength;
+        }
+
+        flushLine(line);
+    }
+
+    void DrawUi() override {
+        auto& uiHost = jark::ui::UiHost::instance();
+        uiHost.setUiVisible(hasOverlayUi() || showExif || SettingWindow::instance().visible());
+
+        drawOverlayUi();
+        drawExifPanel();
+        SettingWindow::instance().draw();
     }
 
     void DrawScene() {
@@ -1891,17 +1850,8 @@ public:
         }
 
         if (operateAction.action == ActionENUM::setting) {
-            if (Setting::isWorking) {
-                Setting::curTabIdx = operateAction.value1;
-                PostMessageW(Setting::hwnd, MatWindow::WM_MATWINDOW_DRAW_REQUEST, 0, 0);
-                jarkUtils::activateWindow(Setting::hwnd);
-            }
-            else {
-                std::thread settingThread([](int tabIdx) {
-                    Setting setting(tabIdx);
-                    }, operateAction.value1);
-                settingThread.detach();
-            }
+            SettingWindow::instance().open(operateAction.value1);
+            operateQueue.push({ ActionENUM::refresh });
             return;
         }
 
@@ -2145,8 +2095,6 @@ public:
         }
 
         drawCanvas(srcImg, mainCanvas);
-        drawExifInfo(mainCanvas);
-        drawExtraUI(mainCanvas);
 
         updateWindowCaption();
 
@@ -2183,7 +2131,6 @@ public:
 
     void OnRequestExitOtherWindows() {
         Printer::requestExit();
-        Setting::requestExit();
         BatchWindow::requestExit();
         EditorWindow::requestExit();
     }
