@@ -4,3 +4,6 @@
 .codegraph
 build
 x64
+
+# 解码自检报告与批量输出
+decode-probe.txt
