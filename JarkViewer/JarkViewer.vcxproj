@@ -159,9 +159,11 @@
     <ClInclude Include="include\blpDecoder.h" />
     <ClInclude Include="include\ColorManager.h" />
     <ClInclude Include="include\D3D11App.h" />
+    <ClInclude Include="include\DecodeProbe.h" />
     <ClInclude Include="include\exifParse.h" />
     <ClInclude Include="include\FileAssociationNaming.h" />
     <ClInclude Include="include\FileAssociationManager.h" />
+    <ClInclude Include="include\FormatSniffer.h" />
     <ClInclude Include="include\ImageDatabase.h" />
     <ClInclude Include="include\LRU.h" />
     <ClInclude Include="include\Printer.h" />
@@ -180,7 +182,9 @@
     <ClCompile Include="src\blpDecoder.cpp" />
     <ClCompile Include="src\ColorManager.cpp" />
     <ClCompile Include="src\D3D11App.cpp" />
+    <ClCompile Include="src\DecodeProbe.cpp" />
     <ClCompile Include="src\exifParse.cpp" />
+    <ClCompile Include="src\FormatSniffer.cpp" />
     <ClCompile Include="src\ImageDatabase.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\jarkUtils.cpp" />

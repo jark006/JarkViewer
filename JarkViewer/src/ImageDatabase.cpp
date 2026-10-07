@@ -13,6 +13,7 @@
 #include "blpDecoder.h"
 
 #include <intrin.h>
+#include <cwctype>
 #include <limits>
 #include <memory>
 #pragma intrinsic(_BitScanForward)
@@ -865,11 +866,11 @@ ImageAsset ImageDatabase::loadLEP(wstring_view path, std::span<const uint8_t> bu
     bool ok = decode_lepton(buf.data(), buf.size(), &jpeg_data, &jpeg_size);
     if (!ok) {
         JARK_LOG("Failed to decode LEP file, decode_lepton failed: {}", jarkUtils::wstringToUtf8(path));
-        return { ImageFormat::Still, getErrorTipsMat() };
+        return {};
     }
     if (!jpeg_data) {
         JARK_LOG("Failed to decode LEP file, jpeg_data is null: {}", jarkUtils::wstringToUtf8(path));
-        return { ImageFormat::Still, getErrorTipsMat() };
+        return {};
     }
 
     auto image = cv::imdecode(cv::Mat(1, jpeg_size, CV_8UC1, jpeg_data), cv::IMREAD_UNCHANGED);
@@ -877,7 +878,7 @@ ImageAsset ImageDatabase::loadLEP(wstring_view path, std::span<const uint8_t> bu
     if (image.empty()) {
         free_lepton_buffer(jpeg_data, jpeg_size);
         JARK_LOG("Failed to decode JPEG data from LEP file: {}", jarkUtils::wstringToUtf8(path));
-        return { ImageFormat::Still, getErrorTipsMat() };
+        return {};
     }
 
     ImageAsset imageAsset;
@@ -982,8 +983,8 @@ static cv::Mat ddsBuildCubemapCross(const std::array<cv::Mat, 6>& faces, int fac
 ImageAsset ImageDatabase::loadDDS(wstring_view path, std::span<const uint8_t> buf) {
     using namespace DirectX;
 
-    auto makeError = [this]() -> ImageAsset {
-        return { ImageFormat::Still, getErrorTipsMat() };
+    auto makeError = []() -> ImageAsset {
+        return {};
     };
 
     if (buf.empty()) {
@@ -2887,7 +2888,7 @@ ImageAsset ImageDatabase::loadLivp(wstring_view path, std::span<const uint8_t> f
     auto [imageFileData, videoFileData, imageExt] = unzipLivp(fileBuf);
     if (imageFileData.empty()) {
         auto exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        return { ImageFormat::Still, getErrorTipsMat(), {}, {}, exifInfo };
+        return { ImageFormat::None, {}, {}, {}, exifInfo };
     }
 
     cv::Mat img;
@@ -3014,7 +3015,7 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
 
     if (img.empty()) {
         auto exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        return { ImageFormat::Still, getErrorTipsMat(), {}, {}, exifInfo };
+        return { ImageFormat::None, {}, {}, {}, exifInfo };
     }
 
     auto exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size()) +
@@ -3049,6 +3050,293 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
     return imageAsset;
 }
 
+namespace {
+    // 取小写扩展名（不含点）。只看文件名部分，避免目录名中的点造成误判。
+    wstring lowerExtension(const wstring& path) {
+        const auto slashPos = path.find_last_of(L"\\/");
+        const auto dotPos = path.rfind(L'.');
+        if (dotPos == std::wstring::npos || (slashPos != std::wstring::npos && dotPos < slashPos))
+            return {};
+
+        auto ext = path.substr(dotPos + 1);
+        for (auto& c : ext)
+            c = static_cast<wchar_t>(std::towlower(c));
+        return ext;
+    }
+
+    // EXIF 宽高信息使用的参考帧（静态图取首帧，动图取第一帧）
+    const cv::Mat& referenceFrameOf(const ImageAsset& imageAsset) {
+        static const cv::Mat emptyFrame;
+        if (!imageAsset.primaryFrame.empty())
+            return imageAsset.primaryFrame;
+        return imageAsset.frames.empty() ? emptyFrame : imageAsset.frames.front();
+    }
+}
+
+bool ImageDatabase::isDecodeFailed(const ImageAsset& imageAsset) noexcept {
+    return imageAsset.format == ImageFormat::None ||
+        (imageAsset.primaryFrame.empty() && imageAsset.frames.empty());
+}
+
+void ImageDatabase::applyExifInfo(ImageAsset& imageAsset, const wstring& path, std::span<const uint8_t> buf, ExifPolicy policy) {
+    if (policy == ExifPolicy::None)
+        return;
+
+    const cv::Mat& ref = referenceFrameOf(imageAsset);
+    const int width = ref.empty() ? 0 : ref.cols;
+    const int height = ref.empty() ? 0 : ref.rows;
+
+    imageAsset.exifInfo = ExifParse::getSimpleInfo(path, width, height, buf.data(), buf.size());
+
+    if (policy == ExifPolicy::Full || policy == ExifPolicy::FullWithOrientation)
+        imageAsset.exifInfo += ExifParse::getExif(path, buf.data(), buf.size());
+
+    if (policy != ExifPolicy::FullWithOrientation || imageAsset.primaryFrame.empty())
+        return;
+
+    // RAW 解码过程已应用裁剪/旋转/镜像，不再重复处理
+    if (supportRaw.contains(lowerExtension(path)))
+        return;
+
+    const char* const orientationLabel = getUIString(53);
+    const size_t idx = imageAsset.exifInfo.find(orientationLabel);
+    if (idx != string::npos)
+        handleExifOrientation(imageAsset.exifInfo[idx + strlen(orientationLabel)] - '0', imageAsset.primaryFrame);
+}
+
+// 按格式分派到具体解码器。解码失败统一返回 format == ImageFormat::None（不带错误提示图），
+// 以便 myLoader 继续尝试后续路由。
+ImageAsset ImageDatabase::decodeByFormat(jark::FileFormat format, const wstring& path, std::span<const uint8_t> buf) {
+    switch (format) {
+    case jark::FileFormat::Video: {
+        // 默认不会打开视频；若强行打开则最多解码 MAX_VIDEO_FRAMES 帧
+        auto frames = DecodeVideoFrames(buf.data(), buf.size(), MAX_VIDEO_FRAMES);
+        if (frames.empty()) {
+            auto img = loadImageWinCOM(path, buf);
+            if (img.empty())
+                return {};
+
+            ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+            applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+            return imageAsset;
+        }
+
+        ImageAsset imageAsset;
+        if (frames.size() == 1) {
+            imageAsset.format = ImageFormat::Still;
+            imageAsset.primaryFrame = std::move(frames[0]);
+        }
+        else {
+            imageAsset.format = ImageFormat::Animated;
+            imageAsset.frames = std::move(frames);
+            imageAsset.frameDurations.assign(imageAsset.frames.size(), 33);
+        }
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Png:
+    case jark::FileFormat::Gif:
+    case jark::FileFormat::WebP: {
+        // OpenCV 支持 gif/png(apng)/webp 动图
+        auto imageAsset = loadAnimation(path, buf);
+        if (isDecodeFailed(imageAsset))
+            return {};
+
+        applyExifInfo(imageAsset, path, buf,
+            format == jark::FileFormat::Gif ? ExifPolicy::SimpleOnly : ExifPolicy::Full);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Jpeg:
+        // 可能是 Android 动态照片（MotionPhoto）
+        return loadMotionPhoto(path, buf, true);
+
+    case jark::FileFormat::Heif:
+        return loadMotionPhoto(path, buf, false);
+
+    case jark::FileFormat::Avif: {
+        auto imageAsset = loadAvif(path, buf);
+        if (isDecodeFailed(imageAsset)) {
+            auto img = loadImageWinCOM(path, buf);
+            if (img.empty())
+                return {};
+            imageAsset = ImageAsset{ ImageFormat::Still, std::move(img) };
+        }
+
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::FullWithOrientation);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Jxl: {
+        auto imageAsset = loadJXL(path, buf);
+        if (isDecodeFailed(imageAsset)) {
+            auto img = loadImageWinCOM(path, buf);
+            if (img.empty())
+                return {};
+            imageAsset = ImageAsset{ ImageFormat::Still, std::move(img) };
+        }
+
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::Full);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Wp2: {
+        auto imageAsset = loadWP2(path, buf);
+        if (isDecodeFailed(imageAsset))
+            return {};
+
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::Full);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Tiff: {
+        // 多页 TIFF；失败时退化为 WIC
+        auto imageAsset = loadTiff(path, buf);
+        if (isDecodeFailed(imageAsset)) {
+            auto img = loadImageWinCOM(path, buf);
+            if (img.empty())
+                return {};
+            imageAsset = ImageAsset{ ImageFormat::Still, std::move(img) };
+        }
+
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::Full);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Raw: {
+        auto img = loadRaw(path, buf);
+        if (img.empty())
+            img = loadImageWinCOM(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::Full); // RAW 不重复应用方向
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Psd: {
+        auto img = loadSTB(path, buf);
+        if (img.empty())
+            img = loadPSD(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::FullWithOrientation);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Ico: {
+        auto [img, exifInfo] = loadICO(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        imageAsset.exifInfo = std::move(exifInfo);
+        if (imageAsset.exifInfo.empty())
+            applyExifInfo(imageAsset, path, buf, ExifPolicy::FullWithOrientation);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Tga:
+    case jark::FileFormat::Pic:
+    case jark::FileFormat::Hdr: {
+        auto img = loadSTB(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Svg: {
+        auto img = loadSVG(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Qoi: {
+        auto img = loadQOI(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Pcx: {
+        auto img = loadPCX(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Blp: {
+        auto img = loadBLP(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Pfm: {
+        auto img = loadPFM(path, buf);
+        if (img.empty())
+            return {};
+
+        ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+        applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
+        return imageAsset;
+    }
+
+    case jark::FileFormat::Dds:
+        return loadDDS(path, buf); // 自带 exifInfo
+
+    case jark::FileFormat::Lep:
+        return loadLEP(path, buf); // 自带 exifInfo 与方向处理
+
+    case jark::FileFormat::Livp:
+        return loadLivp(path, buf);
+
+    // 以下格式交给通用兜底（OpenCV → WIC）
+    case jark::FileFormat::Bmp:
+    case jark::FileFormat::Jxr:
+    case jark::FileFormat::Jp2:
+    case jark::FileFormat::Exr:
+    case jark::FileFormat::Pnm:
+    case jark::FileFormat::Ras:
+    case jark::FileFormat::Unknown:
+    default:
+        return {};
+    }
+}
+
+// 通用兜底解码：OpenCV → WIC
+ImageAsset ImageDatabase::decodeFallback(const wstring& path, std::span<const uint8_t> buf) {
+    auto img = loadImageOpenCV(path, buf);
+    if (img.empty())
+        img = loadImageWinCOM(path, buf);
+    if (img.empty())
+        return {};
+
+    ImageAsset imageAsset{ ImageFormat::Still, std::move(img) };
+    applyExifInfo(imageAsset, path, buf, ExifPolicy::FullWithOrientation);
+    return imageAsset;
+}
+
 ImageAsset ImageDatabase::myLoader(const wstring& path) {
     FunctionTimeCount FunctionTimeCount(__func__);
     JARK_LOG("loading: {}", jarkUtils::wstringToUtf8(path));
@@ -3065,298 +3353,68 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
     }
 
     auto fileBuf = fileReader.view();
+    const auto ext = lowerExtension(path);
 
-    auto dotPos = path.rfind(L'.');
-    auto ext = wstring((dotPos != std::wstring::npos && dotPos < path.size() - 1) ?
-        path.substr(dotPos + 1) : path);
-    for (auto& c : ext)	c = std::tolower(c);
-    
-    if (videoExt.contains(ext)) { // 默认不会打开视频，若强行打开则最多解码 MAX_VIDEO_FRAMES 帧
-        ImageAsset imageAsset;
-        auto frames = DecodeVideoFrames(fileBuf.data(), fileBuf.size(), MAX_VIDEO_FRAMES);
+    // 路由依据：优先文件头（内容即真相），扩展名仅用于文件头无法表达的情况
+    const auto sniffedFormat = jark::sniffFileFormat(fileBuf);
+    auto extFormat = jark::fileFormatFromExtension(ext);
+    if (extFormat == jark::FileFormat::Unknown && supportRaw.contains(ext))
+        extFormat = jark::FileFormat::Raw;
 
-        if (frames.empty()) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = getErrorTipsMat();
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        }
-        else if (frames.size() == 1) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = std::move(frames[0]);
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows, fileBuf.data(), fileBuf.size());
-        }
-        else {
-            imageAsset.format = ImageFormat::Animated;
-            imageAsset.frames = std::move(frames);
-            imageAsset.frameDurations.resize(imageAsset.frames.size(), 33);
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size());
-        }
-        return imageAsset;
-    }
-    else if (opencvAnimationExt.contains(ext)) { // 动态图
-        auto imageAsset = loadAnimation(path, fileBuf);
+    JARK_LOG("route: sniff={} ext={} ({})",
+        jark::fileFormatName(sniffedFormat),
+        jark::fileFormatName(extFormat),
+        jarkUtils::wstringToUtf8(path));
 
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = getErrorTipsMat();
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
+    jark::FileFormat candidates[2] = {};
+    size_t candidateCount = 0;
+    const auto pushCandidate = [&](jark::FileFormat format) {
+        if (format == jark::FileFormat::Unknown)
+            return;
+        for (size_t i = 0; i < candidateCount; ++i) {
+            if (candidates[i] == format)
+                return;
+        }
+        if (candidateCount < std::size(candidates))
+            candidates[candidateCount++] = format;
+    };
+
+    // RAW / 视频 / 实况等格式的扩展名携带文件头无法表达的信息，优先按扩展名路由
+    if (jark::isExtensionAuthoritative(extFormat))
+        pushCandidate(extFormat);
+    pushCandidate(sniffedFormat);
+    pushCandidate(extFormat);
+
+    string failedExifInfo;
+    for (size_t i = 0; i < candidateCount; ++i) {
+        auto imageAsset = decodeByFormat(candidates[i], path, fileBuf);
+        if (!isDecodeFailed(imageAsset)) {
+            // 解码器未提供 EXIF 时按通用策略补齐
+            if (imageAsset.exifInfo.empty())
+                applyExifInfo(imageAsset, path, fileBuf, ExifPolicy::FullWithOrientation);
             return imageAsset;
         }
-        else if (imageAsset.format == ImageFormat::Still) {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
-                fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-            return imageAsset;
-        }
 
-        // 以下情况是动图
-        if (ext == L"gif") {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size());
-        }
-        else {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
+        JARK_LOG("decode failed by {}: {}",
+            jark::fileFormatName(candidates[i]), jarkUtils::wstringToUtf8(path));
+        if (failedExifInfo.empty())
+            failedExifInfo = std::move(imageAsset.exifInfo);
+    }
+
+    auto imageAsset = decodeFallback(path, fileBuf);
+    if (!isDecodeFailed(imageAsset))
         return imageAsset;
-    }
-    else if (ext == L"jxl") { //静态或动画
-        auto imageAsset = loadJXL(path, fileBuf);
 
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.primaryFrame = loadImageWinCOM(path, fileBuf);
-            if (!imageAsset.primaryFrame.empty()) {
-                imageAsset.format = ImageFormat::Still;
-            }
-        }
+    if (imageAsset.exifInfo.empty())
+        imageAsset.exifInfo = std::move(failedExifInfo);
+    if (imageAsset.exifInfo.empty())
+        imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
 
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = getErrorTipsMat();
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        }
-        else if (imageAsset.format == ImageFormat::Still) {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
-                fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        else {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        return imageAsset;
-    }
-    else if (ext == L"webm") { //静态或动画
-        ImageAsset imageAsset;
-        auto frames = DecodeVideoFrames(fileBuf.data(), fileBuf.size(), MAX_VIDEO_FRAMES);
-
-        if (frames.empty()) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = loadImageWinCOM(path, fileBuf);
-            if (imageAsset.primaryFrame.empty()) {
-                imageAsset.primaryFrame = getErrorTipsMat();
-                imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-            }
-            else {
-                imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
-                    fileBuf.data(), fileBuf.size());
-            }
-        }
-        else if (frames.size() == 1) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = std::move(frames[0]);
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
-                fileBuf.data(), fileBuf.size());
-        }
-        else {
-            imageAsset.format = ImageFormat::Animated;
-            imageAsset.frames = std::move(frames);
-            imageAsset.frameDurations = std::vector<int>(imageAsset.frames.size(), 33);
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        return imageAsset;
-    }
-    else if (ext == L"wp2") { // webp2 静态或动画
-        auto imageAsset = loadWP2(path, fileBuf);
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = getErrorTipsMat();
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        }
-        else if (imageAsset.format == ImageFormat::Still) {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
-                fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        else {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        return imageAsset;
-    }
-    else if (ext == L"avif" || ext == L"avifs") { // avif 静态或动画
-        auto imageAsset = loadAvif(path, fileBuf);
-
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.primaryFrame = loadImageWinCOM(path, fileBuf);
-            if (!imageAsset.primaryFrame.empty()) {
-                imageAsset.format = ImageFormat::Still;
-            }
-        }
-
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = getErrorTipsMat();
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        }
-        else if (imageAsset.format == ImageFormat::Still) {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
-                fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-
-            const size_t idx = imageAsset.exifInfo.find(getUIString(53));
-            if (idx != string::npos) {
-                handleExifOrientation(imageAsset.exifInfo[idx + strlen(getUIString(53))] - '0', imageAsset.primaryFrame);
-            }
-        }
-        else {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        return imageAsset;
-    }
-    else if (ext == L"tiff" || ext == L"tif") { // tiff 多页图像
-        auto imageAsset = loadTiff(path, fileBuf);
-
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.primaryFrame = loadImageWinCOM(path, fileBuf);
-            if (!imageAsset.primaryFrame.empty()) {
-                imageAsset.format = ImageFormat::Still;
-            }
-        }
-
-        if (imageAsset.format == ImageFormat::None) {
-            imageAsset.format = ImageFormat::Still;
-            imageAsset.primaryFrame = getErrorTipsMat();
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        }
-        else if (imageAsset.format == ImageFormat::Still) {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.primaryFrame.cols, imageAsset.primaryFrame.rows,
-                fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        else {
-            imageAsset.exifInfo = ExifParse::getSimpleInfo(path, imageAsset.frames[0].cols, imageAsset.frames[0].rows, fileBuf.data(), fileBuf.size())
-                + ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        }
-        return imageAsset;
-    }
-    else if (ext == L"lep") {
-        return loadLEP(path, fileBuf);
-    }
-    else if (ext == L"dds") {
-        return loadDDS(path, fileBuf);
-    }
-
-    // 实况照片 包含一张图片和一段简短视频
-    if (ext == L"livp") {
-        return loadLivp(path, fileBuf);
-    }
-    else if (ext == L"jpg" || ext == L"jpeg") {
-        return loadMotionPhoto(path, fileBuf, true);
-    }
-    else if (ext == L"heic" || ext == L"heif") {
-        return loadMotionPhoto(path, fileBuf);
-    }
-
-    //以下是静态图
-    cv::Mat img;
-    string exifInfo;
-
-    if (ext == L"jxr") {
-        img = loadImageWinCOM(path, fileBuf);
-    }
-    else if (ext == L"tga" || ext == L"hdr" || ext == L"pic") {
-        img = loadSTB(path, fileBuf);
-        exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size());
-    }
-    else if (ext == L"svg") {
-        img = loadSVG(path, fileBuf);
-        exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size());
-        if (img.empty()) {
-            img = getErrorTipsMat();
-        }
-    }
-    else if (ext == L"qoi") {
-        img = loadQOI(path, fileBuf);
-        exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size());
-        if (img.empty()) {
-            img = getErrorTipsMat();
-        }
-    }
-    else if (ext == L"pcx") {
-        img = loadPCX(path, fileBuf);
-        exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size());
-        if (img.empty()) {
-            img = getErrorTipsMat();
-        }
-    }
-    else if (ext == L"blp") {
-        img = loadBLP(path, fileBuf);
-        exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size());
-        if (img.empty()) {
-            img = getErrorTipsMat();
-        }
-    }
-    else if (ext == L"ico" || ext == L"icon") {
-        std::tie(img, exifInfo) = loadICO(path, fileBuf);
-    }
-    else if (ext == L"psd" || ext == L"psdt") {
-        img = loadSTB(path, fileBuf);
-        if (img.empty())
-            img = loadPSD(path, fileBuf);
-        if (img.empty())
-            img = getErrorTipsMat();
-    }
-    else if (ext == L"pfm") {
-        img = loadPFM(path, fileBuf);
-        if (img.empty()) {
-            img = getErrorTipsMat();
-            exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
-        }
-        else {
-            exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size());
-        }
-    }
-    else if (supportRaw.contains(ext)) {
-        img = loadRaw(path, fileBuf);
-        if (img.empty())
-            img = loadImageWinCOM(path, fileBuf);
-        if (img.empty())
-            img = getErrorTipsMat();
-    }
-
-    if (img.empty())
-        img = loadImageOpenCV(path, fileBuf);
-    if (img.empty())
-        img = loadImageWinCOM(path, fileBuf);
-
-    if (exifInfo.empty()) {
-        auto exifTmp = ExifParse::getExif(path, fileBuf.data(), fileBuf.size());
-        if (!supportRaw.contains(ext)) { // RAW 格式已经在解码过程应用了裁剪/旋转/镜像等操作
-            const size_t idx = exifTmp.find(getUIString(53));
-            if (idx != string::npos) {
-                handleExifOrientation(exifTmp[idx + strlen(getUIString(53))] - '0', img);
-            }
-        }
-        exifInfo = ExifParse::getSimpleInfo(path, img.cols, img.rows, fileBuf.data(), fileBuf.size()) + exifTmp;
-    }
-
-    if (img.empty())
-        img = getErrorTipsMat();
-
-    return { ImageFormat::Still, img, {}, {}, exifInfo };
+    imageAsset.format = ImageFormat::Still;
+    imageAsset.primaryFrame = getErrorTipsMat();
+    return imageAsset;
 }
+
 
 ImageAsset ImageDatabase::loader(const wstring& path) {
     auto imageAsset = myLoader(path);
