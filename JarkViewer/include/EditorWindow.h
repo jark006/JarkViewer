@@ -57,6 +57,8 @@ public:
 
         const float scale = jark::ui::UiHost::instance().scale();
         ImGui::SetNextWindowSize({ 1100.0f * scale, 700.0f * scale }, ImGuiCond_FirstUseEver);
+        // 不能再缩小到藏住工具栏/侧栏
+        ImGui::SetNextWindowSizeConstraints({ 840.0f * scale, 520.0f * scale }, { FLT_MAX, FLT_MAX });
         if (focusRequested_) {
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
             focusRequested_ = false;
@@ -133,11 +135,11 @@ private:
         drawList->AddRectFilled({ origin.x, origin.y }, { origin.x + region.x, origin.y + region.y },
             ImGui::GetColorU32(ImGuiCol_FrameBg));
 
+        const ImVec2 imageMax(imagePos.x + imageSize.x, imagePos.y + imageSize.y);
         if (canvasTexture_)
-            drawList->AddImage(canvasTexture_, imagePos, { imagePos.x + imageSize.x, imagePos.y + imageSize.y });
-        else
-            drawList->AddRect(imagePos, { imagePos.x + imageSize.x, imagePos.y + imageSize.y },
-                ImGui::GetColorU32(ImGuiCol_Border));
+            drawList->AddImage(canvasTexture_, imagePos, imageMax);
+        // 图像边框：透明图也能看出可编辑范围
+        drawList->AddRect(imagePos, imageMax, ImGui::GetColorU32(ImGuiCol_Border));
 
         drawSelectionOverlay(drawList);
         drawActiveShape(drawList);
@@ -156,17 +158,25 @@ private:
     }
 
     cv::Point toImage(const ImVec2& screen) const {
-        return {
-            static_cast<int>(std::lround((screen.x - imageRect_.x) / viewScale_)),
-            static_cast<int>(std::lround((screen.y - imageRect_.y) / viewScale_))
-        };
+        const int width = document_.width();
+        const int height = document_.height();
+        const int x = static_cast<int>(std::lround((screen.x - imageRect_.x) / viewScale_));
+        const int y = static_cast<int>(std::lround((screen.y - imageRect_.y) / viewScale_));
+        // 拖到画面外时夹回图内：标注/裁剪坐标必须落在图像上
+        return { std::clamp(x, 0, (std::max)(width - 1, 0)), std::clamp(y, 0, (std::max)(height - 1, 0)) };
+    }
+
+    // 鼠标是否落在图像本身上（画布空白处不算）
+    bool isOnImage(const ImVec2& screen) const {
+        return screen.x >= imageRect_.x && screen.x < imageRect_.x + imageRect_.z &&
+            screen.y >= imageRect_.y && screen.y < imageRect_.y + imageRect_.w;
     }
 
     void handleCanvasDrawing(const ImVec2& mouse) {
         const bool isText = currentTool() == jark::AnnoTool::Text;
 
-        // 开始
-        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // 开始：必须点在图像上，点画布空白处不产生标注
+        if (ImGui::IsItemHovered() && isOnImage(mouse) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             if (currentTool() == jark::AnnoTool::Crop) {
                 selecting_ = true;
                 cropSelection_ = cv::Rect(toImage(mouse), cv::Size(0, 0));
@@ -496,7 +506,40 @@ private:
 
     void rebuildTexture() {
         textureDirty_ = false;
-        canvasTexture_ = jark::ui::UiHost::instance().textureFromImage(document_.committedImage(), 2);
+
+        const cv::Mat& image = document_.committedImage();
+        if (image.empty()) {
+            canvasTexture_ = 0;
+            return;
+        }
+
+        // 带透明通道的图先合成到棋盘格上，否则透明区域和画布底色一样，看不出可编辑范围
+        if (image.channels() == 4) {
+            // 棋盘格约 16 屏幕像素一格（画布固定适应窗口，尺度基本稳定）
+            const int gridWidth = std::clamp(static_cast<int>(16.0f / (viewScale_ > 0.0f ? viewScale_ : 1.0f)), 4, 64);
+            const uint32_t lightGrid = GlobalVar::currentTheme.WHITE_GRID;
+            const uint32_t darkGrid = GlobalVar::currentTheme.BLACK_GRID;
+
+            cv::Mat composed(image.rows, image.cols, CV_8UC3);
+            for (int y = 0; y < image.rows; ++y) {
+                const uint8_t* source = image.ptr<uint8_t>(y);
+                uint8_t* target = composed.ptr<uint8_t>(y);
+                for (int x = 0; x < image.cols; ++x) {
+                    const uint32_t grid = ((x / gridWidth + y / gridWidth) & 1) ? darkGrid : lightGrid;
+                    const int alpha = source[x * 4 + 3];
+                    for (int c = 0; c < 3; ++c) {
+                        const int gridChannel = (grid >> (c * 8)) & 0xFF; // 0xAARRGGBB -> BGR
+                        target[x * 3 + c] = static_cast<uint8_t>(
+                            (source[x * 4 + c] * alpha + gridChannel * (255 - alpha) + 255) >> 8);
+                    }
+                }
+            }
+
+            canvasTexture_ = jark::ui::UiHost::instance().textureFromImage(composed, 2);
+            return;
+        }
+
+        canvasTexture_ = jark::ui::UiHost::instance().textureFromImage(image, 2);
     }
 
     void undo() {

@@ -58,7 +58,7 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
 - `JarkViewer/include/BatchProcessor.h` 与 `src/BatchProcessor.cpp` 是批量处理逻辑（转换/缩放/旋转翻转/重命名/删除到回收站）：解码走工程内解码器（HEIC/AVIF/RAW 等也能参与转换），编码用 OpenCV；不依赖窗口，可用命令行 `--probe --batch <文件...> [--out-dir 目录] [--to 格式] [--max-edge N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--rename 前缀] [--overwrite]` 直接验证。
 - `JarkViewer/include/BatchWindow.h` 是批量处理窗口（Ctrl+B 或右键菜单打开，处理当前目录的图片列表），ImGui 界面，处理在工作线程执行、界面轮询进度。
 - `JarkViewer/include/ImageAdjust.h` 与 `src/ImageAdjust.cpp` 存放打印/编辑与批量共用的图像调整（亮度对比度、黑白/黑白文档/黑白抖动、反相、BGRA→白底 BGR），原先内嵌在 Printer.h 中。
-- `JarkViewer/include/ImageAnnotator.h` 与 `src/ImageAnnotator.cpp` 是标注模型与渲染（矩形/椭圆/箭头/直线/画笔/马赛克/文字），含撤销重做与裁剪，纯逻辑不依赖窗口；`--probe --annotate [--annotate-out 目录]` 用合成底图跑 28 项像素断言自检。`JarkViewer/include/EditorWindow.h` 是编辑与标注窗口（主窗口 Ctrl+E 或右键菜单打开）：画布**固定按适应窗口显示、不提供缩放/平移**（拖动绘制、裁剪框选，屏幕坐标与图像像素一一对应），右侧工具栏提供工具/颜色/线宽/字号/填充/撤销重做/旋转翻转反相/应用裁剪/另存为/复制到剪贴板/覆盖原文件；覆盖保存后置 `GlobalVar::isNeedReloadImageCache` 让主窗口重载。
+- `JarkViewer/include/ImageAnnotator.h` 与 `src/ImageAnnotator.cpp` 是标注模型与渲染（矩形/椭圆/箭头/直线/画笔/马赛克/文字），含撤销重做与裁剪，纯逻辑不依赖窗口；`--probe --annotate [--annotate-out 目录]` 用合成底图跑 28 项像素断言自检。`JarkViewer/include/EditorWindow.h` 是编辑与标注窗口（主窗口 Ctrl+E 或右键菜单打开）：画布**固定按适应窗口显示、不提供缩放/平移**（拖动绘制、裁剪框选，屏幕坐标与图像像素一一对应，**点击必须落在图像上才算**，画布空白处不产生标注），透明图会先合成棋盘格（`rebuildTexture()` 里对 CV_8UC4 做，格色取主题的 `BLACK_GRID`/`WHITE_GRID`）并画图像边框，否则看不出可编辑范围；右侧工具栏提供工具/颜色/线宽/字号/填充/撤销重做/旋转翻转反相/应用裁剪/另存为/复制到剪贴板/覆盖原文件（**png 保留透明通道**，jpg 透明区域铺白底，见 `jark::encodeAnnotatedImage`）；覆盖保存后置 `GlobalVar::isNeedReloadImageCache` 让主窗口重载。
 - 界面全部由 **Dear ImGui**（`JarkViewer/vendor/imgui`，Win32 + DX11 后端，随工程静态编译）绘制，
   宿主模块是 `JarkViewer/include/UiHost.h` 与 `src/UiHost.cpp`：创建上下文/后端、深浅两套主题
   （跟随 `GlobalVar::isCurrentUIDarkMode`）、按窗口 DPI 缩放字号与样式、系统字体（Segoe UI +
@@ -67,6 +67,9 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   “画布贴后缓冲 → ImGui 一帧 → Present”。
 - 各窗口都是 ImGui 窗口（不再是独立窗口线程）：`SettingWindow.h`（常规/文件关联/帮助/关于）、
   `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）。
+  每个窗口都用 `ImGui::SetNextWindowSizeConstraints()` 设了**最小尺寸**，别写小到把控件藏起来；
+  底部有固定内容（说明文字 + 按钮行）的页面要按实际高度给子区域留白（设置页的文件关联页就是这样
+  算的），否则整页会多出一条窗口滚动条。
   主窗口的悬停按钮/动图播放条用 `ImGui::GetForegroundDrawList()` 贴 `file/mainRes.png`
   雪碧图（200x200，切片见 `main.cpp` 的 `OverlayIcons`，按 `uiScale()` 拉伸绘制，
   换图标只改这张图或切片表），EXIF 面板仍用前景列表排版文字；命中区域仍是原来的 `cursorPos` 逻辑。

@@ -428,6 +428,27 @@ namespace {
             check(jpgBack.type() == CV_8UC3, "编码：jpg 为 3 通道");
         }
 
+        // 透明通道：透明底图另存为 png 时透明区域必须仍然是透的（jpg 不支持，铺白底）
+        {
+            cv::Mat alphaBase(120, 160, CV_8UC4, cv::Scalar(0, 0, 0, 0));
+            alphaBase(cv::Rect(40, 20, 80, 80)) = cv::Scalar(0, 200, 0, 255); // 不透明绿块
+            jark::AnnotatorDocument transparent(alphaBase);
+
+            std::vector<uint8_t> alphaPng;
+            check(jark::encodeAnnotatedImage(transparent.flatten(), L"png", alphaPng), "透明：png 编码成功");
+            cv::Mat alphaBack = cv::imdecode(alphaPng, cv::IMREAD_UNCHANGED);
+            check(alphaBack.type() == CV_8UC4 && alphaBack.at<cv::Vec4b>(10, 10)[3] == 0,
+                "透明：png 透明区域保持透明");
+            check(alphaBack.type() == CV_8UC4 && alphaBack.at<cv::Vec4b>(60, 80)[3] == 255,
+                "透明：png 不透明区域保持不透明");
+
+            std::vector<uint8_t> alphaJpg;
+            check(jark::encodeAnnotatedImage(transparent.flatten(), L"jpg", alphaJpg), "透明：jpg 编码成功");
+            cv::Mat alphaJpgBack = cv::imdecode(alphaJpg, cv::IMREAD_UNCHANGED);
+            check(alphaJpgBack.type() == CV_8UC3 && alphaJpgBack.at<cv::Vec3b>(10, 10)[0] > 240,
+                "透明：jpg 透明区域铺白底");
+        }
+
         // 真实图片：画一遍全部标注并保存，便于人眼确认
         if (!files.empty()) {
             const auto& path = files.front();

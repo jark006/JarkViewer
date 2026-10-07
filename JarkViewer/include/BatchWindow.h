@@ -63,6 +63,8 @@ public:
 
         const float scale = jark::ui::UiHost::instance().scale();
         ImGui::SetNextWindowSize({ 700.0f * scale, 580.0f * scale }, ImGuiCond_FirstUseEver);
+        // 不能再缩小到藏住任务/参数/进度与底部按钮
+        ImGui::SetNextWindowSizeConstraints({ 640.0f * scale, 460.0f * scale }, { FLT_MAX, FLT_MAX });
         if (focusRequested_) {
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
             focusRequested_ = false;

@@ -73,6 +73,8 @@ public:
 
         const float scale = jark::ui::UiHost::instance().scale();
         ImGui::SetNextWindowSize({ 760.0f * scale, 620.0f * scale }, ImGuiCond_FirstUseEver);
+        // 不能再缩小到藏住颜色模式/反相/另存为/打印这一行和两个滑块
+        ImGui::SetNextWindowSizeConstraints({ 760.0f * scale, 360.0f * scale }, { FLT_MAX, FLT_MAX });
         if (focusRequested_) {
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
             focusRequested_ = false;
@@ -137,16 +139,9 @@ private:
         if (ImGui::Checkbox(getUIString(kStrInvert), &invert_))
             previewDirty_ = true;
 
-        const float sliderWidth = 260.0f * scale;
-        ImGui::SetNextItemWidth(sliderWidth);
-        if (ImGui::SliderInt(getUIString(kStrBrightness), &brightness_, 0, 200, "%d"))
-            previewDirty_ = true;
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(sliderWidth);
-        if (ImGui::SliderInt(getUIString(kStrContrast), &contrast_, 0, 200, "%d"))
-            previewDirty_ = true;
-
+        // 另存为/打印紧跟在“反相”右边
         const float buttonWidth = 140.0f * scale;
+        ImGui::SameLine();
         if (ImGui::Button(getUIString(kStrSaveAs), { buttonWidth, 0 })) {
             saveToFile();
         }
@@ -154,9 +149,23 @@ private:
         if (ImGui::Button(getUIString(kStrPrint), { buttonWidth, 0 })) {
             print();
         }
+
+        // 标签放在控件左边
+        const float sliderWidth = 260.0f * scale;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(getUIString(kStrBrightness));
         ImGui::SameLine();
-        if (ImGui::Button(getUIString(kStrClose), { buttonWidth, 0 }))
-            close();
+        ImGui::SetNextItemWidth(sliderWidth);
+        if (ImGui::SliderInt("##brightness", &brightness_, 0, 200, "%d"))
+            previewDirty_ = true;
+
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(getUIString(kStrContrast));
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(sliderWidth);
+        if (ImGui::SliderInt("##contrast", &contrast_, 0, 200, "%d"))
+            previewDirty_ = true;
     }
 
     void drawPreview() {
@@ -341,7 +350,6 @@ private:
     static constexpr uint32_t kStrContrast = 90;    // 对比度
     static constexpr uint32_t kStrInvert = 108;     // 反相
     static constexpr uint32_t kStrSaveAs = 109;     // 另存为
-    static constexpr uint32_t kStrClose = 124;      // 关闭
     static constexpr uint32_t kStrPrint = 126;      // 打印
 
     bool visible_ = false;

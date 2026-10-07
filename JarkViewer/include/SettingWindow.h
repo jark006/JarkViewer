@@ -57,6 +57,8 @@ public:
         const std::string title = jarkUtils::wstringToUtf8(getUIStringW(39)) + "###settings";
 
         ImGui::SetNextWindowSize({ 660.0f * scale, 540.0f * scale }, ImGuiCond_FirstUseEver);
+        // 不能再缩小到藏住页签与底部按钮
+        ImGui::SetNextWindowSizeConstraints({ 600.0f * scale, 440.0f * scale }, { FLT_MAX, FLT_MAX });
         if (focusRequested_) {
             const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
             ImGui::SetNextWindowPos(center, ImGuiCond_Always, { 0.5f, 0.5f });
@@ -200,7 +202,14 @@ private:
         ensureExtensionList();
 
         const float scale = jark::ui::UiHost::instance().scale();
-        if (ImGui::BeginChild("extList", { 0, -70.0f * scale }, ImGuiChildFlags_Borders)) {
+
+        // 底部（说明文字按实际折行高度 + 按钮行）精确留白，否则整页会多出一条窗口滚动条
+        const float textHeight = ImGui::CalcTextSize(getUIString(11), nullptr, false,
+            ImGui::GetContentRegionAvail().x).y;
+        const float footerHeight = textHeight + ImGui::GetStyle().ItemSpacing.y +
+            ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
+
+        if (ImGui::BeginChild("extList", { 0, -footerHeight }, ImGuiChildFlags_Borders)) {
             const int columns = 8;
             if (ImGui::BeginTable("extTable", columns, ImGuiTableFlags_SizingStretchSame)) {
                 for (size_t index = 0; index < allSupportExt_.size(); ++index) {
