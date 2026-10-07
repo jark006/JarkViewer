@@ -224,12 +224,14 @@ public:
         return texture_;
     }
 
+    // uv 半像素内缩：放大绘制时边缘的双线性采样会掺进相邻格——播放条是亮的，
+    // 会把打印/设置图标的下边缘拉出一条亮线
     static constexpr ImVec2 uv0(const Slice& slice) {
-        return { slice.x / sheetWidth, slice.y / sheetHeight };
+        return { (slice.x + 0.5f) / sheetWidth, (slice.y + 0.5f) / sheetHeight };
     }
 
     static constexpr ImVec2 uv1(const Slice& slice) {
-        return { (slice.x + slice.w) / sheetWidth, (slice.y + slice.h) / sheetHeight };
+        return { (slice.x + slice.w - 0.5f) / sheetWidth, (slice.y + slice.h - 0.5f) / sheetHeight };
     }
 
 private:
@@ -1414,18 +1416,37 @@ public:
     bool slideshowActive = false;
     std::chrono::steady_clock::time_point slideshowNextAdvance{};
 
+    // 幻灯片自己开的窗口全屏（进来之前就全屏的话，退出播放时不要还原）
+    bool slideshowOwnsFullScreen = false;
+
     void toggleSlideshow() {
         slideshowActive = !slideshowActive;
         if (slideshowActive) {
             slideshowNextAdvance = std::chrono::steady_clock::now() +
                 std::chrono::seconds(std::clamp<uint32_t>(GlobalVar::settingParameter.pptTimeout, 1, 300));
+
+            // 幻灯片全屏播放
+            slideshowOwnsFullScreen = !jarkUtils::IsFullScreen();
+            if (slideshowOwnsFullScreen)
+                jarkUtils::SetFullScreen(m_hWnd, true);
+
             JARK_LOG("幻灯片播放开始：顺序={} 间隔={}s", GlobalVar::settingParameter.pptOrder,
                 GlobalVar::settingParameter.pptTimeout);
         }
         else {
+            if (slideshowOwnsFullScreen) {
+                jarkUtils::SetFullScreen(m_hWnd, false);
+                slideshowOwnsFullScreen = false;
+            }
             JARK_LOG("幻灯片播放结束");
         }
         updateWindowCaption();
+    }
+
+    // 播放结束（到点发现只有一张图时也要还原全屏）
+    void stopSlideshow() {
+        if (slideshowActive)
+            toggleSlideshow();
     }
 
     // 到点后切换到下一张（顺序/逆序/随机由设置决定）
@@ -1434,8 +1455,7 @@ public:
             return;
 
         if (imgFileList.size() <= 1) {
-            slideshowActive = false;
-            updateWindowCaption();
+            stopSlideshow();
             return;
         }
 
@@ -1505,6 +1525,10 @@ public:
 
         lastTimestamp = std::chrono::steady_clock::now();
         delayRemain = 0;
+
+        // 必须主动要求重画：切换可能在空闲状态发生（画面已稳定），否则主循环继续走空闲分支，
+        // 屏幕停在上一张上——幻灯片播放到动图之后“就不再换图”就是这个原因
+        operateQueue.push({ ActionENUM::refresh });
     }
 
     // 当前应显示的图像：视频播放中优先用播放帧，否则取动图当前帧/静态图

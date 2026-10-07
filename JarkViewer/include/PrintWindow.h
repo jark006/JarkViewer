@@ -34,7 +34,9 @@ public:
         default: rotated = image; break;
         }
 
-        sourceImage_ = toBgr(rotated);
+        // 必须深拷贝（toBgrImage 内部 clone）：下面的调整都是就地做的，
+        // 浅拷贝会把主窗口正在显示的图一起改掉
+        sourceImage_ = jark::toBgrImage(rotated);
         if (sourceImage_.empty())
             return;
 
@@ -102,39 +104,6 @@ private:
         return jarkUtils::wstringToUtf8(getUIStringW(40)) + "###print";
     }
 
-    static cv::Mat toBgr(const cv::Mat& image) {
-        if (image.empty())
-            return {};
-
-        cv::Mat bgr;
-        switch (image.channels()) {
-        case 1: cv::cvtColor(image, bgr, cv::COLOR_GRAY2BGR); break;
-        case 3: bgr = image; break;
-        case 4: {
-            bgr.create(image.rows, image.cols, CV_8UC3);
-            for (int y = 0; y < image.rows; ++y) {
-                const uint8_t* sourceRow = image.ptr<uint8_t>(y);
-                uint8_t* targetRow = bgr.ptr<uint8_t>(y);
-                for (int x = 0; x < image.cols; ++x) {
-                    const uint8_t alpha = sourceRow[x * 4 + 3];
-                    if (alpha == 255) {
-                        targetRow[x * 3] = sourceRow[x * 4];
-                        targetRow[x * 3 + 1] = sourceRow[x * 4 + 1];
-                        targetRow[x * 3 + 2] = sourceRow[x * 4 + 2];
-                    }
-                    else {
-                        targetRow[x * 3] = static_cast<uint8_t>((sourceRow[x * 4] * alpha + 255 * (255 - alpha) + 255) >> 8);
-                        targetRow[x * 3 + 1] = static_cast<uint8_t>((sourceRow[x * 4 + 1] * alpha + 255 * (255 - alpha) + 255) >> 8);
-                        targetRow[x * 3 + 2] = static_cast<uint8_t>((sourceRow[x * 4 + 2] * alpha + 255 * (255 - alpha) + 255) >> 8);
-                    }
-                }
-            }
-        } break;
-        default: return {};
-        }
-        return bgr;
-    }
-
     void drawControls(float scale) {
         const char* colorModes[] = { getUIString(kStrColor), getUIString(kStrGray), getUIString(kStrDocument), getUIString(kStrDither) };
 
@@ -162,7 +131,8 @@ private:
         }
 
         ImGui::SameLine();
-        ImGui::Checkbox(getUIString(kStrInvert), &invert_);
+        if (ImGui::Checkbox(getUIString(kStrInvert), &invert_))
+            previewDirty_ = true;
 
         const float sliderWidth = 260.0f * scale;
         ImGui::SetNextItemWidth(sliderWidth);
@@ -216,11 +186,16 @@ private:
 
         // 预览按窗口宽度缩放，避免大图每帧全尺寸处理
         const int previewEdge = 1400;
-        cv::Mat resized = sourceImage_;
+        cv::Mat resized;
         const int maxEdge = (std::max)(sourceImage_.cols, sourceImage_.rows);
         if (maxEdge > previewEdge) {
             const double factor = static_cast<double>(previewEdge) / maxEdge;
             cv::resize(sourceImage_, resized, {}, factor, factor, cv::INTER_AREA);
+        }
+        else {
+            // 小图直接用原图缩放的副本（调整是就地做的，不能改到 sourceImage_，
+            // 否则预览会叠加前一次的效果，另存/打印也跟着错）
+            resized = sourceImage_.clone();
         }
 
         jark::applyImageAdjustments(resized, brightness_, contrast_, colorMode_, invert_);

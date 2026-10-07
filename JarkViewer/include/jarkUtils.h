@@ -561,6 +561,9 @@ public:
     static void copyImageToClipboard(const cv::Mat& image);
 
     static void ToggleFullScreen(HWND hwnd);
+    static bool IsFullScreen();
+    // 只在状态不同时切换（幻灯片播放要求“确保全屏”，不能无脑 toggle）
+    static void SetFullScreen(HWND hwnd, bool fullScreen);
 
     // 选取文件
     static std::wstring SelectFile(HWND hWnd);

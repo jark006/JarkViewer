@@ -2,6 +2,7 @@
 
 #include "jarkUtils.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace jark {
@@ -58,6 +59,8 @@ void adjustBrightnessContrast(cv::Mat& src, int brightnessInt, int contrastInt) 
             for (int c = 0; c < 3; ++c) {
                 // 以 128 为中心调整对比度，再按亮度曲线拉伸
                 double adjusted = (row[x][c] - 128.0) * contrast + 128.0;
+                // 对比度>100 时低灰度会算出负值，而 pow(负底数, 非整数) 是 NaN（整片变黑），先夹住
+                adjusted = std::clamp(adjusted, 0.0, 255.0);
                 adjusted = std::pow(adjusted / 255.0, brightness) * 255.0;
                 row[x][c] = cv::saturate_cast<uchar>(adjusted);
             }

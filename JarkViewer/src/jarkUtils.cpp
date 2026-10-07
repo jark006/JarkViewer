@@ -491,35 +491,35 @@ void jarkUtils::copyImageToClipboard(const cv::Mat& image) {
 }
 
 
-void jarkUtils::ToggleFullScreen(HWND hwnd) {
-    static RECT preRect{};
-    static DWORD preStyle = 0;
-    static DWORD preExStyle = 0;
+namespace {
+    RECT fullScreenPreRect{};
+    DWORD fullScreenPreStyle = 0;
+    DWORD fullScreenPreExStyle = 0;
+    bool isFullScreen = false;
+}
 
-    static bool isFullScreen = false;
+bool jarkUtils::IsFullScreen() {
+    return isFullScreen;
+}
 
-    if (isFullScreen) {
-        // 退出全屏模式，恢复之前的窗口状态
-        SetWindowLong(hwnd, GWL_STYLE, preStyle);
-        SetWindowLong(hwnd, GWL_EXSTYLE, preExStyle);
-        SetWindowPos(hwnd, nullptr, preRect.left, preRect.top,
-            preRect.right - preRect.left,
-            preRect.bottom - preRect.top,
-            SWP_NOZORDER | SWP_FRAMECHANGED);
-    }
-    else {
+// 只在状态需要变化时动作（幻灯片播放要"确保全屏"，不能无脑 toggle）
+void jarkUtils::SetFullScreen(HWND hwnd, bool fullScreen) {
+    if (isFullScreen == fullScreen)
+        return;
+
+    if (fullScreen) {
         // 保存当前窗口状态
-        GetWindowRect(hwnd, &preRect);
-        preStyle = GetWindowLong(hwnd, GWL_STYLE);
-        preExStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        GetWindowRect(hwnd, &fullScreenPreRect);
+        fullScreenPreStyle = GetWindowLong(hwnd, GWL_STYLE);
+        fullScreenPreExStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
 
         // 切换到全屏模式
         HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
         MONITORINFO monitorInfo = { sizeof(monitorInfo) };
         GetMonitorInfo(monitor, &monitorInfo);
 
-        SetWindowLong(hwnd, GWL_STYLE, preStyle & ~(WS_CAPTION | WS_THICKFRAME));
-        SetWindowLong(hwnd, GWL_EXSTYLE, preExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+        SetWindowLong(hwnd, GWL_STYLE, fullScreenPreStyle & ~(WS_CAPTION | WS_THICKFRAME));
+        SetWindowLong(hwnd, GWL_EXSTYLE, fullScreenPreExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
 
         SetWindowPos(hwnd, HWND_TOP,
             monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
@@ -527,8 +527,21 @@ void jarkUtils::ToggleFullScreen(HWND hwnd) {
             monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
             SWP_NOZORDER | SWP_FRAMECHANGED);
     }
+    else {
+        // 退出全屏模式，恢复之前的窗口状态
+        SetWindowLong(hwnd, GWL_STYLE, fullScreenPreStyle);
+        SetWindowLong(hwnd, GWL_EXSTYLE, fullScreenPreExStyle);
+        SetWindowPos(hwnd, nullptr, fullScreenPreRect.left, fullScreenPreRect.top,
+            fullScreenPreRect.right - fullScreenPreRect.left,
+            fullScreenPreRect.bottom - fullScreenPreRect.top,
+            SWP_NOZORDER | SWP_FRAMECHANGED);
+    }
 
-    isFullScreen = !isFullScreen;
+    isFullScreen = fullScreen;
+}
+
+void jarkUtils::ToggleFullScreen(HWND hwnd) {
+    SetFullScreen(hwnd, !isFullScreen);
 }
 
 std::wstring jarkUtils::SelectFile(HWND hWnd) {
