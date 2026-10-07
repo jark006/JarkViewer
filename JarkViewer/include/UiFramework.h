@@ -177,11 +177,13 @@ namespace jark::ui {
     };
 
     // 拖动条：轨道位置由 trackX/trackWidth 指定（与资源图对齐），支持点击、拖动与滚轮
+    // suffix 为空时只显示数值（线宽/字号这类非百分比场景）
     class Slider : public Control {
     public:
-        Slider(std::string label, int* value, int maxValue, int trackX, int trackWidth)
+        Slider(std::string label, int* value, int maxValue, int trackX, int trackWidth,
+            std::string suffix = "%")
             : label_(std::move(label)), value_(value), maxValue_(maxValue > 0 ? maxValue : 1),
-            trackX_(trackX), trackWidth_(trackWidth > 0 ? trackWidth : 1) {}
+            trackX_(trackX), trackWidth_(trackWidth > 0 ? trackWidth : 1), suffix_(std::move(suffix)) {}
 
         void draw(UiCanvas& canvas) override;
         bool onClick(int x, int y) override;
@@ -194,6 +196,7 @@ namespace jark::ui {
         bool setFromX(int x);
 
         std::string label_;
+        std::string suffix_ = "%";
         int* value_ = nullptr;
         int maxValue_ = 100;
         int trackX_ = 0;          // 逻辑像素：轨道起点（相对控件）
@@ -234,7 +237,7 @@ namespace jark::ui {
         int maxValue_ = 100;
     };
 
-    // 单行文本框：点选聚焦，支持 ASCII 输入与退格（界面禁用 IME，够用）
+    // 单行文本框：点选聚焦，内容按 UTF-8 保存（可输入中文，前提是窗口收到对应 WM_CHAR/WM_IME_CHAR）
     class TextBox : public Control {
     public:
         TextBox(std::string* text, std::string placeholder = {})
@@ -245,6 +248,7 @@ namespace jark::ui {
         bool onKeyChar(wchar_t character);
         bool onKeyDown(int virtualKey);
         bool focused() const { return focused_; }
+        void setFocused(bool focused) { focused_ = focused; }
 
     private:
         std::string* text_ = nullptr;
@@ -321,12 +325,56 @@ namespace jark::ui {
         SetChecked setChecked_;
     };
 
-    // 水平排布容器：等分宽度（用于按钮行等）
+    // 单选网格：多列等宽按钮，用于工具栏这类「多选一」（与 CheckGrid 同布局）
+    class OptionGrid : public Control {
+    public:
+        OptionGrid(std::vector<std::string> items, int columns, uint32_t* value)
+            : items_(std::move(items)), columns_(columns > 0 ? columns : 1), value_(value) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+    private:
+        Rect itemRect(int index) const;
+
+        std::vector<std::string> items_;
+        int columns_ = 1;
+        uint32_t* value_ = nullptr;
+    };
+
+    // 颜色选择行：等宽色块，选中项加描边（值存选中下标）
+    class ColorRow : public Control {
+    public:
+        ColorRow(std::vector<Color> colors, uint32_t* value)
+            : colors_(std::move(colors)), value_(value) {}
+
+        void draw(UiCanvas& canvas) override;
+        bool onClick(int x, int y) override;
+
+        Color selectedColor() const;
+
+    private:
+        Rect itemRect(int index) const;
+
+        std::vector<Color> colors_;
+        uint32_t* value_ = nullptr;
+    };
+
+    // 水平排布容器：等分宽度（用于按钮行等），事件按命中转发给子控件
     class Row : public Control {
     public:
         Control* add(ControlPtr control, int weight = 1);
         void draw(UiCanvas& canvas) override;
         bool onClick(int x, int y) override;
+        bool onMouseDown(int x, int y) override;
+        bool onMouseMove(int x, int y) override;
+        bool onMouseUp(int x, int y) override;
+        bool onWheel(int x, int y, int delta) override;
+
+        Control* controlAt(int x, int y);
+
+        // 拖动中的控件：按下时捕获，移动/抬起都发给它
+        Control* capturedControl = nullptr;
 
     private:
         struct Entry {

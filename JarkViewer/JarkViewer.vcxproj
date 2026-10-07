@@ -169,6 +169,7 @@
     <ClInclude Include="include\FileAssociationManager.h" />
     <ClInclude Include="include\FormatSniffer.h" />
     <ClInclude Include="include\ImageAdjust.h" />
+    <ClInclude Include="include\ImageAnnotator.h" />
     <ClInclude Include="include\ImageDatabase.h" />
     <ClInclude Include="include\Localization.h" />
     <ClInclude Include="include\LRU.h" />
@@ -200,6 +201,7 @@
     <ClCompile Include="src\exifParse.cpp" />
     <ClCompile Include="src\FormatSniffer.cpp" />
     <ClCompile Include="src\ImageAdjust.cpp" />
+    <ClCompile Include="src\ImageAnnotator.cpp" />
     <ClCompile Include="src\ImageDatabase.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\MediaDecoder.cpp" />

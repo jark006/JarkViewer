@@ -3,6 +3,7 @@
 #include "FormatSniffer.h"
 #include "ImageDatabase.h"
 #include "AudioOutput.h"
+#include "ImageAnnotator.h"
 #include "Localization.h"
 #include "BatchProcessor.h"
 #include "MediaDecoder.h"
@@ -255,6 +256,229 @@ namespace {
         return report;
     }
 
+    // 标注自检：在固定尺寸的合成底图上画一遍全部标注类型，用像素断言验证；
+    // 传入真实图片时另外输出一张标注结果图，便于人眼确认。
+    std::string runAnnotateTest(const std::vector<std::wstring>& files, const std::wstring& outDir) {
+        const cv::Vec4b red(0, 0, 255, 255);       // 0xFFFF0000
+        const cv::Vec4b background(40, 40, 40, 255);
+
+        std::string report;
+        int passed = 0;
+        int failed = 0;
+        auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("  [{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+
+        auto pixelNear = [](const cv::Mat& canvas, int x, int y, const cv::Vec4b& expected, int tolerance = 24) {
+            if (canvas.empty() || x < 0 || y < 0 || x >= canvas.cols || y >= canvas.rows)
+                return false;
+            const cv::Vec4b value = canvas.at<cv::Vec4b>(y, x);
+            return std::abs(value[0] - expected[0]) <= tolerance &&
+                std::abs(value[1] - expected[1]) <= tolerance &&
+                std::abs(value[2] - expected[2]) <= tolerance;
+            };
+
+        cv::Mat base(600, 800, CV_8UC4, background);
+        cv::Mat noise(120, 160, CV_8UC4);
+        cv::randu(noise, cv::Scalar(0, 0, 0, 255), cv::Scalar(255, 255, 255, 255));
+        noise.copyTo(base(cv::Rect(560, 40, 160, 120)));
+
+        jark::AnnotatorDocument document(base);
+        jark::AnnoStyle style;
+        style.color = 0xFFFF0000;
+        style.width = 6;
+
+        document.begin(jark::AnnoTool::Rect, style, { 100, 100 });
+        document.update({ 300, 200 });
+        document.commit();
+        check(pixelNear(document.flatten(), 200, 100, red), "矩形：上边中点着色");
+        check(pixelNear(document.flatten(), 200, 150, background), "矩形：内部保持空心");
+        check(document.annotations().size() == 1, "矩形：提交后标注数 +1");
+
+        style.filled = true;
+        document.begin(jark::AnnoTool::Rect, style, { 340, 100 });
+        document.update({ 440, 200 });
+        document.commit();
+        check(pixelNear(document.flatten(), 390, 150, red), "矩形：填充后内部着色");
+        style.filled = false;
+
+        document.begin(jark::AnnoTool::Ellipse, style, { 200, 300 });
+        document.update({ 400, 400 });
+        document.commit();
+        check(pixelNear(document.flatten(), 300, 300, red), "椭圆：顶点着色");
+        check(pixelNear(document.flatten(), 300, 350, background), "椭圆：内部保持空心");
+
+        document.begin(jark::AnnoTool::Line, style, { 100, 450 });
+        document.update({ 300, 450 });
+        document.commit();
+        check(pixelNear(document.flatten(), 200, 450, red), "直线：中点着色");
+
+        document.begin(jark::AnnoTool::Arrow, style, { 350, 400 });
+        document.update({ 550, 500 });
+        document.commit();
+        check(pixelNear(document.flatten(), 360, 405, red), "箭头：起点附近着色");
+        check(pixelNear(document.flatten(), 540, 495, red), "箭头：箭头附近着色");
+
+        document.begin(jark::AnnoTool::Pen, style, { 100, 550 });
+        document.update({ 150, 520 });
+        document.update({ 200, 550 });
+        document.commit();
+        check(pixelNear(document.flatten(), 100, 550, red), "画笔：轨迹起点着色");
+        check(pixelNear(document.flatten(), 200, 550, red), "画笔：轨迹终点着色");
+
+        // 马赛克：区域内标准差应明显下降，且同一块内像素一致
+        cv::Mat before = document.flatten();
+        cv::Mat beforeRegion = before(cv::Rect(560, 40, 160, 120));
+        cv::Scalar meanBefore, stddevBefore;
+        cv::meanStdDev(beforeRegion, meanBefore, stddevBefore);
+
+        jark::Annotation mosaic;
+        mosaic.tool = jark::AnnoTool::Mosaic;
+        mosaic.points = { { 560, 40 }, { 720, 160 } };
+        mosaic.mosaicBlock = 16;
+        document.begin(jark::AnnoTool::Mosaic, style, { 560, 40 });
+        document.update({ 720, 160 });
+        document.commit();
+
+        cv::Mat after = document.flatten();
+        cv::Mat afterRegion = after(cv::Rect(560, 40, 160, 120));
+        cv::Scalar meanAfter, stddevAfter;
+        cv::meanStdDev(afterRegion, meanAfter, stddevAfter);
+        check(stddevAfter[0] < stddevBefore[0] * 0.6, std::format("马赛克：标准差 {:.1f} -> {:.1f}",
+            stddevBefore[0], stddevAfter[0]));
+        check(pixelNear(after, 562, 42, cv::Vec4b(after.at<cv::Vec4b>(42, 562)), 0), "马赛克：块内像素一致");
+
+        style.fontSize = 48;
+        document.begin(jark::AnnoTool::Text, style, { 560, 200 });
+        document.setText("Ag中1");
+        document.commit();
+        style.fontSize = 40;
+        {
+            const cv::Mat flattened = document.flatten();
+            int changed = 0;
+            for (int y = 200; y < 200 + 53 && y < flattened.rows; ++y) {
+                for (int x = 560; x < 560 + 132 && x < flattened.cols; ++x) {
+                    if (!pixelNear(flattened, x, y, background, 12))
+                        ++changed;
+                }
+            }
+            check(changed > 50, std::format("文字：包围盒内着色像素 {} 个", changed));
+        }
+
+        // 撤销 / 重做
+        {
+            const size_t beforeUndo = document.annotations().size();
+            document.undo();
+            check(document.annotations().size() == beforeUndo - 1, "撤销：标注数 -1");
+            check(pixelNear(document.flatten(), 560, 200, background), "撤销：文字已消失");
+            document.redo();
+            check(document.annotations().size() == beforeUndo, "重做：标注数恢复");
+
+            while (document.canUndo())
+                document.undo();
+            check(!document.canUndo() && document.canRedo(), "撤销到底：栈状态正确");
+            document.redo();
+            check(document.annotations().size() == 1, "重做一步：回到第一个标注");
+        }
+
+        // 裁剪：先重新画满，再裁到指定矩形
+        {
+            document.applyEdit(base); // 清空重来，保证裁剪内容可预测
+            document.begin(jark::AnnoTool::Rect, style, { 100, 100 });
+            document.update({ 300, 200 });
+            document.commit();
+
+            const bool ok = document.cropTo({ 50, 60, 400, 300 });
+            check(ok && document.width() == 400 && document.height() == 300,
+                std::format("裁剪：尺寸 -> {}x{}", document.width(), document.height()));
+            check(pixelNear(document.flatten(), 150, 40, red), "裁剪：标注随内容平移");
+            check(pixelNear(document.flatten(), 150, 90, background), "裁剪：内部仍空心");
+            check(pixelNear(document.flatten(), 250, 90, red), "裁剪：右边缘保留");
+            check(!document.canUndo(), "裁剪：历史已重置");
+        }
+
+        // 编码：png 保留 alpha，jpg 铺白底
+        {
+            std::vector<uint8_t> png;
+            std::vector<uint8_t> jpg;
+            check(jark::encodeAnnotatedImage(document.flatten(), L"png", png) && png.size() > 100, "编码：png 成功");
+            check(jark::encodeAnnotatedImage(document.flatten(), L"jpg", jpg) && jpg.size() > 100, "编码：jpg 成功");
+
+            cv::Mat pngBack = cv::imdecode(png, cv::IMREAD_UNCHANGED);
+            cv::Mat jpgBack = cv::imdecode(jpg, cv::IMREAD_UNCHANGED);
+            check(pngBack.type() == CV_8UC4, "编码：png 保留 4 通道");
+            check(jpgBack.type() == CV_8UC3, "编码：jpg 为 3 通道");
+        }
+
+        // 真实图片：画一遍全部标注并保存，便于人眼确认
+        if (!files.empty()) {
+            const auto& path = files.front();
+            cv::Mat source = cv::imread(jarkUtils::wstringToUtf8(path), cv::IMREAD_UNCHANGED);
+            if (source.empty()) {
+                report += std::format("  [跳过] 无法读取 {}\n", jarkUtils::wstringToUtf8(path));
+            }
+            else {
+                jark::AnnotatorDocument visual(source);
+                const int w = visual.width();
+                const int h = visual.height();
+                const int margin = std::max(10, std::min(w, h) / 12);
+
+                jark::AnnoStyle s;
+                s.width = std::max(2, std::min(w, h) / 150);
+                s.fontSize = std::max(14, std::min(w, h) / 18);
+
+                s.color = 0xFFFF3B30;
+                visual.begin(jark::AnnoTool::Rect, s, { margin, margin });
+                visual.update({ w / 2, h / 3 });
+                visual.commit();
+
+                s.color = 0xFF34C759;
+                visual.begin(jark::AnnoTool::Ellipse, s, { w / 2, margin });
+                visual.update({ w - margin, h / 2 });
+                visual.commit();
+
+                s.color = 0xFFFFCC00;
+                visual.begin(jark::AnnoTool::Arrow, s, { w / 4, h * 3 / 4 });
+                visual.update({ w * 3 / 4, h / 2 });
+                visual.commit();
+
+                s.color = 0xFF0A84FF;
+                visual.begin(jark::AnnoTool::Pen, s, { margin, h - margin });
+                for (int i = 1; i <= 20; ++i) {
+                    const int x = margin + (w - 2 * margin) * i / 20;
+                    const int y = h - margin - static_cast<int>(margin * 2 * std::sin(i * 0.5));
+                    visual.update({ x, y });
+                }
+                visual.commit();
+
+                s.color = 0xFFFFFFFF;
+                visual.begin(jark::AnnoTool::Text, s, { margin, h / 2 });
+                visual.setText("JarkViewer 标注 Annotate 123");
+                visual.commit();
+
+                const cv::Mat result = visual.flatten();
+                check(!result.empty() && result.size() == source.size(), "真实图片：标注后尺寸不变");
+
+                if (!outDir.empty()) {
+                    std::error_code errorCode;
+                    std::filesystem::create_directories(outDir, errorCode);
+                    const auto outPath = std::filesystem::path(outDir) / "annotated.png";
+                    std::vector<uint8_t> encoded;
+                    if (jark::encodeAnnotatedImage(result, L"png", encoded)) {
+                        std::ofstream out(outPath, std::ios::binary);
+                        out.write(reinterpret_cast<const char*>(encoded.data()),
+                            static_cast<std::streamsize>(encoded.size()));
+                        report += std::format("  已输出 {}\n", jarkUtils::wstringToUtf8(outPath.wstring()));
+                    }
+                }
+            }
+        }
+
+        report = std::format("---- 标注自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
+        return report;
+    }
+
     std::string runAudioTest(const std::wstring& path) {
         std::string report;
 
@@ -338,6 +562,8 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool audioTest = false;
     bool languageTest = false;
     bool batchTest = false;
+    bool annotateTest = false;
+    std::wstring annotateOutDir;
     jark::BatchOptions batchOptions;
 
     for (size_t i = 1; i < argv.size(); ++i) {
@@ -357,6 +583,14 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--batch") {
             batchTest = true;
+            continue;
+        }
+        if (argv[i] == L"--annotate") {
+            annotateTest = true;
+            continue;
+        }
+        if (argv[i] == L"--annotate-out" && i + 1 < argv.size()) {
+            annotateOutDir = argv[++i];
             continue;
         }
         if (argv[i] == L"--out-dir" && i + 1 < argv.size()) {
@@ -418,7 +652,8 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         targets.push_back(argv[i]);
     }
 
-    if (targets.empty()) {
+    // 标注自检不需要输入文件（用合成底图断言），用真实图片只是额外输出可视化结果
+    if (targets.empty() && !annotateTest && !languageTest) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -433,6 +668,12 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     if (languageTest) {
         emit(runLanguageTest());
         return 0;
+    }
+
+    if (annotateTest) {
+        const auto text = runAnnotateTest(targets, annotateOutDir);
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
     }
 
     if (batchTest) {

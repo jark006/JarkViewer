@@ -8,6 +8,7 @@
 #
 # -Window main      : main window (default)
 # -Window smallest  : smallest visible window (e.g. the settings window opened by F1)
+# -Window child     : smallest visible window that is not the main one (settings/editor/batch)
 # -Click "x,y"      : click at logical client coordinates; physical scale is derived from
 #                     the window width and -LogicWidth (default 1000)
 #
@@ -18,10 +19,11 @@ param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Argument = "",
     [string]$Keys = "",
-    [ValidateSet("main", "smallest")]
+    [ValidateSet("main", "smallest", "child")]
     [string]$Window = "main",
     [string]$Click = "",
     [string]$Hover = "",
+    [string]$Drag = "",
     [int]$LogicWidth = 1000,
     [int]$WaitMs = 2500,
     [int]$AfterKeysMs = 1200,
@@ -35,6 +37,35 @@ public class JarkCapture {
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint attach, uint attachTo, bool attachFlag);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+
+    // SetForegroundWindow only works for processes owning the foreground; attaching the
+    // input queues first makes it reliable from a background script.
+    public static bool ForceForeground(IntPtr hwnd) {
+        if (GetForegroundWindow() == hwnd) return true;
+
+        uint targetThread = GetWindowThreadProcessId(hwnd, out uint _pid);
+        uint currentThread = GetCurrentThreadId();
+        IntPtr foreground = GetForegroundWindow();
+        bool attachedForeground = false, attachedTarget = false;
+
+        if (foreground != IntPtr.Zero) {
+            uint fgThread = GetWindowThreadProcessId(foreground, out uint _fgPid);
+            if (fgThread != currentThread) attachedForeground = AttachThreadInput(currentThread, fgThread, true);
+        }
+        if (targetThread != currentThread) attachedTarget = AttachThreadInput(currentThread, targetThread, true);
+
+        ShowWindow(hwnd, 9); // SW_RESTORE
+        BringWindowToTop(hwnd);
+        bool ok = SetForegroundWindow(hwnd);
+
+        if (attachedTarget) AttachThreadInput(currentThread, targetThread, false);
+        if (attachedForeground) AttachThreadInput(currentThread, GetWindowThreadProcessId(foreground, out uint _f2), false);
+        return ok || GetForegroundWindow() == hwnd;
+    }
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc proc, IntPtr param);
@@ -58,9 +89,12 @@ public class JarkCapture {
         return list;
     }
 
-    public static IntPtr SmallestWindow(int pid) {
+    // Smallest visible window of the process that is not in "exclude" (pass the HWNDs
+    // that existed before the dialog was opened; the new dialog is what is left).
+    public static IntPtr SmallestWindow(int pid, List<IntPtr> exclude) {
         IntPtr best = IntPtr.Zero; long bestArea = long.MaxValue;
         foreach (IntPtr hwnd in Windows(pid)) {
+            if (exclude != null && exclude.Contains(hwnd)) continue;
             RECT r; GetWindowRect(hwnd, out r);
             long area = (long)(r.Right - r.Left) * (r.Bottom - r.Top);
             if (area > 0 && area < bestArea) { bestArea = area; best = hwnd; }
@@ -76,9 +110,8 @@ public class JarkCapture {
 
 function Activate-Window([IntPtr]$hwnd) {
     for ($i = 0; $i -lt 10; $i++) {
-        [void][JarkCapture]::SetForegroundWindow($hwnd)
+        if ([JarkCapture]::ForceForeground($hwnd)) { return $true }
         Start-Sleep -Milliseconds 200
-        if ([JarkCapture]::GetForegroundWindow() -eq $hwnd) { return $true }
     }
     return $false
 }
@@ -97,14 +130,19 @@ try {
 
     Start-Sleep -Milliseconds $WaitMs
 
+    # Windows that exist before the dialogs open; "child" mode picks whatever is left.
+    $initialWindows = [JarkCapture]::Windows($proc.Id)
+
     if ($Keys -ne "") {
         [void](Activate-Window $hwnd)
         [System.Windows.Forms.SendKeys]::SendWait($Keys)
         Start-Sleep -Milliseconds $AfterKeysMs
     }
 
-    if ($Window -eq "smallest") {
-        $target = [JarkCapture]::SmallestWindow($proc.Id)
+    if ($Window -eq "smallest" -or $Window -eq "child") {
+        # "child" = smallest window that appeared after launch (settings / editor / batch dialog)
+        $exclude = if ($Window -eq "child") { $initialWindows } else { $null }
+        $target = [JarkCapture]::SmallestWindow($proc.Id, $exclude)
         if ($target -ne [IntPtr]::Zero) {
             $hwnd = $target
             Start-Sleep -Milliseconds 400
@@ -149,6 +187,38 @@ try {
         Start-Sleep -Milliseconds 80
         [void][JarkCapture]::SetCursorPos($point.X, $point.Y)
         Start-Sleep -Milliseconds $AfterKeysMs
+    }
+
+    if ($Drag -ne "") {
+        # Left-button drags in physical client coordinates, "x1,y1,x2,y2" per segment,
+        # segments separated by ";". Moved in steps so intermediate WM_MOUSEMOVE arrive;
+        # an empty segment (same start/end) acts as a plain click.
+        [void](Activate-Window $hwnd)
+
+        foreach ($segment in $Drag.Split(";")) {
+            $parts = $segment.Split(",")
+            $from = New-Object JarkCapture+POINT
+            $from.X = [int]$parts[0]
+            $from.Y = [int]$parts[1]
+            $to = New-Object JarkCapture+POINT
+            $to.X = [int]$parts[2]
+            $to.Y = [int]$parts[3]
+            [void][JarkCapture]::ClientToScreen($hwnd, [ref]$from)
+            [void][JarkCapture]::ClientToScreen($hwnd, [ref]$to)
+
+            [void][JarkCapture]::SetCursorPos($from.X, $from.Y)
+            Start-Sleep -Milliseconds 150
+            [JarkCapture]::mouse_event([JarkCapture]::LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+            for ($step = 1; $step -le 6; $step++) {
+                Start-Sleep -Milliseconds 60
+                [void][JarkCapture]::SetCursorPos(
+                    [int]($from.X + ($to.X - $from.X) * $step / 6),
+                    [int]($from.Y + ($to.Y - $from.Y) * $step / 6))
+            }
+            Start-Sleep -Milliseconds 100
+            [JarkCapture]::mouse_event([JarkCapture]::LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds $AfterKeysMs
+        }
     }
 
     $rect = New-Object JarkCapture+RECT

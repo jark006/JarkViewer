@@ -1,6 +1,7 @@
 #include "jarkUtils.h"
 
 #include "BatchWindow.h"
+#include "EditorWindow.h"
 #include "CanvasRenderer.h"
 #include "DecodeProbe.h"
 #include "Localization.h"
@@ -710,6 +711,10 @@ public:
                 operateQueue.push({ ActionENUM::batchProcess });
             }break;
 
+            case 'E': { // Ctrl + E 图像编辑与标注
+                operateQueue.push({ ActionENUM::editImage });
+            }break;
+
             case 'S': { // Ctrl + S  动图或实况图视频 批量保存每一帧到png图片
                 auto& frames = curPar.imageAssetPtr->frames;
                 if (frames.empty())
@@ -1006,6 +1011,10 @@ public:
 
         case ContextMenu::batchProcess: {
             operateQueue.push({ ActionENUM::batchProcess });
+        }break;
+
+        case ContextMenu::editImage: {
+            operateQueue.push({ ActionENUM::editImage });
         }break;
 
         case ContextMenu::toggleFullScreen: {
@@ -1587,6 +1596,30 @@ public:
             }
         }
 
+        if (operateAction.action == ActionENUM::editImage) {
+            JARK_LOG("编辑窗口请求：已在运行={}", static_cast<bool>(EditorWindow::isWorking));
+            if (EditorWindow::isWorking) {
+                jarkUtils::activateWindow(EditorWindow::hwnd);
+            }
+            else {
+                cv::Mat srcImg = currentSourceImage();
+                JARK_LOG("编辑窗口源图 {}x{}", srcImg.cols, srcImg.rows);
+                if (!srcImg.empty()) {
+                    OnRequestExitOtherWindows();
+
+                    const std::wstring path = (curFileIdx >= 0 && curFileIdx < (int)imgFileList.size())
+                        ? imgFileList[curFileIdx] : std::wstring();
+
+                    // 编辑器在覆盖保存后会置 isNeedReloadImageCache，主窗口随之重新加载
+                    std::thread editorThread([path, srcImg]() {
+                        EditorWindow window(path, srcImg);
+                        });
+                    editorThread.detach();
+                }
+            }
+            return;
+        }
+
         if (operateAction.action == ActionENUM::printImage) {
             if (Printer::isWorking) {
                 jarkUtils::activateWindow(Printer::hwnd);
@@ -2022,6 +2055,7 @@ public:
         Printer::requestExit();
         Setting::requestExit();
         BatchWindow::requestExit();
+        EditorWindow::requestExit();
     }
 };
 

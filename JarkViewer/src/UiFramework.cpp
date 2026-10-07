@@ -8,6 +8,28 @@ namespace {
     constexpr int kCheckBoxSize = 34;
     constexpr int kCheckBoxInset = 8;
 
+    // 追加一个 UTF-8 码点（文本框用）
+    void appendUtf8(std::string& text, uint32_t codePoint) {
+        if (codePoint < 0x80) {
+            text.push_back(static_cast<char>(codePoint));
+        }
+        else if (codePoint < 0x800) {
+            text.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+            text.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+        else if (codePoint < 0x10000) {
+            text.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+            text.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+        else {
+            text.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+            text.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+    }
+
 } // namespace
 
 // —— UiCanvas ——
@@ -230,8 +252,10 @@ void Slider::draw(UiCanvas& canvas) {
         canvas.text({ bounds.x, bounds.y, canvas.dp(trackX_ - 20), bounds.height },
             label_, canvas.theme().FG, Align::Left);
 
+    // 数值右对齐贴在轨道左侧，避免与标签重叠
     canvas.text({ bounds.x + canvas.dp(trackX_ - 130), bounds.y, canvas.dp(120), bounds.height },
-        std::format("{:3} %", value), canvas.theme().FG, Align::Left);
+        suffix_.empty() ? std::format("{}", value) : std::format("{} {}", value, suffix_),
+        canvas.theme().FG, Align::Right);
 }
 
 bool Slider::onClick(int x, int y) {
@@ -383,19 +407,25 @@ bool TextBox::onKeyChar(wchar_t character) {
         return false;
 
     if (character == L'\b') {
-        if (!text_->empty()) {
-            text_->pop_back();
-            return true;
-        }
-        return false;
-    }
+        if (text_->empty())
+            return false;
 
-    // 只接受可见 ASCII（界面已禁用 IME）
-    if (character >= 32 && character < 127) {
-        text_->push_back(static_cast<char>(character));
+        // 删除最后一个 UTF-8 码点（连同它的续字节）
+        while (!text_->empty()) {
+            const char removed = text_->back();
+            text_->pop_back();
+            if ((static_cast<uint8_t>(removed) & 0xC0) != 0x80)
+                break;
+        }
         return true;
     }
-    return false;
+
+    // 控制字符不进入文本；其余（含中文）按 UTF-8 追加
+    if (character < 32 || character == 127)
+        return false;
+
+    appendUtf8(*text_, static_cast<uint32_t>(character));
+    return true;
 }
 
 bool TextBox::onKeyDown(int virtualKey) {
@@ -470,6 +500,100 @@ bool CheckList::onWheel(int x, int y, int delta) {
     scrollOffset_ += delta > 0 ? -3 : 3;
     scrollOffset_ = std::clamp(scrollOffset_, 0, (std::max)(0, (int)items_.size() - visibleRows_));
     return scrollOffset_ != before;
+}
+
+// —— OptionGrid ——
+
+Rect OptionGrid::itemRect(int index) const {
+    if (columns_ <= 0 || items_.empty())
+        return {};
+
+    const int rows = (static_cast<int>(items_.size()) + columns_ - 1) / columns_;
+    const int itemWidth = bounds.width / columns_;
+    const int itemHeight = rows > 0 ? bounds.height / rows : 0;
+    return { bounds.x + itemWidth * (index % columns_),
+             bounds.y + itemHeight * (index / columns_),
+             itemWidth, itemHeight };
+}
+
+void OptionGrid::draw(UiCanvas& canvas) {
+    const int gap = canvas.dp(4);
+    const size_t selected = value_ ? *value_ : 0;
+
+    for (size_t i = 0; i < items_.size(); ++i) {
+        const Rect item = itemRect(static_cast<int>(i));
+        if (item.height <= gap * 2)
+            continue;
+
+        const Rect cell = item.inset(gap);
+        canvas.fill(cell, i == selected ? canvas.theme().CHECK : canvas.theme().BG_BTN);
+        canvas.text(cell, items_[i], canvas.theme().FG, Align::Center);
+    }
+}
+
+bool OptionGrid::onClick(int x, int y) {
+    if (!value_ || !bounds.contains(x, y))
+        return false;
+
+    for (size_t i = 0; i < items_.size(); ++i) {
+        if (itemRect(static_cast<int>(i)).contains(x, y)) {
+            if (*value_ == static_cast<uint32_t>(i))
+                return false;
+
+            *value_ = static_cast<uint32_t>(i);
+            return true;
+        }
+    }
+    return false;
+}
+
+// —— ColorRow ——
+
+Rect ColorRow::itemRect(int index) const {
+    const int count = static_cast<int>(colors_.size());
+    if (count <= 0)
+        return {};
+
+    const int itemWidth = bounds.width / count;
+    return { bounds.x + itemWidth * index, bounds.y, itemWidth, bounds.height };
+}
+
+Color ColorRow::selectedColor() const {
+    if (!value_ || colors_.empty())
+        return 0xFFFF3B30;
+
+    const size_t index = (std::min)(static_cast<size_t>(*value_), colors_.size() - 1);
+    return colors_[index];
+}
+
+void ColorRow::draw(UiCanvas& canvas) {
+    const size_t selected = value_ ? *value_ : 0;
+
+    for (size_t i = 0; i < colors_.size(); ++i) {
+        const Rect item = itemRect(static_cast<int>(i));
+        const int gap = canvas.dp(4);
+        const Rect cell = item.inset(gap);
+
+        canvas.fill(cell, colors_[i]);
+        if (i == selected)
+            canvas.stroke(item, canvas.theme().FG, canvas.dp(3));
+    }
+}
+
+bool ColorRow::onClick(int x, int y) {
+    if (!value_ || !bounds.contains(x, y))
+        return false;
+
+    for (size_t i = 0; i < colors_.size(); ++i) {
+        if (itemRect(static_cast<int>(i)).contains(x, y)) {
+            if (*value_ == static_cast<uint32_t>(i))
+                return false;
+
+            *value_ = static_cast<uint32_t>(i);
+            return true;
+        }
+    }
+    return false;
 }
 
 // —— HotArea ——
@@ -578,6 +702,67 @@ bool Row::onClick(int x, int y) {
             continue;
 
         if (control->onClick(x, y))
+            return true;
+    }
+    return false;
+}
+
+Control* Row::controlAt(int x, int y) {
+    for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+        Control* control = it->control.get();
+        if (control->visible && control->enabled && control->bounds.contains(x, y))
+            return control;
+    }
+    return nullptr;
+}
+
+bool Row::onMouseDown(int x, int y) {
+    Control* control = controlAt(x, y);
+    if (!control)
+        return false;
+
+    if (control->onMouseDown(x, y)) {
+        capturedControl = control;
+        return true;
+    }
+    return control->bounds.contains(x, y);
+}
+
+bool Row::onMouseMove(int x, int y) {
+    if (capturedControl) {
+        capturedControl->onMouseMove(x, y);
+        return true;
+    }
+
+    for (auto& entry : entries_) {
+        Control* control = entry.control.get();
+        if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
+            continue;
+
+        if (control->onMouseMove(x, y))
+            return true;
+    }
+    return false;
+}
+
+bool Row::onMouseUp(int x, int y) {
+    if (capturedControl) {
+        capturedControl->onMouseUp(x, y);
+        capturedControl = nullptr;
+        return true;
+    }
+
+    // 未捕获拖动的控件（按钮等）在抬起时视为一次点击
+    return onClick(x, y);
+}
+
+bool Row::onWheel(int x, int y, int delta) {
+    for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
+        Control* control = it->control.get();
+        if (!control->visible || !control->enabled || !control->bounds.contains(x, y))
+            continue;
+
+        if (control->onWheel(x, y, delta))
             return true;
     }
     return false;

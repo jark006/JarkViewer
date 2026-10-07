@@ -163,6 +163,8 @@ protected:
     virtual void onPaint(HDC hdc) = 0;
     virtual void onLButtonDown() {}
     virtual void onLButtonUp() {}
+    virtual void onMButtonDown() {}
+    virtual void onMButtonUp() {}
     virtual void onRButtonUp() {}
     virtual void onMouseMove(WPARAM keyState) {}
     virtual void onMouseWheel(int delta) {}
@@ -216,6 +218,18 @@ protected:
             onLButtonUp();
             return 0;
 
+        case WM_MBUTTONDOWN:
+            m_x = LOWORD(lParam);
+            m_y = HIWORD(lParam);
+            onMButtonDown();
+            return 0;
+
+        case WM_MBUTTONUP:
+            m_x = LOWORD(lParam);
+            m_y = HIWORD(lParam);
+            onMButtonUp();
+            return 0;
+
         case WM_RBUTTONUP:
             m_x = LOWORD(lParam);
             m_y = HIWORD(lParam);
@@ -231,6 +245,26 @@ protected:
         case WM_CHAR:
             onKeyChar(static_cast<wchar_t>(wParam));
             return 0;
+
+        case WM_IME_CHAR: {
+            // 输入法合成的字符：wParam 里是系统 ANSI 代码页的 DBCS 字节。
+            // ASCII 交给 WM_CHAR，中文等走这里（主窗口线程调用了 ImmDisableIME，
+            // 编辑窗口在各自线程上，IME 可用）。
+            if (wParam < 0x80)
+                return 0;
+
+            const char bytes[3] = {
+                static_cast<char>(wParam & 0xFF),
+                static_cast<char>((wParam >> 8) & 0xFF),
+                0
+            };
+            const int byteCount = (wParam >> 8) ? 2 : 1;
+
+            wchar_t wide[4] = {};
+            if (::MultiByteToWideChar(CP_ACP, 0, bytes, byteCount, wide, 2) > 0)
+                onKeyChar(wide[0]);
+            return 0;
+        }
 
         case WM_MOUSEWHEEL:
             onMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam));
