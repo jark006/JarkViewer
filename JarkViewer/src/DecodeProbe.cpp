@@ -30,6 +30,7 @@ namespace {
         long long frameDurationMs = 0;
         size_t exifBytes = 0;
         bool tips = false;
+        int orientation = 1;
         double elapsedMs = 0.0;
         std::string firstExifLine;
         std::string exifText;
@@ -128,6 +129,7 @@ namespace {
         for (const auto duration : imageAsset.frameDurations)
             result.frameDurationMs += duration;
 
+        result.orientation = imageAsset.orientation;
         result.exifBytes = imageAsset.exifInfo.size();
         result.firstExifLine = firstLineOf(imageAsset.exifInfo);
         result.exifText = imageAsset.exifInfo;
@@ -196,12 +198,13 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
             ? std::format("[{:>8}]", result.kind)
             : std::string("[  FAILED]");
 
-        auto line = std::format("{} sniff={:<8} {}x{} frames={} {}ms exif={}B",
+        auto line = std::format("{} sniff={:<8} {}x{} frames={} ori={} {}ms exif={}B",
             status,
             fileFormatName(result.sniffed),
             result.width,
             result.height,
             result.frameCount,
+            result.orientation,
             static_cast<int>(result.elapsedMs),
             result.exifBytes);
 
