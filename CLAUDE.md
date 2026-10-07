@@ -29,6 +29,12 @@ pwsh tools/capture_window.ps1 -Exe x64/Release/JarkViewer.exe -Argument "img.svg
 
 # 生成测试语料（需要 Python + Pillow/numpy，可选 ffmpeg）
 python tools/gen_testdata.py <输出目录>
+
+# 标注逻辑自检（合成底图 + 像素断言，不需要人眼）
+./x64/Release/JarkViewer.exe --probe --annotate [--annotate-out 输出目录] [图片]
+
+# 列出某进程的可见窗口（自动化测试定位窗口用）
+pwsh tools/list_windows.ps1 -ProcessId <pid>
 ```
 
 每次修改后至少保证 `buildRelease.ps1` 能干净编译通过；解码相关改动应先用 `--probe` 跑一遍 `tools/gen_testdata.py` 生成的语料（包含错扩展名、无扩展名、损坏文件、EXIF 方向、动图、视频等），再做人工冒烟（静态图加载、动图播放、EXIF 显示、打印预览和导出流程）。
@@ -52,6 +58,7 @@ python tools/gen_testdata.py <输出目录>
 - `JarkViewer/include/BatchProcessor.h` 与 `src/BatchProcessor.cpp` 是批量处理逻辑（转换/缩放/旋转翻转/重命名/删除到回收站）：解码走工程内解码器（HEIC/AVIF/RAW 等也能参与转换），编码用 OpenCV；不依赖窗口，可用命令行 `--probe --batch <文件...> [--out-dir 目录] [--to 格式] [--max-edge N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--rename 前缀] [--overwrite]` 直接验证。
 - `JarkViewer/include/BatchWindow.h` 是批量处理窗口（Ctrl+B 或右键菜单打开，处理当前目录的图片列表），界面全部由控件树搭建，处理在工作线程执行、界面轮询进度。
 - `JarkViewer/include/ImageAdjust.h` 与 `src/ImageAdjust.cpp` 存放打印/编辑与批量共用的图像调整（亮度对比度、黑白/黑白文档/黑白抖动、反相、BGRA→白底 BGR），原先内嵌在 Printer.h 中。
+- `JarkViewer/include/ImageAnnotator.h` 与 `src/ImageAnnotator.cpp` 是标注模型与渲染（矩形/椭圆/箭头/直线/画笔/马赛克/文字），含撤销重做与裁剪，纯逻辑不依赖窗口；`--probe --annotate [--annotate-out 目录]` 用合成底图跑 28 项像素断言自检。`JarkViewer/include/EditorWindow.h` 是编辑与标注窗口（主窗口 Ctrl+E 或右键菜单打开）：画布支持拖动绘制、滚轮定点缩放、中键平移、裁剪框选，右侧工具栏提供工具/颜色/线宽/字号/填充/撤销重做/旋转翻转反相/应用裁剪/另存为/复制到剪贴板/覆盖原文件；覆盖保存后置 `GlobalVar::isNeedReloadImageCache` 让主窗口重载。
 - `JarkViewer/include/UiFramework.h` 与 `src/UiFramework.cpp` 是轻量 UI 框架：`UiCanvas`（填充/描边/文字/图片，自带逻辑→物理缩放 `dp()`）+ 控件（Label/CheckBox/RadioGroup/Button/TabBar/ImageView/CheckGrid/HotArea/Slider/ImageRadioGroup/TextBox/ProgressBar/CheckList）+ 容器（`Panel` 竖直堆叠、`Row` 水平等分、`overlay()` 绝对定位覆盖层）。控件的尺寸一律写**逻辑像素**，由框架按窗口 DPI 换算；控件自己负责绘制与命中，`Panel::onClick` 只把点击交给**真正处理**它的控件（标签/图片这类装饰控件不会挡住下方按钮），`Panel::onMouseUp` 在未发生拖动捕获时按“点击”派发；拖动类控件（如 Slider）在 `onMouseDown` 返回 true 后由 `Panel::capturedControl` 接管后续移动与抬起；`overlay()` 的坐标始终以逻辑像素保存，避免重绘时被重复换算。设置窗口（`Setting.h`）与打印窗口（`Printer.h`）都已基于它重写：新增控件只需 new 一个对象，不再手写坐标、绘制与命中三份代码。
 - `MatWindow` 会按窗口所在显示器的 DPI 缩放：窗口尺寸 = 逻辑尺寸 × DPI/96，并提供 `dp()`；鼠标消息里的坐标在按下/抬起时也会刷新（避免未移动过的点击使用过期坐标）。
 - 主窗口（`D3D11App`/`JarkViewerApp`）同样是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()` 给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新），主窗口的悬停按钮（`ExtraUIRes::rebuild()` 按缩放值重建资源图切片）、悬停热区、动图播放条命中、EXIF 面板边距与文字字号都按它换算。
