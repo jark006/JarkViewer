@@ -478,7 +478,7 @@ public:
     // https://github.com/MolecularMatters/psd_sdk
     cv::Mat loadPSD(wstring_view path, std::span<const uint8_t> buf);
     cv::Mat loadSTB(wstring_view path, std::span<const uint8_t> buf);
-    cv::Mat loadSVG(wstring_view path, std::span<const uint8_t> buf);
+    ImageAsset loadSVG(wstring_view path, std::span<const uint8_t> buf);
     cv::Mat loadPFM(wstring_view path, std::span<const uint8_t> buf);
     cv::Mat loadQOI(wstring_view path, std::span<const uint8_t> buf);
     cv::Mat loadPCX(wstring_view path, std::span<const uint8_t> buf);

@@ -2,6 +2,52 @@
 
 #include "jarkUtils.h"
 
+#include <fstream>
+#include <mutex>
+
+
+namespace {
+    std::mutex logFileMutex;
+    std::ofstream logFileStream;
+    bool logFileTried = false;
+
+    std::filesystem::path defaultLogPath() {
+        wchar_t tempPath[MAX_PATH] = {};
+        const DWORD length = ::GetTempPathW(MAX_PATH, tempPath);
+        std::filesystem::path dir = (length > 0 && length < MAX_PATH)
+            ? std::filesystem::path(tempPath)
+            : std::filesystem::temp_directory_path();
+        return dir / L"JarkViewer.log";
+    }
+}
+
+void jarkUtils::setLogEnabled(bool enabled) noexcept {
+    logEnabled = enabled;
+}
+
+std::wstring jarkUtils::logFilePath() {
+    return defaultLogPath().wstring();
+}
+
+void jarkUtils::writeLogLine(std::string_view text) {
+    std::lock_guard<std::mutex> lock(logFileMutex);
+
+    if (!logFileTried) {
+        logFileTried = true;
+        logFileStream.open(defaultLogPath(), std::ios::binary | std::ios::app);
+        if (logFileStream.is_open()) {
+            auto now = std::chrono::system_clock::now();
+            auto time = std::chrono::current_zone()->to_local(now);
+            logFileStream << std::format("\n===== JarkViewer log {} =====", time) << '\n';
+        }
+    }
+
+    if (!logFileStream.is_open())
+        return;
+
+    logFileStream << text << '\n';
+    logFileStream.flush();
+}
 
 std::string jarkUtils::bin2Hex(const void* bytes, const size_t len) {
     auto charList = "0123456789ABCDEF";

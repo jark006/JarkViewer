@@ -171,6 +171,7 @@
     <ClInclude Include="include\stringRes.h" />
     <ClInclude Include="include\SVGPreprocessor.h" />
     <ClInclude Include="include\TextDrawer.h" />
+    <ClInclude Include="include\VectorImage.h" />
     <ClInclude Include="include\ThumbnailProviderGuids.h" />
     <ClInclude Include="include\ThumbnailRegistrar.h" />
     <ClInclude Include="include\jarkUtils.h" />
@@ -191,6 +192,7 @@
     <ClCompile Include="src\stringRes.cpp" />
     <ClCompile Include="src\TextDrawer.cpp" />
     <ClCompile Include="src\tinyxml2.cpp" />
+    <ClCompile Include="src\VectorImage.cpp" />
     <ClCompile Include="src\videoDecoder.cpp" />
   </ItemGroup>
   <ItemGroup>

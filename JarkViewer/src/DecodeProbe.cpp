@@ -2,6 +2,7 @@
 
 #include "FormatSniffer.h"
 #include "ImageDatabase.h"
+#include "VectorImage.h"
 #include "jarkUtils.h"
 
 #include <algorithm>
@@ -32,6 +33,7 @@ namespace {
         double elapsedMs = 0.0;
         std::string firstExifLine;
         std::string exifText;
+        std::string vectorReport;
     };
 
     std::string utf8(std::wstring_view text) {
@@ -64,6 +66,34 @@ namespace {
         while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
             line.pop_back();
         return line;
+    }
+
+    // 模拟不同缩放级别，验证矢量图的按需光栅化（目标分辨率、滞后策略、耗时）
+    std::string buildVectorReport(ImageAsset& imageAsset) {
+        const auto& vectorImage = imageAsset.vectorSource;
+        if (!vectorImage)
+            return {};
+
+        std::string report = std::format("\n            | vector: intrinsic={}x{} initial={}x{}",
+            vectorImage->intrinsicWidth, vectorImage->intrinsicHeight,
+            vectorImage->rasterWidth, vectorImage->rasterHeight);
+
+        for (const double scale : { 0.25, 1.0, 2.0, 8.0 }) {
+            const auto zoom = static_cast<int64_t>(std::llround(scale * ZOOM_BASE));
+            const int targetEdge = vectorTargetEdge(imageAsset, zoom, ZOOM_BASE);
+
+            const auto begin = std::chrono::steady_clock::now();
+            const bool refreshed = refreshVectorRaster(imageAsset, targetEdge);
+            const auto end = std::chrono::steady_clock::now();
+            const auto elapsedMs = std::chrono::duration<double, std::milli>(end - begin).count();
+
+            report += std::format("\n            | zoom {:>4.0f}% -> target={} raster={}x{} {} {:.0f}ms",
+                scale * 100.0, targetEdge,
+                vectorImage->rasterWidth, vectorImage->rasterHeight,
+                refreshed ? "rendered" : "kept", elapsedMs);
+        }
+
+        return report;
     }
 
     ProbeResult probeOne(ImageDatabase& imageDatabase, const std::wstring& path) {
@@ -106,6 +136,8 @@ namespace {
         const auto tipsMat = imageDatabase.getErrorTipsMat();
         result.tips = !tipsMat.empty() && !imageAsset.primaryFrame.empty() &&
             imageAsset.primaryFrame.data == tipsMat.data;
+
+        result.vectorReport = buildVectorReport(imageAsset);
 
         return result;
     }
@@ -186,6 +218,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         else if (!result.firstExifLine.empty()) {
             line += std::format("\n            | {}", result.firstExifLine);
         }
+
+        // 矢量图：模拟若干缩放级别，验证按需光栅化的目标分辨率与耗时
+        if (filled && !result.vectorReport.empty())
+            line += result.vectorReport;
 
         emit(line);
     }

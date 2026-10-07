@@ -94,6 +94,8 @@ using std::unordered_map;
 inline const int MIN_VIDEO_BUFF_SIZE = 65536; // 64KiB 视频数据最小尺寸，过小可能是无效数据
 inline const int MAX_VIDEO_FRAMES = 120;      // 最大解码帧数，过大可能导致内存占用过高
 
+inline constexpr int64_t ZOOM_BASE = 1 << 16; // 100% 缩放的定点基准（CurImageParameter 与矢量图光栅化共用）
+
 struct ThemeColor {
     uint32_t FG_LIGHT;   // 文字颜色 浅
     uint32_t FG;         // 文字颜色
@@ -319,6 +321,10 @@ struct std::formatter<Cood> {
     }
 };
 
+namespace jark {
+    struct VectorImage; // 矢量图源，定义见 VectorImage.h
+}
+
 enum class ImageFormat {
     None = 0,       // 解码失败
     Still,          // 静态图: jpg/bmp ...
@@ -333,6 +339,7 @@ struct ImageAsset {
     std::vector<int> frameDurations;         // 每帧时长
     string exifInfo;                         // 图像EXIF等信息
     std::vector<uint8_t> iccProfile;         // 图像内嵌ICC配置文件
+    std::shared_ptr<jark::VectorImage> vectorSource; // 矢量图源（SVG），按需重新光栅化
 };
 
 enum class ActionENUM:int64_t {
@@ -455,33 +462,53 @@ struct GlobalVar {
     static inline SettingParameter settingParameter;
 };
 
-#ifdef NDEBUG
-#define JARK_LOG(fmt, ...)
-#else
-#define JARK_LOG(fmt, ...) jarkUtils::log(fmt, ##__VA_ARGS__)
-#endif
-
 class jarkUtils {
 public:
 
+    // 日志开关：Debug 构建默认开启（输出到控制台）；Release 构建默认关闭，
+    // 可用命令行 `--log` 或环境变量 JARKVIEWER_LOG=1 打开（同时写入日志文件）。
+    static bool isLogEnabled() noexcept {
+#ifndef NDEBUG
+        return true;
+#else
+        return logEnabled;
+#endif
+    }
+
+    static void setLogEnabled(bool enabled) noexcept;
+
+    // Release 下开启日志时的输出文件路径（默认 %TEMP%\JarkViewer.log）
+    static std::wstring logFilePath();
+
+    static void writeLogLine(std::string_view text);
+
     template<typename... Args>
     static void log(std::string_view fmt, Args&&... args) {
-#ifndef NDEBUG
+        if (!jarkUtils::isLogEnabled())
+            return;
+
         auto now = std::chrono::system_clock::now();
         auto time = std::chrono::current_zone()->to_local(now);
         auto str = std::format("[{:%H:%M:%S}] {}", time, std::vformat(fmt, std::make_format_args(args...)));
+#ifndef NDEBUG
         std::println("{}", str);
 #endif
+        jarkUtils::writeLogLine(str);
     }
 
     template<typename... Args>
     static void log(std::wstring_view fmt, Args&&... args) {
-#ifndef NDEBUG
+        if (!jarkUtils::isLogEnabled())
+            return;
+
         auto now = std::chrono::system_clock::now();
         auto time = std::chrono::current_zone()->to_local(now);
         auto wstr = std::format(L"[{:%H:%M:%S}] {}", time, std::vformat(fmt, std::make_wformat_args(args...)));
-        std::println("{}", jarkUtils::wstringToUtf8(wstr));
+        auto str = jarkUtils::wstringToUtf8(wstr);
+#ifndef NDEBUG
+        std::println("{}", str);
 #endif
+        jarkUtils::writeLogLine(str);
     }
 
     static string bin2Hex(const void* bytes, const size_t len);
@@ -594,7 +621,13 @@ public:
         __TIME__[7],
         '\0',
     };
+
+private:
+    static inline bool logEnabled = false;
 };
+
+// 日志宏：先用运行期开关判断，避免 Release 下白算格式化参数
+#define JARK_LOG(fmt, ...) do { if (jarkUtils::isLogEnabled()) jarkUtils::log(fmt, ##__VA_ARGS__); } while (false)
 
 class FunctionTimeCount {
 public:
