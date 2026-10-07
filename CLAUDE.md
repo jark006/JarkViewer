@@ -79,7 +79,9 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   只按它拦截会让主窗口再也收不到任何操作。同理，用 Ctrl 组合键打开的窗口会吃掉 CTRL 的
   释放消息，这些分支必须清 `ctrlIsPressing`；`ESC` 在有窗口时先关窗口（`closeTopWindow()`），
   窗口失焦时也能兜住，不会直接退出程序。另外，空闲分支要靠 `anyWindowVisible()` 出帧，
-  否则刚打开的窗口要等鼠标动了才画出来。
+  否则刚打开的窗口要等鼠标动了才画出来；反过来窗口刚被关掉时，这一帧的画面里还有它，
+  `DrawUi()` 要 `markPresentRequested()` 补一帧把它擦掉，否则屏幕停在旧画面上，
+  看起来就是“点了关闭按钮卡住”（要等鼠标动或系统重绘才恢复）。
 - 主窗口（`D3D11App`/`JarkViewerApp`）是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()`
   给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新）；ImGui 侧由 `UiHost` 统一缩放。
 - 交换链使用**翻转模型**（`DXGI_SWAP_EFFECT_FLIP_DISCARD` + 双缓冲）。旧的

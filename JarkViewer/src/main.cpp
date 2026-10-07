@@ -1789,6 +1789,8 @@ public:
     }
 
     void DrawUi() override {
+        const bool windowVisibleBefore = anyWindowVisible();
+
         drawOverlayUi();
         drawExifPanel();
         SettingWindow::instance().draw();
@@ -1797,8 +1799,15 @@ public:
         EditorWindow::instance().draw();
 
         // 在窗口绘制之后取可见性：本帧被关掉的窗口立刻把输入还给画布
+        const bool windowVisible = anyWindowVisible();
+
         auto& uiHost = jark::ui::UiHost::instance();
-        uiHost.setUiVisible(hasOverlayUi() || showExif || anyWindowVisible());
+        uiHost.setUiVisible(hasOverlayUi() || showExif || windowVisible);
+
+        // 本帧刚被关掉的窗口还画在这一帧的画面里，要再补一帧把它擦掉；
+        // 否则主循环直接进空闲分支，屏幕停在旧画面上，看起来就是“点了关闭按钮卡住”。
+        if (windowVisibleBefore && !windowVisible)
+            markPresentRequested();
     }
 
     void DrawScene() {
