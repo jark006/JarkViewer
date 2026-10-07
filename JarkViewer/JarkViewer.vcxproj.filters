@@ -123,6 +123,9 @@
     <Image Include="file\home.png">
       <Filter>resources</Filter>
     </Image>
+  <Image Include="file\tips.png">
+    <Filter>Resource Files</Filter>
+  </Image>
   </ItemGroup>
   <ItemGroup>
      </ItemGroup>
