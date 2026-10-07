@@ -14,6 +14,12 @@ CANDIDATES = [
     0xE759, 0xE75B, 0xE7E6, 0xE9D9, 0xEA37, 0xE8AF, 0xE8A7, 0xE70B,
     0xE718, 0xE71B, 0xE74C, 0xE785, 0xE7C9, 0xE8FD, 0xE945, 0xE7EE,
     0xE706, 0xE70D, 0xE70E, 0xE8EF, 0xE839, 0xE7C1, 0xE8B9, 0xEB9F,
+    # 编辑标注工具行补的图标（已选定：矩形 E739、椭圆 EA3A、画笔 E70F、裁剪 E7A8）与备选
+    0xE739, 0xE75B, 0xE7C4, 0xE7FB, 0xE7FC, 0xE8A9, 0xE8AA, 0xE7A5,
+    0xEA3A, 0xE91F, 0xE7A6, 0xE7A7, 0x25A1, 0x25CB, 0x25EF, 0x25AF,
+    0xE70F, 0xE718, 0xE7E6, 0xEB7F, 0xEB7E, 0xE929, 0x2712, 0x270D,
+    0x270E, 0x270F, 0xE8AC, 0xE8AD, 0xE7A8, 0xE8B0, 0xE123, 0xE7C6,
+    0x2702, 0xE8A0, 0xE74E, 0xE8D2, 0xE7EE, 0xE706, 0xE7C9, 0xE945,
 ]
 
 
@@ -23,14 +29,13 @@ def glyph_literal(cp):
 
 
 def build_probe_body():
-    lines = ['        if (ImGui::BeginTable("cand", 8, ImGuiTableFlags_SizingFixedFit)) {']
-    for cp in CANDIDATES:
-        lines.append('            ImGui::TableNextColumn();')
-        lines.append('            { const char g[4] = { %s }; ImGui::Button(g, ImVec2(52, 34)); '
+    # 每行 4 个：图标按钮 + 完整码位标签（表格的单元格会把标签截断，所以不用表格）
+    lines = []
+    for index, cp in enumerate(CANDIDATES):
+        lines.append('        { const char g[4] = { %s }; ImGui::Button(g, ImVec2(52, 40)); '
                      'ImGui::SameLine(); ImGui::TextUnformatted("%s"); }'
                      % (glyph_literal(cp), '%04X' % cp))
-    lines.append('            ImGui::EndTable();')
-    lines.append('        }')
+        lines.append('        if (%d %% 4 != 3) ImGui::SameLine(0, 26.0f);' % index)
     return '\n'.join(lines)
 
 

@@ -7,3 +7,6 @@ x64
 
 # 解码自检报告与批量输出
 decode-probe.txt
+
+# 图标码位探针的临时备份（tools/gen_icon_probe.py 生成）
+tools/.drawui_backup

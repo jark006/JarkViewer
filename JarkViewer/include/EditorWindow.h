@@ -332,15 +332,14 @@ private:
             uint32_t stringId;
             jark::AnnoTool tool;
         } tools[] = {
-            // 图标暂用文字占位，后续可换成自绘图标
-            { "", kStrRect, jark::AnnoTool::Rect },
-            { "", kStrEllipse, jark::AnnoTool::Ellipse },
+            { jark::ui::icon::kRect, kStrRect, jark::AnnoTool::Rect },
+            { jark::ui::icon::kEllipse, kStrEllipse, jark::AnnoTool::Ellipse },
             { jark::ui::icon::kArrow, kStrArrow, jark::AnnoTool::Arrow },
             { jark::ui::icon::kLine, kStrLine, jark::AnnoTool::Line },
-            { "", kStrPen, jark::AnnoTool::Pen },
+            { jark::ui::icon::kPen, kStrPen, jark::AnnoTool::Pen },
             { jark::ui::icon::kMosaic, kStrMosaic, jark::AnnoTool::Mosaic },
             { "T", kStrText, jark::AnnoTool::Text },
-            { "", kStrCrop, jark::AnnoTool::Crop },
+            { jark::ui::icon::kCrop, kStrCrop, jark::AnnoTool::Crop },
         };
 
         // 撤销/重做在最左边，与右侧的绘图工具之间用竖线分开

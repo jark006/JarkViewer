@@ -82,6 +82,10 @@ namespace jark::ui {
         constexpr Glyph<0xE8B7> kFolder;        // 文件夹
         constexpr Glyph<0xE8E5> kOpenFile;      // 打开
         constexpr Glyph<0xE91B> kPhoto;         // 图片
+        constexpr Glyph<0xE739> kRect;          // ⬜ 矩形（标注工具）
+        constexpr Glyph<0xEA3A> kEllipse;       // ⭕ 椭圆（标注工具）
+        constexpr Glyph<0xE70F> kPen;           // ✏ 画笔（标注工具）
+        constexpr Glyph<0xE7A8> kCrop;          // ⌐ 裁剪（标注工具）
     }
 
     class UiHost {
