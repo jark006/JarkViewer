@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MatWindow.h"
+#include "Localization.h"
 #include "TextDrawer.h"
 
 // 全局变量存储UI状态
@@ -46,7 +47,7 @@ private:
         printerRes = cv::imdecode(cv::Mat(1, (int)rc.size, CV_8UC1, (uint8_t*)rc.ptr), cv::IMREAD_UNCHANGED);
         m_uiCanvas = cv::Mat(winHeight, winWidth, CV_8UC4, jarkUtils::to_cv_scalar(GlobalVar::currentTheme.BG));
 
-        if (GlobalVar::settingParameter.UI_LANG == 0) {
+        if (jark::prefersChineseResources()) {
             buttonColorMode.push_back(printerRes({ 0, 0, 400, 50 }));
             buttonColorMode.push_back(printerRes({ 400, 0, 400, 50 }));
             buttonColorMode.push_back(printerRes({ 0, 50, 400, 50 }));

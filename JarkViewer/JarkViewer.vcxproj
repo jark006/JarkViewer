@@ -168,6 +168,7 @@
     <ClInclude Include="include\FileAssociationManager.h" />
     <ClInclude Include="include\FormatSniffer.h" />
     <ClInclude Include="include\ImageDatabase.h" />
+    <ClInclude Include="include\Localization.h" />
     <ClInclude Include="include\LRU.h" />
     <ClInclude Include="include\MediaDecoder.h" />
     <ClInclude Include="include\MediaPlayer.h" />
@@ -199,6 +200,7 @@
     <ClCompile Include="src\MediaDecoder.cpp" />
     <ClCompile Include="src\MediaPlayer.cpp" />
     <ClCompile Include="src\jarkUtils.cpp" />
+    <ClCompile Include="src\Localization.cpp" />
     <ClCompile Include="src\stringRes.cpp" />
     <ClCompile Include="src\TextDrawer.cpp" />
     <ClCompile Include="src\tinyxml2.cpp" />

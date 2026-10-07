@@ -3,6 +3,7 @@
 #include "FormatSniffer.h"
 #include "ImageDatabase.h"
 #include "AudioOutput.h"
+#include "Localization.h"
 #include "MediaDecoder.h"
 #include "VectorImage.h"
 #include "jarkUtils.h"
@@ -209,6 +210,31 @@ namespace {
 
     // 音频输出自检：把文件的音频提交给 XAudio2（音量 0，不发声），
     // 观察播放时钟是否按采样率推进——用于无人耳参与时验证音频链路。
+    // 语言自检：逐一切换语言并打印若干条文案，验证字符串表与回退逻辑
+    std::string runLanguageTest() {
+        std::string report;
+        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54 };   // 设置/常规/语言/路径/分辨率/优先1:1
+        const uint32_t wideIds[] = { 1, 13, 30 };                // 窗口标题/窗口创建失败/删除到回收站
+
+        const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;
+
+        for (size_t index = 0; index < jark::kLanguageCount; ++index) {
+            GlobalVar::settingParameter.UI_LANG = static_cast<uint32_t>(index);
+            const auto language = static_cast<jark::Language>(index);
+
+            report += std::format("\n[{}] ", jark::languageDisplayName(language));
+            for (const uint32_t id : sampleIds)
+                report += std::format("{} | ", getUIString(id));
+            report += "\n     宽字符: ";
+            for (const uint32_t id : wideIds)
+                report += std::format("{} | ", jarkUtils::wstringToUtf8(getUIStringW(id)));
+            report += std::format("\n     资源图使用{}文案", jark::prefersChineseResources() ? "中文" : "英文");
+        }
+
+        GlobalVar::settingParameter.UI_LANG = savedLanguage;
+        return report;
+    }
+
     std::string runAudioTest(const std::wstring& path) {
         std::string report;
 
@@ -290,6 +316,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     std::wstring reportPath = L"decode-probe.txt";
     bool fullExif = false;
     bool audioTest = false;
+    bool languageTest = false;
 
     for (size_t i = 1; i < argv.size(); ++i) {
         if (argv[i] == L"--probe")
@@ -300,6 +327,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--audio-test") {
             audioTest = true;
+            continue;
+        }
+        if (argv[i] == L"--lang-test") {
+            languageTest = true;
             continue;
         }
         if (argv[i] == L"--out" && i + 1 < argv.size()) {
@@ -320,6 +351,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         if (report.is_open())
             report.write(line.data(), static_cast<std::streamsize>(line.size())) << '\n';
     };
+
+    if (languageTest) {
+        emit(runLanguageTest());
+        return 0;
+    }
 
     if (audioTest) {
         const auto text = runAudioTest(targets.front());
