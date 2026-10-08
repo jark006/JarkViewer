@@ -316,8 +316,9 @@ std::unique_ptr<MediaDecoder> MediaDecoder::open(std::span<const uint8_t> data) 
     if (impl.formatContext->duration != AV_NOPTS_VALUE)
         info.durationMs = impl.formatContext->duration * 1000 / AV_TIME_BASE;
 
-    JARK_LOG("media opened: video={} {}x{} rot={} fps={:.2f} | audio={} {}Hz {}ch | duration={}ms",
-        info.hasVideo, info.width, info.height, info.rotationDegrees, info.frameRate,
+    JARK_LOG("media opened: video={} 编码 {}x{} 显示 {}x{} rot={} fps={:.2f} | audio={} {}Hz {}ch | duration={}ms",
+        info.hasVideo, info.width, info.height, info.displayWidth(), info.displayHeight(),
+        info.rotationDegrees, info.frameRate,
         info.hasAudio, info.audioSampleRate, info.audioChannels, info.durationMs);
 
     return decoder;

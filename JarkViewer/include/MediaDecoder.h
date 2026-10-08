@@ -18,13 +18,19 @@ namespace jark {
 struct MediaInfo {
     bool hasVideo = false;
     bool hasAudio = false;
-    int width = 0;
+    int width = 0;             // 编码尺寸（未旋转）
     int height = 0;
     int rotationDegrees = 0;   // 元数据里的显示旋转角（0/90/180/270）
     double frameRate = 0.0;
     int64_t durationMs = 0;
     int audioSampleRate = 0;
     int audioChannels = 0;
+
+    // 交给播放端的帧是**按 rotationDegrees 旋转过**的（见 MediaDecoder 里对 Chunk::video
+    // 的 cv::rotate），所以"播放端看到的尺寸"要跟着换：手机竖拍视频的编码尺寸是横的，
+    // 拿 width/height 当显示尺寸就会把竖帧塞进横框里拉伸（实况照片播放时尤其明显）。
+    int displayWidth() const { return rotationDegrees % 180 != 0 ? height : width; }
+    int displayHeight() const { return rotationDegrees % 180 != 0 ? width : height; }
 };
 
 class MediaDecoder {

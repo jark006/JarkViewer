@@ -199,8 +199,10 @@ bool MediaPlayer::getVideoSize(int& width, int& height) const noexcept {
     if (!impl_->decoder || !impl_->decoder->info().hasVideo)
         return false;
 
-    width = impl_->decoder->info().width;
-    height = impl_->decoder->info().height;
+    // 给的是"播放端看到的"尺寸（已按显示旋转），与 acquireFrame() 交出来的帧一致；
+    // 直接给编码尺寸会在竖拍视频上把宽高弄反，画面被拉伸
+    width = impl_->decoder->info().displayWidth();
+    height = impl_->decoder->info().displayHeight();
     return true;
 }
 

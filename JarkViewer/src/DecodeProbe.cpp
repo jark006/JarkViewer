@@ -14,6 +14,7 @@
 #include "ThumbnailService.h"
 #include <sstream>
 #include "MediaDecoder.h"
+#include "MediaPlayer.h"
 #include "VectorImage.h"
 #include "jarkUtils.h"
 
@@ -83,28 +84,19 @@ namespace {
         return line;
     }
 
-    // 视频/音频自检：打开 MediaDecoder 并统计能解出的视频帧与音频样本
-    std::string buildMediaReport(const std::wstring& path, jark::FileFormat sniffed) {
-        if (sniffed != jark::FileFormat::Video)
-            return {};
-
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
-        if (!file.is_open())
-            return {};
-
-        const auto size = static_cast<size_t>(file.tellg());
-        file.seekg(0);
-        std::vector<uint8_t> data(size);
-        file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
-
+    // 视频/音频自检：打开 MediaDecoder 并统计能解出的视频帧与音频样本。
+    // decodeAll=false 只报头部信息（实况照片里的视频用它：尺寸/旋转一眼可见，
+    // 又不至于把整段视频解一遍拖慢自检）
+    std::string buildMediaReport(std::span<const uint8_t> data, bool decodeAll = true) {
         auto decoder = MediaDecoder::open(data);
         if (!decoder)
             return "\n            | media: 无法打开";
 
         const auto& info = decoder->info();
         std::string report = std::format(
-            "\n            | media: video={} {}x{} rot={} fps={:.1f} | audio={} {}Hz {}ch | dur={}ms",
-            info.hasVideo, info.width, info.height, info.rotationDegrees, info.frameRate,
+            "\n            | media: video={} 显示 {}x{} (编码 {}x{}) rot={} fps={:.1f} | audio={} {}Hz {}ch | dur={}ms",
+            info.hasVideo, info.displayWidth(), info.displayHeight(), info.width, info.height,
+            info.rotationDegrees, info.frameRate,
             info.hasAudio, info.audioSampleRate, info.audioChannels, info.durationMs);
 
         const auto begin = std::chrono::steady_clock::now();
@@ -113,10 +105,18 @@ namespace {
         size_t audioChunks = 0;
         int64_t lastVideoPts = 0;
         int64_t lastAudioPts = 0;
+        int firstFrameWidth = 0;
+        int firstFrameHeight = 0;
 
         MediaDecoder::Chunk chunk;
         while (decoder->readNext(chunk)) {
             if (chunk.type == MediaDecoder::Chunk::Type::Video) {
+                if (firstFrameWidth == 0 && !chunk.video.empty()) {
+                    firstFrameWidth = chunk.video.cols;
+                    firstFrameHeight = chunk.video.rows;
+                    if (!decodeAll)
+                        break; // 实况照片只核对首帧尺寸，不把整段解完
+                }
                 ++videoFrames;
                 lastVideoPts = chunk.ptsMs;
             }
@@ -134,7 +134,36 @@ namespace {
             "\n            | decoded: {} frames (last {}ms), {} audio samples in {} chunks (last {}ms, {:.0f}ms)",
             videoFrames, lastVideoPts, audioSamples, audioChunks, lastAudioPts, elapsedMs);
 
+        // 不变式：帧与对外报的显示尺寸必须是**同一个宽高比**。帧可能被缩到长边上限以内
+        // （那是采样密度，不影响尺寸），但宽高比不一致就说明名义尺寸与帧的方向/形状对不上，
+        // 绘制端会把画面拉伸——竖拍视频（编码尺寸是横的、帧已旋转）出过这个问题。
+        if (firstFrameWidth > 0 && info.displayWidth() > 0 && info.displayHeight() > 0) {
+            constexpr double tolerance = 0.01;
+            const double frameAspect = static_cast<double>(firstFrameWidth) / firstFrameHeight;
+            const double displayAspect = static_cast<double>(info.displayWidth()) / info.displayHeight();
+            const bool aspectMatches = std::abs(frameAspect - displayAspect) <= tolerance;
+            report += std::format(" | 首帧 {}x{} 与显示尺寸 {}x{} {}",
+                firstFrameWidth, firstFrameHeight, info.displayWidth(), info.displayHeight(),
+                aspectMatches ? "宽高比一致" : "!! 宽高比不一致，绘制端会按错误的宽高拉伸");
+        }
+
         return report;
+    }
+
+    // 视频文件：读盘后交给上面的解码统计
+    std::string buildMediaReport(const std::wstring& path, jark::FileFormat sniffed) {
+        if (sniffed != jark::FileFormat::Video)
+            return {};
+
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file.is_open())
+            return {};
+
+        const auto size = static_cast<size_t>(file.tellg());
+        file.seekg(0);
+        std::vector<uint8_t> data(size);
+        file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
+        return buildMediaReport(data);
     }
 
     // 模拟不同缩放级别，验证矢量图的按需光栅化（目标分辨率、滞后策略、耗时）
@@ -207,6 +236,10 @@ namespace {
 
         result.vectorReport = buildVectorReport(imageAsset);
         result.mediaReport = buildMediaReport(path, result.sniffed);
+        // 实况照片/动图的视频不在文件里独立存在：也报一遍它的尺寸，
+        // 否则"竖拍视频被按编码尺寸当横的"这类问题在自检里看不见
+        if (result.mediaReport.empty() && imageAsset.videoSource && !imageAsset.videoSource->data.empty())
+            result.mediaReport = buildMediaReport(imageAsset.videoSource->data, false);
 
         return result;
     }

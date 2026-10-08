@@ -58,6 +58,29 @@ def frames(count=4):
     return out
 
 
+def make_rotated_video(out_dir):
+    """把 clip.mp4 的 tkhd 矩阵改成 -90° 旋转，产出竖拍视频样例。
+
+    ffmpeg 不再支持 `-metadata:s:v rotate=90`，而 `-display_rotation` 只是读取端选项，
+    所以这里直接改二进制：tkhd 盒里矩阵固定在第 48 字节（8 头 + 40 字段），
+    9 个 32 位定点数；-90° 即 [[0,1,0],[-1,0,0],[0,0,1]]（1 写作 0x10000）。
+    """
+    src = os.path.join(out_dir, "clip.mp4")
+    dst = os.path.join(out_dir, "clip_rot90.mp4")
+    if not os.path.exists(src):
+        failed.append("clip_rot90.mp4: 缺少 clip.mp4")
+        return
+    data = bytearray(open(src, "rb").read())
+    box = data.find(b"tkhd")
+    if box < 4:
+        failed.append("clip_rot90.mp4: 找不到 tkhd 盒")
+        return
+    struct.pack_into(">9i", data, box + 4 + 40, 0, 65536, 0, -65536, 0, 0, 0, 0, 1073741824)
+    with open(dst, "wb") as fh:
+        fh.write(data)
+    record("clip_rot90.mp4")
+
+
 def run_ffmpeg(out_dir, name, args, source="testsrc=size=480x360:rate=25:duration=3",
                audio=None):
     if not FFMPEG:
@@ -292,6 +315,11 @@ def main():
     run_ffmpeg(out_dir, "tiny.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p"],
                source="testsrc=size=64x48:rate=5:duration=1")  # 期望被拒绝（小于 64KiB 阈值）
     run_ffmpeg(out_dir, "still.avif", ["-frames:v", "1", "-c:v", "libaom-av1", "-f", "avif"])
+
+    # 带显示旋转矩阵的竖拍视频：手机实况视频的常态是"编码尺寸是横的、显示要按
+    # display matrix 转 90°"。ffmpeg 各版本都不再接受 -metadata rotate=，
+    # 直接把 clip.mp4 的 tkhd 矩阵改掉最可靠（解码器按它转帧，播放端要拿旋转后的尺寸）。
+    make_rotated_video(out_dir)
 
     # 带音轨的视频（AAC / Opus），用于验证音频解码与实况照片播放
     run_ffmpeg(out_dir, "sound.mp4", ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", "2000k",
