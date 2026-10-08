@@ -57,6 +57,7 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
 - 项目文件是 `JarkViewer/JarkViewer.vcxproj`，工具集为 `v145`，语言标准为 C++23，目标平台为 x64；需要安装支持 v145 工具集的 Visual Studio/Build Tools。
 - `JarkViewer.vcxproj` 中 `VcpkgEnabled=false`，默认使用仓库内的静态库目录：`JarkViewer/lib*`、`JarkViewer/ffmpeg`、`JarkViewer/include`。
 - README 说明第三方静态库需从 release 的 `static_lib` 包准备；如果改为 vcpkg，需要在项目属性中启用并补齐依赖。
+- `JarkViewer/libopencv/zlib.lib` 已换成 **zlib-ng 的 compat 构建**（大 PNG 解压约快 25%）。compat 模式不改符号名，OpenCV 是最终链接时才解析 inflate，所以是原地替换、不用重建 OpenCV；但 **include 下的 `zlib.h`/`zconf.h`/`zlib_name_mangling.h` 必须与 .lib 是同一来源**。换机器或重建静态库环境时跑一次 `pwsh tools/build-zlib-ng.ps1 -Install`（原件备份在同目录 `zlib-1.3.1.lib`；头文件回退用 git checkout）。
 - Release 输出程序位于 `x64/Release/JarkViewer.exe`，中间文件位于 `JarkViewer/x64/<Configuration>`。
 
 ## 高层架构

@@ -112,6 +112,8 @@ git clone git@github.com:jark006/JarkViewer.git --depth=50
 1. 在源码 `opencv-4.13.0\modules\imgcodecs\src\loadsave.cpp` #68-79 移除图像分辨率限制。
 2. 在源码 `opencv-4.13.0\modules\highgui\src\window_w32.cpp` #337 将 `IDC_CROSS` 改为 `IDC_ARROW`，即在 `cv::imshow()` 窗口内不使用十字光标。
 
+另外，`libopencv/zlib.lib` 已替换为 **zlib-ng** 的 compat 构建（大 PNG 解压约快 25%），`include` 下的 zlib 头文件与之配套。自行准备静态库时，运行一次 `pwsh tools/build-zlib-ng.ps1 -Install` 即可完成替换（compat 模式不改符号名，无需重建 OpenCV）。
+
 若不要以上静态库，可在项目属性页开启`vcpkg`支持，然后手动安装第三方库 (后续若有新增，此列表可能更新不及时，需开发者自行根据编译缺失信息补充安装)
 
 ```sh
