@@ -2,7 +2,9 @@
 
 #include "FormatSniffer.h"
 #include "ImageDatabase.h"
+#include "ColorManager.h"
 #include "AudioOutput.h"
+#include "lcms2.h"
 #include "ImageAnnotator.h"
 #include "Localization.h"
 #include "BatchProcessor.h"
@@ -697,6 +699,127 @@ namespace {
         return report;
     }
 
+    // 色彩管理自检：源与目标同为 sRGB 时变换是恒等的（跳过可省几百毫秒），大图按行并行——
+    // 这两类改动出错不会崩也不会报错，只是颜色悄悄变了，必须用像素断言钉住。
+    std::string runColorTest() {
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+
+        // gamma 1.8 的 RGB profile：与 sRGB 明显不同，保证变换非恒等
+        const auto makeGammaProfile = []() -> std::vector<uint8_t> {
+            cmsToneCurve* curve = cmsBuildGamma(nullptr, 1.8);
+            cmsCIExyY white{ 0.3127, 0.3290, 1.0 };
+            cmsCIExyYTRIPLE primaries{
+                { 0.6400, 0.3300, 1.0 },
+                { 0.3000, 0.6000, 1.0 },
+                { 0.1500, 0.0600, 1.0 } };
+            cmsToneCurve* curves[3] = { curve, curve, curve };
+            cmsHPROFILE profile = cmsCreateRGBProfile(&white, &primaries, curves);
+            cmsFreeToneCurve(curve);
+
+            std::vector<uint8_t> bytes;
+            cmsUInt32Number size = 0;
+            if (profile && cmsSaveProfileToMem(profile, nullptr, &size) && size > 0) {
+                bytes.resize(size);
+                cmsSaveProfileToMem(profile, bytes.data(), &size);
+                bytes.resize(size);
+            }
+            if (profile)
+                cmsCloseProfile(profile);
+            return bytes;
+        };
+
+        cv::Mat source(300, 400, CV_8UC3);
+        for (int y = 0; y < source.rows; ++y)
+            for (int x = 0; x < source.cols; ++x)
+                source.at<cv::Vec3b>(y, x) = cv::Vec3b(static_cast<uint8_t>(x * 255 / 399),
+                    static_cast<uint8_t>(y * 255 / 299), static_cast<uint8_t>((x + y) * 255 / 698));
+
+        // 1) 源与目标都没有 profile（都按 sRGB 处理）：恒等跳过、像素一个都不动
+        {
+            cv::Mat mat = source.clone();
+            const bool transformed = ColorManager::applyToMat(mat, {}, {});
+            check(!transformed && cv::norm(mat, source, cv::NORM_INF) == 0.0,
+                "空 profile 双双按 sRGB：恒等跳过且像素不变");
+        }
+
+        // 2) 图文 profile 与显示器 profile 逐字节相同：恒等跳过
+        const auto gammaProfile = makeGammaProfile();
+        check(!gammaProfile.empty(), "自检 profile 构造成功");
+        {
+            cv::Mat mat = source.clone();
+            const bool transformed = ColorManager::applyToMat(mat, gammaProfile, gammaProfile);
+            check(!transformed && cv::norm(mat, source, cv::NORM_INF) == 0.0,
+                "同一 profile：恒等跳过且像素不变");
+        }
+
+        // 3) sRGB → gamma1.8：变换必须真的执行并改变像素
+        {
+            cv::Mat mat = source.clone();
+            const bool transformed = ColorManager::applyToMat(mat, {}, gammaProfile);
+            check(transformed && cv::norm(mat, source, cv::NORM_INF) > 0.0,
+                "sRGB 到 gamma1.8：变换执行且像素变化");
+        }
+
+        // 4) 四通道：alpha 不参与变换（cmsFLAGS_COPY_ALPHA）
+        {
+            cv::Mat mat(64, 64, CV_8UC4);
+            for (int y = 0; y < mat.rows; ++y)
+                for (int x = 0; x < mat.cols; ++x)
+                    mat.at<cv::Vec4b>(y, x) = cv::Vec4b(static_cast<uint8_t>(x * 4),
+                        static_cast<uint8_t>(y * 4), 90, static_cast<uint8_t>(x + y));
+            const cv::Mat before = mat.clone();
+            ColorManager::applyToMat(mat, {}, gammaProfile);
+            bool alphaSame = true;
+            for (int y = 0; y < mat.rows && alphaSame; ++y) {
+                for (int x = 0; x < mat.cols; ++x) {
+                    if (mat.at<cv::Vec4b>(y, x)[3] != before.at<cv::Vec4b>(y, x)[3]) {
+                        alphaSame = false;
+                        break;
+                    }
+                }
+            }
+            check(alphaSame, "四通道图像：alpha 通道不被变换");
+        }
+
+        // 5) 超过并行门槛（约 200 万像素）的大图：按行并行与单线程串行逐字节一致
+        {
+            cv::Mat big(1200, 2000, CV_8UC3);
+            for (int y = 0; y < big.rows; ++y)
+                for (int x = 0; x < big.cols; ++x)
+                    big.at<cv::Vec3b>(y, x) = cv::Vec3b(static_cast<uint8_t>(x * 255 / 1999),
+                        static_cast<uint8_t>(y * 255 / 1199), static_cast<uint8_t>((x * 7 + y * 3) & 0xFF));
+
+            cv::Mat parallelMat = big.clone();
+            ColorManager::applyToMat(parallelMat, {}, gammaProfile);
+
+            cv::Mat serialMat = big.clone();
+            {
+                cmsHPROFILE sourceProfile = cmsCreate_sRGBProfile();
+                cmsHPROFILE targetProfile = cmsOpenProfileFromMem(gammaProfile.data(),
+                    static_cast<cmsUInt32Number>(gammaProfile.size()));
+                cmsHTRANSFORM transform = cmsCreateTransform(sourceProfile, TYPE_BGR_8,
+                    targetProfile, TYPE_BGR_8, INTENT_PERCEPTUAL, 0);
+                for (int y = 0; y < serialMat.rows; ++y) {
+                    cmsDoTransform(transform, serialMat.ptr(y), serialMat.ptr(y),
+                        static_cast<cmsUInt32Number>(serialMat.cols));
+                }
+                cmsDeleteTransform(transform);
+                cmsCloseProfile(sourceProfile);
+                cmsCloseProfile(targetProfile);
+            }
+            check(cv::norm(parallelMat, serialMat, cv::NORM_INF) == 0.0,
+                "大图按行并行与逐行串行结果逐字节一致");
+        }
+
+        report = std::format("---- 色彩管理自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
+        return report;
+    }
+
 } // namespace
 
 int runDecodeProbe(const std::vector<std::wstring>& argv) {
@@ -716,6 +839,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool batchTest = false;
     bool annotateTest = false;
     bool navigationTest = false;
+    bool colorTest = false;
     bool thumbnailTest = false;
     bool shellThumbnailTest = false;
     int thumbnailWriter = -1;
@@ -744,6 +868,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--navigation-test") {
             navigationTest = true;
+            continue;
+        }
+        if (argv[i] == L"--color-test") {
+            colorTest = true;
             continue;
         }
         if (argv[i] == L"--thumbnail-writer" && i + 1 < argv.size()) {
@@ -862,8 +990,8 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         targets.push_back(argv[i]);
     }
 
-    // 标注自检不需要输入文件（用合成底图断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !thumbnailTest && thumbnailWriter < 0) {
+    // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
+    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !thumbnailTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -877,6 +1005,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
 
     if (navigationTest) {
         const auto text = runNavigationTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (colorTest) {
+        const auto text = runColorTest();
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

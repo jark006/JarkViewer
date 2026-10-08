@@ -162,6 +162,14 @@ bool ColorManager::applyToMat(cv::Mat& mat, const std::vector<uint8_t>& sourceIc
     if (pixelType == 0)
         return false;
 
+    // 源和目标同一色彩空间时变换是恒等的，跑一遍只把每个像素原样写回去（还带舍入）。
+    // 最常见的情况：文件没嵌 profile（按 sRGB 处理）且显示器没设 profile（也按 sRGB 处理）。
+    // 一亿像素白跑一趟要两三百毫秒，而这步紧跟在解码之后、直接顶在出图时间上。
+    if (sourceIcc.empty() && monitorIcc.empty())
+        return false; // 恒等：无需变换
+    if (!sourceIcc.empty() && sourceIcc == monitorIcc)
+        return false; // 恒等：图文 profile 与显示器 profile 逐字节相同
+
     CmsProfile sourceProfile(sourceIcc.empty() ?
         cmsCreate_sRGBProfile() :
         cmsOpenProfileFromMem(sourceIcc.data(), static_cast<cmsUInt32Number>(sourceIcc.size())));
@@ -188,13 +196,32 @@ bool ColorManager::applyToMat(cv::Mat& mat, const std::vector<uint8_t>& sourceIc
     if (!transform)
         return false;
 
-    if (mat.isContinuous()) {
-        cmsDoTransform(transform, mat.ptr(), mat.ptr(), static_cast<cmsUInt32Number>(mat.total()));
+    // 大图按行分块并行：lcms2 的 transform 句柄可被多线程共用（只读），各线程处理
+    // 互不重叠的行，结果与单线程逐行调用逐字节相同。小图不分线程（调度开销更大）。
+    constexpr size_t parallelPixelThreshold = 2u << 20; // 约 200 万像素
+    if (mat.total() < parallelPixelThreshold) {
+        if (mat.isContinuous()) {
+            cmsDoTransform(transform, mat.ptr(), mat.ptr(), static_cast<cmsUInt32Number>(mat.total()));
+        }
+        else {
+            for (int y = 0; y < mat.rows; ++y)
+                cmsDoTransform(transform, mat.ptr(y), mat.ptr(y), static_cast<cmsUInt32Number>(mat.cols));
+        }
+        return true;
     }
-    else {
-        for (int y = 0; y < mat.rows; ++y)
-            cmsDoTransform(transform, mat.ptr(y), mat.ptr(y), static_cast<cmsUInt32Number>(mat.cols));
-    }
+
+    const int rowsPerBlock = (std::max)(1, mat.rows / 64);
+    const int blockCount = (mat.rows + rowsPerBlock - 1) / rowsPerBlock;
+    const cmsHTRANSFORM rawTransform = transform;
+    cv::parallel_for_(cv::Range(0, blockCount), [&](const cv::Range& range) {
+        for (int block = range.start; block < range.end; ++block) {
+            const int firstRow = block * rowsPerBlock;
+            const int lastRow = (std::min)(firstRow + rowsPerBlock, mat.rows);
+            for (int y = firstRow; y < lastRow; ++y) {
+                cmsDoTransform(rawTransform, mat.ptr(y), mat.ptr(y), static_cast<cmsUInt32Number>(mat.cols));
+            }
+        }
+    });
     return true;
 }
 
