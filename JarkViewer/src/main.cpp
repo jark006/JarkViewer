@@ -1616,33 +1616,73 @@ public:
     std::chrono::steady_clock::time_point lastTimestamp = std::chrono::steady_clock::now();
 
 
-    // 标题栏：[帧/总数] 缩放% 路径 旋转状态；幻灯片播放时前面加播放标记
+    // 标题栏：[序号/总数] 文件名 宽x高 (大小) 缩放% 旋转状态。
+    // 文件名放最前（任务栏与 Alt+Tab 里一眼可见），全路径太长只会把有用信息挤出可视区；
+    // 序号在总数到两位时补零，比例字体下不补零会随数字宽度左右跳动；
+    // 动图逐帧浏览时把序号换成帧号；幻灯片播放时前面加播放标记。
     void updateWindowCaption() {
         if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size() || !curPar.imageAssetPtr)
             return;
 
-        std::wstring str;
-        if (curPar.imageAssetPtr->format == ImageFormat::Animated && curPar.isAnimationPause) {
-            str = std::format(L"{} [{}/{}] {}% {}  ",
-                getUIStringW(9).c_str(),
-                curPar.curFrameIdx + 1, curPar.curFrameIdxMax + 1,
-                curPar.zoomCur * 100ULL / curPar.ZOOM_BASE,
-                imgFileList[curFileIdx]);
-        }
-        else {
-            str = std::format(L" [{}/{}] {}% {}  ",
-                curFileIdx + 1, imgFileList.size(),
-                curPar.zoomCur * 100ULL / curPar.ZOOM_BASE,
-                imgFileList[curFileIdx]);
+        const std::wstring& path = imgFileList[curFileIdx];
+        // 文件大小只在切图后查一次（标题每帧都重建，磁盘查询不能跟着每帧走）
+        if (path != captionPathCache_) {
+            captionPathCache_ = path;
+            std::error_code errorCode;
+            const auto bytes = std::filesystem::file_size(path, errorCode);
+            captionBytes_ = errorCode ? 0 : bytes;
         }
 
-        if (curPar.rotation)
+        std::wstring counter;
+        if (curPar.imageAssetPtr->format == ImageFormat::Animated && curPar.isAnimationPause) {
+            counter = std::format(L"{} [{}/{}]",
+                getUIStringW(9).c_str(),
+                curPar.curFrameIdx + 1, curPar.curFrameIdxMax + 1);
+        }
+        else if (imgFileList.size() >= 10) {
+            counter = std::format(L"[{:02}/{:02}]", curFileIdx + 1, imgFileList.size());
+        }
+        else {
+            counter = std::format(L"[{}/{}]", curFileIdx + 1, imgFileList.size());
+        }
+
+        std::wstring str = std::format(L"{} {} {}x{}",
+            counter,
+            std::filesystem::path(path).filename().wstring(),
+            curPar.width, curPar.height);
+
+        const std::wstring sizeText = formatFileSize(captionBytes_);
+        if (!sizeText.empty())
+            str += std::format(L" ({})", sizeText);
+
+        str += std::format(L" {}%", curPar.zoomCur * 100ULL / curPar.ZOOM_BASE);
+
+        if (curPar.rotation) {
+            str += L" ";
             str += (curPar.rotation == 1 ? getUIStringW(10) : (curPar.rotation == 3 ? getUIStringW(11) : getUIStringW(12)));
+        }
 
         if (slideshowActive)
             str = L"▶ " + str;
 
         SetWindowTextW(m_hWnd, str.c_str());
+    }
+
+    // 标题栏文件大小缓存：路径没变就不重复查磁盘
+    std::wstring captionPathCache_;
+    uintmax_t captionBytes_ = 0;
+
+    // 文件大小的短文本（B/KB/MB/GB），0 表示取不到、不显示
+    static std::wstring formatFileSize(uintmax_t bytes) {
+        if (bytes == 0)
+            return {};
+        if (bytes < 1024)
+            return std::format(L"{}B", bytes);
+        if (bytes < 1024ull * 1024)
+            return std::format(L"{:.1f}KB", bytes / 1024.0);
+        if (bytes < 1024ull * 1024 * 1024)
+            return std::format(L"{:.1f}MB", bytes / (1024.0 * 1024.0));
+        return std::format(L"{:.2f}GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
     // —— 幻灯片播放 ——
