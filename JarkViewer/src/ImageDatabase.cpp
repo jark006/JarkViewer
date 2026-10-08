@@ -1165,11 +1165,13 @@ static size_t computePixelDataSize(int width, int bitCount, int rows) {
     return (size_t)rowBytes * rows;
 }
 
-cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEntry& entry) {
-    if (!dibData) return cv::Mat();
+cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, size_t dibSize, const IconDirEntry& entry) {
+    if (!dibData || dibSize < 4) return cv::Mat();
 
     const uint32_t headerSize = *reinterpret_cast<const uint32_t*>(dibData);
-    if (headerSize < 12 || headerSize > 124) {
+    // 头部声明长度必须落在条目实际数据内：损坏或被构造的 ICO 不能让解析器跟着
+    // 头里的数字去读数据之外（调色板/掩码/像素行同理，两处都不能只信文件内记录）
+    if (headerSize < 12 || headerSize > 124 || headerSize > dibSize) {
         JARK_LOG("Invalid DIB header size: {}", headerSize);
         return cv::Mat();
     }
@@ -1213,6 +1215,10 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEn
             uint32_t clrUsed;
             uint32_t clrImportant;
         };
+        if (dibSize < 40) { // FullHeader 的前 40 字节必须可用
+            JARK_LOG("DIB data smaller than BITMAPINFOHEADER");
+            return cv::Mat();
+        }
         const FullHeader* full = reinterpret_cast<const FullHeader*>(dibData);
         dibWidth = full->width;
         dibHeight = full->height;
@@ -1220,6 +1226,8 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEn
         compression = full->compression;
         imageSize = full->imageSize;
         clrUsed = full->clrUsed;
+        if (dibHeight == INT32_MIN) // 取负会溢出
+            return cv::Mat();
         isTopDown = (dibHeight < 0);
         if (isTopDown) dibHeight = -dibHeight;
 
@@ -1231,6 +1239,12 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEn
             blueMask = masks[2];
             if (headerSize >= 124) alphaMask = masks[3];
         }
+    }
+
+    // BI_BITFIELDS 且 40 字节头时掩码数组（R/G/B/A 各 4 字节）紧跟头部之后，读取前确认在数据内
+    if (compression == 3 && headerSize == 40 && headerSize + 16 > dibSize) {
+        JARK_LOG("Invalid DIB bitfield masks");
+        return cv::Mat();
     }
 
     // 使用目录条目中的实际尺寸
@@ -1270,23 +1284,40 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEn
 
     int32_t pixelRows = hasAndMaskInImageData ? realHeight : absDibHeight;
 
+    // 尺寸上限：防伪造的超大尺寸让图像分配与行字节计算失去约束（ICO 实际远小于此）
+    if (realWidth <= 0 || realWidth > 8192 || realHeight <= 0 || realHeight > 8192) {
+        JARK_LOG("ICO DIB size out of range: {}x{}", realWidth, realHeight);
+        return cv::Mat();
+    }
+
     // 调色板
     int numColors = 0;
     if (bitCount <= 8) {
-        numColors = (clrUsed == 0) ? (1 << bitCount) : clrUsed;
+        numColors = (clrUsed == 0) ? (1 << bitCount) : static_cast<int>(clrUsed);
     }
     size_t paletteOffset = headerSize;
     const uint8_t* paletteData = dibData + paletteOffset;
     size_t paletteEntrySize = (headerSize == 12) ? 3 : 4;
+    if (numColors > 0) {
+        // clrUsed 来自文件、不信任：声明的调色板超出实际数据时按可读部分夹取
+        const size_t maxColors = (paletteOffset < dibSize) ? (dibSize - paletteOffset) / paletteEntrySize : 0;
+        if (static_cast<size_t>(numColors) > maxColors)
+            numColors = static_cast<int>(maxColors);
+    }
     size_t paletteSize = numColors * paletteEntrySize;
 
-    // 像素数据位置
+    // 像素数据位置：像素行按行布局必须有完整数据（不信任 imageSize 字段）
     const uint8_t* pixelData = dibData + paletteOffset + paletteSize;
     size_t pixelRowBytes = ((realWidth * bitCount + 31) / 32) * 4;
+    if (paletteOffset + paletteSize > dibSize || pixelRows * pixelRowBytes > dibSize - paletteOffset - paletteSize) {
+        JARK_LOG("ICO DIB pixel data out of range");
+        return cv::Mat();
+    }
     size_t pixelDataSize = (imageSize == 0) ? computePixelDataSize(realWidth, bitCount, pixelRows) : imageSize;
 
-    // 解码调色板
-    std::vector<cv::Vec4b> palette(numColors);
+    // 解码调色板：解码下标由位深决定（可达 1<<bitCount），分配要盖住整个下标范围，
+    // 文件声明的项数不足时缺项保持默认值，不能按 numColors 缩小分配
+    std::vector<cv::Vec4b> palette(bitCount <= 8 ? (std::max)(numColors, 1 << bitCount) : numColors);
     if (numColors > 0) {
         if (headerSize == 12) {
             // 3字节 RGB，转换为 BGRA
@@ -1431,10 +1462,19 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEn
         }
     }
 
-    // AND 掩码处理
-    size_t andRowBytes = ((realWidth + 31) / 32) * 4;
-    if (hasAndMaskInImageData) {
-        const uint8_t* andData = pixelData + pixelRows * pixelRowBytes;
+    // AND 掩码处理：内嵌（紧跟像素行数据）与独立（位于像素数据段之后）两种布局，
+    // 使用前都先确认整段掩码落在条目数据内，越界就当作没有掩码
+    const size_t andRowBytes = ((realWidth + 31) / 32) * 4;
+    const size_t andSize = andRowBytes * realHeight;
+    const size_t pixelAreaSize = dibSize - paletteOffset - paletteSize;
+    const uint8_t* andData = nullptr;
+    {
+        const size_t andOffset = hasAndMaskInImageData ? pixelRows * pixelRowBytes : pixelDataSize;
+        if (andOffset <= pixelAreaSize && andSize <= pixelAreaSize - andOffset)
+            andData = pixelData + andOffset;
+    }
+
+    if (andData) {
         for (int y = 0; y < realHeight; ++y) {
             const uint8_t* rowAnd = andData + y * andRowBytes;
             uint8_t* rowBgra = bgraData + (isTopDown ? y : (realHeight - 1 - y)) * realWidth * 4;
@@ -1451,32 +1491,11 @@ cv::Mat ImageDatabase::readDibFromMemory(const uint8_t* dibData, const IconDirEn
         }
     }
     else {
-        // 独立的 AND 掩码
-        size_t andOffset = pixelDataSize;
-        if (andOffset + andRowBytes * realHeight <= entry.dataSize) {
-            const uint8_t* andData = pixelData + andOffset;
-            for (int y = 0; y < realHeight; ++y) {
-                const uint8_t* rowAnd = andData + y * andRowBytes;
-                uint8_t* rowBgra = bgraData + (isTopDown ? y : (realHeight - 1 - y)) * realWidth * 4;
-                for (int x = 0; x < realWidth; ++x) {
-                    int byte = x / 8;
-                    int bit = 7 - (x % 8);
-                    if ((rowAnd[byte] >> bit) & 1) {
-                        rowBgra[x * 4 + 3] = 0;
-                    }
-                    else if (bitCount != 32) {
-                        rowBgra[x * 4 + 3] = 255;
-                    }
-                }
-            }
-        }
-        else {
-            // 无 AND 掩码，确保不透明
-            for (int y = 0; y < realHeight; ++y) {
-                uint8_t* rowBgra = bgraData + (isTopDown ? y : (realHeight - 1 - y)) * realWidth * 4;
-                for (int x = 0; x < realWidth; ++x) {
-                    if (rowBgra[x * 4 + 3] == 0) rowBgra[x * 4 + 3] = 255;
-                }
+        // 无 AND 掩码，确保不透明
+        for (int y = 0; y < realHeight; ++y) {
+            uint8_t* rowBgra = bgraData + (isTopDown ? y : (realHeight - 1 - y)) * realWidth * 4;
+            for (int x = 0; x < realWidth; ++x) {
+                if (rowBgra[x * 4 + 3] == 0) rowBgra[x * 4 + 3] = 255;
             }
         }
     }
@@ -1525,6 +1544,10 @@ std::tuple<cv::Mat, string> ImageDatabase::loadICO(wstring_view path, std::span<
             continue;
         }
 
+        if (entry.dataSize < 4 || entry.dataSize > static_cast<uint32_t>(INT32_MAX)) {
+            JARK_LOG("Invalid ICO entry data size: {}", entry.dataSize);
+            continue;
+        }
         cv::Mat rawData(1, entry.dataSize, CV_8UC1, (uint8_t*)(buf.data() + entry.dataOffset));
 
         // PNG BMP
@@ -1533,7 +1556,7 @@ std::tuple<cv::Mat, string> ImageDatabase::loadICO(wstring_view path, std::span<
             continue;
         }
         else {
-            cv::Mat img = readDibFromMemory(buf.data() + entry.dataOffset, entry);
+            cv::Mat img = readDibFromMemory(buf.data() + entry.dataOffset, entry.dataSize, entry);
             if (!img.empty()) {
                 imgs.emplace_back(std::move(img));
                 continue;

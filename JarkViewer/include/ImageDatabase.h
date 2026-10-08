@@ -338,7 +338,7 @@ public:
         uint32_t dataOffset;
     };
 
-    cv::Mat readDibFromMemory(const uint8_t* data, const IconDirEntry& entry);
+    cv::Mat readDibFromMemory(const uint8_t* data, size_t dataSize, const IconDirEntry& entry);
 
     // https://github.com/corkami/pics/blob/master/binary/ico_bmp.png
     std::tuple<cv::Mat, string> loadICO(wstring_view path, std::span<const uint8_t> buf);
