@@ -163,7 +163,7 @@ struct SettingParameter {
     wchar_t monitorDevice[CCHDEVICENAME] = {};
 
     // 实况照片自动播放时是否出声（默认静音，对齐系统照片应用的习惯；
-    // 鼠标悬停「实况」角标是主动操作，会重播并出声，不受此项影响）
+    // 鼠标悬停「实况」角标、按空格都是主动操作，会直接播放并出声，不受此项影响）
     bool livePhotoAutoPlaySound = false;
 
     wchar_t copyTargetDir[260] = {};        // 复制/移动图片的目标文件夹（空=未设置，首次使用时选择）

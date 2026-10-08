@@ -1197,6 +1197,22 @@ public:
                     curPar.isAnimationPause = !curPar.isAnimationPause;
                     operateQueue.push({ ActionENUM::refresh });
                 }
+                else if (currentIsLivePhoto_ && curPar.imageAssetPtr->videoSource &&
+                    !curPar.imageAssetPtr->videoSource->data.empty()) {
+                    // 实况照片：播放中按空格马上切回静态图；正在显示静态图则从头播放（主动操作，出声）
+                    if (mediaPlayer) {
+                        JARK_LOG("实况播放手动停止，切回静态图");
+                        stopMediaPlayback();
+                        playedAsset = curPar.imageAssetPtr.get(); // 手动停止后不再自动续播
+                        liveReplaySound_ = false;
+                        curPar.Init(winWidth, winHeight); // 恢复静态图的名义尺寸与适应缩放
+                    }
+                    else {
+                        playedAsset = nullptr;
+                        liveReplaySound_ = true;
+                    }
+                    operateQueue.push({ ActionENUM::refresh });
+                }
                 else {
                     operateQueue.push({ ActionENUM::nextImg });
                 }
