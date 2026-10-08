@@ -413,16 +413,14 @@ private:
             ImGui::SameLine(0.0f, 10.0f * scale);
             ImGui::SetCursorPosY(afterTitleY - ImGui::GetStyle().ItemSpacing.y - ImGui::GetFontSize());
             ImGui::TextDisabled("%s", jarkUtils::wstringToUtf8(appVersion).c_str());
-            ImGui::TextDisabled("%s", getUIString(19));
-            ImGui::TextDisabled("%s", std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
+            ImGui::TextDisabled("%s %s UTC+8", getUIString(19), std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
             ImGui::EndGroup();
         }
         else {
             ImGui::TextUnformatted("JarkViewer");
             ImGui::SameLine();
             ImGui::TextDisabled("%s", jarkUtils::wstringToUtf8(appVersion).c_str());
-            ImGui::TextDisabled("%s", getUIString(19));
-            ImGui::TextDisabled("%s", std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
+            ImGui::TextDisabled("%s %s UTC+8", getUIString(19), std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
         }
 
         ImGui::Spacing();
@@ -436,6 +434,12 @@ private:
         if (ImGui::Button("GitHub", { buttonWidth, 0 }))
             jarkUtils::openUrl(RepositoryLink.data());
 
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 网盘分发单独一组（百度网盘与蓝奏云的提取码均为 6666）
+        ImGui::TextDisabled("%s", getUIString(kStrNetdiskHint));
         if (ImGui::Button("百度网盘", { buttonWidth, 0 }))
             jarkUtils::openUrl(BaiduLink.data());
         ImGui::SameLine();
@@ -466,6 +470,7 @@ private:
     static constexpr uint32_t kStrCacheCleared = 153;
     static constexpr uint32_t kStrClearCacheFailed = 154;
     static constexpr uint32_t kStrMemoryCacheOnly = 155;
+    static constexpr uint32_t kStrNetdiskHint = 166;
 
     // 帮助页文案（窄表新增条目）
     static constexpr uint32_t kStrHelpTitle = 127;
