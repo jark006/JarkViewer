@@ -1044,7 +1044,7 @@ public:
             case 'C': { // Ctrl + C  复制到剪贴板
                 cv::Mat srcImg = currentSourceImage();
 
-                jarkUtils::copyImageToClipboard(srcImg);
+                jarkUtils::copyImageToClipboard(srcImg, imgFileList[curFileIdx]);
                 ctrlIsPressing = false;
             }break;
 
@@ -1313,7 +1313,7 @@ public:
 
         case ContextMenu::copyImageData: {
             cv::Mat srcImg = currentSourceImage();
-            jarkUtils::copyImageToClipboard(srcImg);
+            jarkUtils::copyImageToClipboard(srcImg, imgFileList[curFileIdx]);
         }break;
 
         case ContextMenu::toggleExifDisplay: {

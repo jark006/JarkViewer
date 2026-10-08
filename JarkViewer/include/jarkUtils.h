@@ -614,7 +614,10 @@ public:
     // Alpha透明通道混合白色背景
     static void flattenRGBAonWhite(cv::Mat& image);
 
-    static void copyImageToClipboard(const cv::Mat& image);
+    // 复制图像数据到剪贴板；filePath 指向磁盘上真实存在的图片时，同时放一份文件本体
+    // （CF_HDROP）——只放位图的话动图/实况/视频粘出去会退化成一张静止画面，
+    // 聊天软件优先取文件本体，就能把原文件（连同动画）原样带走。
+    static void copyImageToClipboard(const cv::Mat& image, wstring_view filePath = {});
 
     static void ToggleFullScreen(HWND hwnd);
     static bool IsFullScreen();

@@ -353,7 +353,7 @@ void jarkUtils::flattenRGBAonWhite(cv::Mat& image) {
     }
 }
 
-void jarkUtils::copyImageToClipboard(const cv::Mat& image) {
+void jarkUtils::copyImageToClipboard(const cv::Mat& image, wstring_view filePath) {
     if (image.empty()) {
         MessageBoxW(nullptr, getUIStringW(17), getUIStringW(14), MB_OK | MB_ICONERROR);
         return;
@@ -496,6 +496,39 @@ void jarkUtils::copyImageToClipboard(const cv::Mat& image) {
         }
         else {
             GlobalFree(hDib);
+        }
+    }
+
+    // 文件本体（CF_HDROP）：动图/实况/视频粘到聊天软件时按原文件发送，动画与音轨都保留；
+    // 接收方不支持该格式时会退回上面的位图。只有磁盘上真实存在的文件才放。
+    if (!filePath.empty()) {
+        std::error_code ec;
+        if (std::filesystem::exists(std::filesystem::path(filePath), ec) && !ec) {
+            const std::wstring fullPath = std::filesystem::absolute(std::filesystem::path(filePath), ec).wstring();
+            if (!ec) {
+                const size_t dropBytes = sizeof(DROPFILES) + (fullPath.size() + 2) * sizeof(wchar_t);
+                HGLOBAL hDrop = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, dropBytes);
+                if (hDrop) {
+                    DROPFILES* drop = static_cast<DROPFILES*>(GlobalLock(hDrop));
+                    if (drop) {
+                        drop->pFiles = sizeof(DROPFILES);
+                        drop->fWide = TRUE; // 宽字符路径，双空结尾（GMEM_ZEROINIT 保证）
+                        memcpy(reinterpret_cast<BYTE*>(drop) + sizeof(DROPFILES),
+                            fullPath.c_str(), (fullPath.size() + 1) * sizeof(wchar_t));
+                        GlobalUnlock(hDrop);
+
+                        if (SetClipboardData(CF_HDROP, hDrop))
+                            JARK_LOG("剪贴板：已同时放入文件本体 {}", jarkUtils::wstringToUtf8(fullPath));
+                        else {
+                            JARK_LOG("剪贴板：CF_HDROP 失败 {}", ::GetLastError());
+                            GlobalFree(hDrop);
+                        }
+                    }
+                    else {
+                        GlobalFree(hDrop);
+                    }
+                }
+            }
         }
     }
 
