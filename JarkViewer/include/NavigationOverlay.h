@@ -31,6 +31,7 @@ public:
     bool mouseLeave();
     bool cancel();
     bool ownsGesture() const { return ownedButtons_ != 0; }
+    bool stripVisible() const { return stripVisible_; } // 预览带是否展开（供自检/调试观察）
     void releaseTextures();
 
 private:
@@ -73,6 +74,8 @@ private:
     cv::Rect2f strip_, previous_, next_; // strip_ 同时是展开触发区（鼠标进入即展开）
     int capacity_ = 0;
     int first_ = 0;
+    int firstMin_ = 0; // first_ 的可滚动范围：保证"当前图居中"的位置（可为负，负值=左侧留空）
+    int firstMax_ = 0;
     int current_ = -1;
     int hovered_ = -1;
     int wheelRemainder_ = 0;

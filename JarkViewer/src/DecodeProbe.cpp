@@ -588,7 +588,7 @@ namespace {
         check(!overlay.ownsGesture() && overlay.mouseUp(1).handled, "失捕获取消后吞掉残余抬起");
         check(!overlay.mouseDown({ 500, 400 }, 1).handled, "非浮层区域不拦截主图");
 
-        // 预览带：整块控件区域都是触发区（不用移到最底部那条窄边）
+        // 预览带：整块控件区域都是触发区；展开后当前图片严格水平居中，两侧不够就留空
         ui::NavigationOverlay stripOverlay;
         std::vector<std::wstring> stripFiles;
         for (int i = 0; i < 24; ++i)
@@ -597,7 +597,28 @@ namespace {
         stripOverlay.sync({ 1000, 600, 2 << 16, 1 << 16, 0, 0, 0 }, { 1280, 800 }, 1, true, false, 1, 12);
         check(!stripOverlay.mouseMove({ 640, 600 }, false).handled, "预览带区域之外不拦截主图");
         const auto stripEnter = stripOverlay.mouseMove({ 640, 740 }, false);
-        check(stripEnter.handled && stripEnter.redraw, "进入预览带区域立即展开（无需移到最底部）");
+        check(stripEnter.handled && stripEnter.redraw && stripOverlay.stripVisible(),
+            "进入预览带区域立即展开（无需移到最底部）");
+        check(stripOverlay.mouseDown({ 640, 740 }, 1).selected == 12, "展开后当前图片位于控件水平正中");
+        check(stripOverlay.mouseUp(1).handled, "预览带吞掉对应的抬起");
+
+        // 靠近列表开头：往前没有图片的位置留空，当前图片仍然居中
+        ui::NavigationOverlay stripEdgeOverlay;
+        std::vector<std::wstring> fewFiles(stripFiles.begin(), stripFiles.begin() + 5);
+        stripEdgeOverlay.setDirectory(fewFiles, 0);
+        stripEdgeOverlay.sync({ 1000, 600, 2 << 16, 1 << 16, 0, 0, 0 }, { 1280, 800 }, 1, true, false, 1, 0);
+        stripEdgeOverlay.mouseMove({ 640, 740 }, false);
+        check(stripEdgeOverlay.mouseDown({ 132, 740 }, 1).selected == -1, "往前没有图片的位置留空且不可点");
+        check(stripEdgeOverlay.mouseUp(1).handled, "留空位置上的按下仍由预览带收尾");
+        check(stripEdgeOverlay.mouseDown({ 640, 740 }, 1).selected == 0, "数量不足时当前图片仍在正中");
+        stripEdgeOverlay.mouseUp(1);
+
+        // 悬停鸟瞰面板不应展开预览带（否则面板会被顶上去，难以操作）
+        ui::NavigationOverlay panelOverlay;
+        panelOverlay.setDirectory(stripFiles, 12);
+        panelOverlay.sync({ 1000, 600, 2 << 16, 1 << 16, 0, 0, 0 }, { 1280, 800 }, 1, true, false, 1, 12);
+        check(panelOverlay.mouseMove({ 1125, 718 }, false).handled && !panelOverlay.stripVisible(),
+            "悬停鸟瞰面板不会展开预览带");
         return std::format("---- navigation: {} ok, {} failed ----\n", passed, failed) + report;
     }
 

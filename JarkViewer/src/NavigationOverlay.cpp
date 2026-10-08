@@ -18,7 +18,7 @@ void NavigationOverlay::setDirectory(const std::vector<std::wstring>& files, int
     cancel();
     files_ = files;
     current_ = current;
-    first_ = (std::max)(0, current - capacity_ / 2);
+    first_ = current - (capacity_ - 1) / 2; // 当前图片居中（layout 会按新容量夹取）
     requested_.clear();
     overviewDirty_ = true;
     for (auto& texture : textures_)
@@ -51,9 +51,9 @@ void NavigationOverlay::sync(const ViewState& view, cv::Size clientSize, float s
     layout();
     if (current_ != current) {
         current_ = current;
-        if (current < first_ || current >= first_ + capacity_)
-            first_ = (std::max)(0, current - capacity_ / 2);
+        first_ = current - (capacity_ - 1) / 2; // 当前图片变化时始终回到控件正中
         layout();
+        hovered_ = itemAt(mouse_); // 重新居中后同一屏幕位置对应的单元已变，刷新悬停项
     }
     updateRequests();
 }
@@ -76,7 +76,13 @@ void NavigationOverlay::layout() {
         previous_ = { left, strip_.y, arrow, height };
         next_ = { left + width - arrow, strip_.y, arrow, height };
         capacity_ = std::clamp(static_cast<int>((width - arrow * 2) / (100.0f * scale_)), 1, kMaxVisible);
-        first_ = std::clamp(first_, 0, (std::max)(0, static_cast<int>(files_.size()) - capacity_));
+        if (capacity_ > 1 && capacity_ % 2 == 0)
+            capacity_--; // 取奇数，保证有正中间那一格（当前图片严格居中）
+        // 胶片带式排布：允许两侧留空——first_ 可以为负，(0-(capacity-1)/2) 恰能把当前图片放到正中
+        const int centerSpan = (capacity_ - 1) / 2;
+        firstMin_ = -centerSpan;
+        firstMax_ = (std::max)(firstMin_, static_cast<int>(files_.size()) - 1 - centerSpan);
+        first_ = std::clamp(first_, firstMin_, firstMax_);
     }
     else {
         capacity_ = 0;
@@ -113,9 +119,13 @@ cv::Rect2f NavigationOverlay::cellRect(int visibleIndex) const {
 int NavigationOverlay::itemAt(cv::Point point) const {
     if (!stripVisible_)
         return -1;
-    for (int n = 0; n < capacity_ && first_ + n < static_cast<int>(files_.size()); ++n)
+    for (int n = 0; n < capacity_; ++n) {
+        const int index = first_ + n;
+        if (index < 0 || index >= static_cast<int>(files_.size()))
+            continue; // 留空的位置不可点
         if (contains(cellRect(n), point))
-            return first_ + n;
+            return index;
+    }
     return -1;
 }
 
@@ -142,12 +152,14 @@ NavigationOverlay::Event NavigationOverlay::mouseMove(cv::Point point, bool canv
         event.slide = slideAt(point);
         return event;
     }
-    const bool visible = contains(strip_, point);
+    // 鼠标在鸟瞰面板上时不切换预览带（否则面板会被顶上去，难以操作）；面板区域优先级更高
+    const bool overPanel = contains(overviewPanel_, point);
+    const bool visible = overPanel ? stripVisible_ : contains(strip_, point);
     if (stripVisible_ != visible) {
         stripVisible_ = visible;
-        // 展开时把当前图片居中显示（手动滚动后不会被抢回去，只在显示/隐藏切换时重新居中）
+        // 展开时把当前图片放到控件水平正中（两侧图片不足就留空；手动滚动后不会被抢回去）
         if (visible)
-            first_ = (std::max)(0, current_ - capacity_ / 2);
+            first_ = current_ - (capacity_ - 1) / 2;
         layout();
         updateRequests();
         event.redraw = true;
@@ -246,7 +258,8 @@ void NavigationOverlay::updateRequests() {
     std::vector<std::wstring> visible;
     std::vector<std::wstring> prefetch;
     if (!blocked_ && stripVisible_) {
-        for (int n = first_; n < static_cast<int>(files_.size()) && n < first_ + capacity_; ++n)
+        // first_ 可以为负（两侧留空），只请求真正存在的项
+        for (int n = (std::max)(0, first_); n < static_cast<int>(files_.size()) && n < first_ + capacity_; ++n)
             visible.push_back(files_[n]);
         for (int n = (std::max)(0, first_ - 2); n < (std::min)(static_cast<int>(files_.size()), first_ + capacity_ + 2); ++n)
             if (n < first_ || n >= first_ + capacity_)
@@ -327,10 +340,18 @@ void NavigationOverlay::draw(const cv::Mat& source, ImVec2 screenOrigin) {
         draw->AddText(pos(rect.x + (rect.width - size.x) / 2, rect.y + (rect.height - size.y) / 2),
             available ? ImGui::GetColorU32(ImGuiCol_Text) : text, glyph);
     };
-    arrow(previous_, icon::kPrev, first_ > 0);
-    arrow(next_, icon::kNext, first_ + capacity_ < static_cast<int>(files_.size()));
-    for (int n = 0; n < capacity_ && first_ + n < static_cast<int>(files_.size()); ++n) {
+    arrow(previous_, icon::kPrev, first_ > firstMin_);
+    arrow(next_, icon::kNext, first_ < firstMax_);
+    for (int n = 0; n < capacity_; ++n) {
         const int index = first_ + n;
+        if (index < 0 || index >= static_cast<int>(files_.size())) {
+            // 该位置没有图片：留空（顺带释放可能残留的槽纹理）
+            if (textures_[n].id) {
+                UiHost::instance().releaseTexture(kThumbSlot + n);
+                textures_[n] = {};
+            }
+            continue;
+        }
         auto rect = cellRect(n);
         rect.x += 3.0f * scale_;
         rect.width -= 6.0f * scale_;
