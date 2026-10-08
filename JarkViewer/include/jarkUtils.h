@@ -141,7 +141,7 @@ struct SettingParameter {
     bool printerBalancedBrightness = false;// 是否均衡亮度 文档优化
 
     bool isOneToOnePreferred = false;      // 打开图片时优先1:1
-    bool reserve2 = false;
+    bool hideNavigator = false;            // 原 reserve2，原位复用：旧设置默认显示鸟瞰图
 
     bool isAllowRotateAnimation = true;
     bool isAllowZoomAnimation = true;
@@ -234,6 +234,9 @@ struct SettingParameter {
 };
 
 static_assert(sizeof(SettingParameter) == 4096, "sizeof(SettingParameter) != 4096");
+static_assert(offsetof(SettingParameter, hideNavigator) == 67);
+static_assert(offsetof(SettingParameter, rightClickAction) == 92);
+static_assert(offsetof(SettingParameter, extCheckedListStr) == 3296);
 
 struct rcFileInfo {
     uint8_t* ptr = nullptr;
@@ -349,7 +352,8 @@ struct ImageAsset {
 
 enum class ActionENUM:int64_t {
     none = 0, slide, preImg, nextImg, firstImg, finalImg, zoomIn, zoomOut, zoomFix, toggleExif, toggleFullScreen, requestExit, refresh,
-    rotateLeft, rotateRight, printImage, deleteImg, setting, batchProcess, editImage, slideshow
+    rotateLeft, rotateRight, printImage, deleteImg, setting, batchProcess, editImage, slideshow,
+    jumpToImage, navigateImage
 };
 
 enum class CursorPos :int {
@@ -378,6 +382,7 @@ struct Action {
         int height;
         int value2;
     };
+    uint64_t generation = 0; // 导航动作所属的图像/目录，换图后不应用旧坐标
 };
 
 
@@ -392,7 +397,11 @@ public:
     void push(Action action) {
         std::lock_guard<std::mutex> lock(mtx);
 
-        if (!queue.empty() && action.action == ActionENUM::slide) {
+        if (!queue.empty() && action.action == ActionENUM::navigateImage &&
+            queue.back().action == action.action && queue.back().generation == action.generation) {
+            queue.back() = action; // 鸟瞰是绝对位置，不是可以相加的位移
+        }
+        else if (!queue.empty() && action.action == ActionENUM::slide) {
             Action& back = queue.back();
 
             if (back.action == ActionENUM::slide) {

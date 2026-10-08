@@ -110,6 +110,7 @@ namespace jark::ui {
 
         // 把 OpenCV 图像上传成纹理（同一个 slot 复用同一张纹理）
         ImTextureID textureFromImage(const cv::Mat& image, int slot);
+        void releaseTexture(int slot);
         void releaseTextures();
 
         // ImGui 是否要独占鼠标/键盘。windowVisible 由调用方传入“是否有界面窗口在显示”

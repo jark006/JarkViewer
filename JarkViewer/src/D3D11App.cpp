@@ -431,7 +431,16 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     // ImGui 先记录输入状态（键盘/鼠标/IME/DPI 都由它维护）；它声明"已处理"的消息直接返回，
     // 不要再落到下面的 DefWindowProc —— WM_IME_COMPOSITION 被处理两遍的话，
     // 输入法上屏的中文会重复一遍（输入"安装"落进编辑框变成"安装安装"）
-    if (jark::ui::UiHost::processMessage(hwnd, message, wParam, lParam))
+    auto* inputApp = reinterpret_cast<D3D11App*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    const bool mouseRelease = message == WM_LBUTTONUP || message == WM_RBUTTONUP ||
+        message == WM_MBUTTONUP || message == WM_XBUTTONUP;
+    // backend 的 ReleaseCapture 会同步重入 WM_CAPTURECHANGED，这不是取消本次正常抬起。
+    if (inputApp && mouseRelease)
+        inputApp->m_processingMouseRelease = true;
+    const bool handled = jark::ui::UiHost::processMessage(hwnd, message, wParam, lParam);
+    if (inputApp && mouseRelease)
+        inputApp->m_processingMouseRelease = false;
+    if (handled)
         return S_OK;
 
     switch (message) {
@@ -473,6 +482,13 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     if (!pApp)
         return DefWindowProcW(hwnd, message, wParam, lParam);
 
+    if (mouseRelease && pApp->OnMouseRelease(message, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), wParam))
+        return S_OK;
+    if (message == WM_KILLFOCUS || message == WM_CANCELMODE ||
+        (message == WM_CAPTURECHANGED && !pApp->m_processingMouseRelease && reinterpret_cast<HWND>(lParam) != hwnd)) {
+        pApp->OnPointerCancel();
+    }
+
     // 鼠标/键盘先给界面（ImGui 需要时就不给画布，例如光标落在界面控件上）。
     // 窗口可见性在这里实时取：窗口刚被关掉时，ImGui 的捕获状态还停在上一帧，不能据此拦截。
     const bool windowVisible = pApp->hasVisibleWindows();
@@ -487,7 +503,7 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_XBUTTONDOWN:
         if (uiWantsMouse)
             return S_OK;
-        pApp->OnMouseDown(message, LOWORD(lParam), HIWORD(lParam), wParam);
+        pApp->OnMouseDown(message, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), wParam);
         return S_OK;
 
     case WM_LBUTTONUP:
@@ -496,7 +512,7 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_XBUTTONUP:
         if (uiWantsMouse)
             return S_OK;
-        pApp->OnMouseUp(message, LOWORD(lParam), HIWORD(lParam), wParam);
+        pApp->OnMouseUp(message, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), wParam);
         return S_OK;
 
     case WM_MOUSEMOVE:
@@ -506,7 +522,7 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         if (uiWantsMouse)
             return S_OK;
-        pApp->OnMouseMove(message, LOWORD(lParam), HIWORD(lParam));
+        pApp->OnMouseMove(message, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         return S_OK;
 
     case WM_MOUSELEAVE:
@@ -517,7 +533,7 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_MOUSEWHEEL:
         if (uiWantsMouse)
             return S_OK;
-        pApp->OnMouseWheel(LOWORD(wParam), HIWORD(wParam), LOWORD(lParam), HIWORD(lParam));
+        pApp->OnMouseWheel(GET_KEYSTATE_WPARAM(wParam), GET_WHEEL_DELTA_WPARAM(wParam), GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         return S_OK;
 
     case WM_KEYDOWN:

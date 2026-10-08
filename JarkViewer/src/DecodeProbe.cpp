@@ -6,6 +6,10 @@
 #include "ImageAnnotator.h"
 #include "Localization.h"
 #include "BatchProcessor.h"
+#include "CanvasRenderer.h"
+#include "NavigationOverlay.h"
+#include "ThumbnailService.h"
+#include <sstream>
 #include "MediaDecoder.h"
 #include "VectorImage.h"
 #include "jarkUtils.h"
@@ -215,7 +219,7 @@ namespace {
     // 语言自检：逐一切换语言并打印若干条文案，验证字符串表与回退逻辑
     std::string runLanguageTest() {
         std::string report;
-        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146 }; // 含关闭/打印/帮助标题/缩放/预览（新增文案易错位）
+        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 155 }; // 含新增导航与缓存文案
         const uint32_t wideIds[] = { 1, 13, 30, 49 };            // 窗口标题/窗口创建失败/删除到回收站/批量无图提示
 
         const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;
@@ -523,6 +527,70 @@ namespace {
         return report;
     }
 
+    std::string runNavigationTest() {
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+        for (int rotation = 0; rotation < 4; ++rotation) {
+            ViewState view{ 1000, 600, 2 << 16, 1 << 16, 0, 0, rotation };
+            const cv::Size canvasSize(801, 603);
+            auto geometry = imageGeometry(view, canvasSize, { 3000, 1800 });
+            check(geometry.nominalSize == (rotation & 1 ? cv::Size(600, 1000) : cv::Size(1000, 600)),
+                "旋转后的名义尺寸不受 SVG 位图分辨率影响");
+            for (const auto target : { cv::Point2d(0, 0), cv::Point2d(0.4, 0.7), cv::Point2d(1, 1) }) {
+                const cv::Point slide = navigationSlide(geometry, canvasSize, target);
+                view.slideX = slide.x;
+                view.slideY = slide.y;
+                const auto next = imageGeometry(view, canvasSize);
+                const double halfX = canvasSize.width / next.renderedSize.width / 2;
+                const double halfY = canvasSize.height / next.renderedSize.height / 2;
+                check(std::abs(next.visible.x + next.visible.width / 2 - std::clamp(target.x, halfX, 1 - halfX)) < 0.002 &&
+                    std::abs(next.visible.y + next.visible.height / 2 - std::clamp(target.y, halfY, 1 - halfY)) < 0.002,
+                    "鸟瞰定位落点与可见区域中心一致（包括两端夹取）");
+                check(next.origin.x <= 0 && next.origin.y <= 0 &&
+                    next.origin.x + next.renderedSize.width >= canvasSize.width &&
+                    next.origin.y + next.renderedSize.height >= canvasSize.height, "鸟瞰定位不露白边");
+            }
+        }
+        const ViewState small{ 200, 100, 1 << 16, 1 << 16, 0, 0, 0 };
+        const auto fitted = imageGeometry(small, { 800, 600 });
+        check(fitted.visible == cv::Rect2d(0, 0, 1, 1), "完整可见时框覆盖整图");
+        check(navigationSlide(fitted, { 800, 600 }, { 0, 1 }) == cv::Point(0, 0), "小图不产生多余平移");
+        check(imageGeometry({}, { 800, 600 }).scale == 0, "空图/零缩放不除零");
+
+        // 比较鸟瞰定位后的主画布像素，覆盖旋转采样与几何取整。
+        cv::Mat source(120, 200, CV_8UC4);
+        for (int y = 0; y < source.rows; ++y)
+            for (int x = 0; x < source.cols; ++x)
+                source.at<cv::Vec4b>(y, x) = { static_cast<uchar>(x), static_cast<uchar>(y), 160, 255 };
+        for (int rotation = 0; rotation < 4; ++rotation) {
+            ViewState view{ 200, 120, 1 << 16, 1 << 16, 0, 0, rotation };
+            const auto slide = navigationSlide(imageGeometry(view, { 80, 60 }), { 80, 60 }, { 0.6, 0.7 });
+            view.slideX = slide.x;
+            view.slideY = slide.y;
+            const auto geometry = imageGeometry(view, { 80, 60 });
+            cv::Mat rotated;
+            if (rotation == 0) rotated = source;
+            else cv::rotate(source, rotated, rotation == 1 ? cv::ROTATE_90_COUNTERCLOCKWISE :
+                (rotation == 2 ? cv::ROTATE_180 : cv::ROTATE_90_CLOCKWISE));
+            cv::Mat canvas(60, 80, CV_8UC4);
+            drawImageToCanvas(source, canvas, view);
+            check(canvas.at<cv::Vec4b>(30, 40) == rotated.at<cv::Vec4b>(30 - geometry.origin.y, 40 - geometry.origin.x),
+                "定位后的中心像素与旋转图像一致");
+        }
+        ui::NavigationOverlay overlay;
+        overlay.sync({ 1000, 600, 2 << 16, 1 << 16, 0, 0, 0 }, { 1280, 800 }, 1, true, false, 1, 0);
+        check(overlay.mouseDown({ 1125, 718 }, 1).handled && overlay.ownsGesture(), "鸟瞰按下取得手势");
+        check(overlay.mouseMove({ -80, -60 }, false).slide.has_value(), "拖出客户区仍追踪鸟瞰拖动");
+        overlay.cancel();
+        check(!overlay.ownsGesture() && overlay.mouseUp(1).handled, "失捕获取消后吞掉残余抬起");
+        check(!overlay.mouseDown({ 500, 400 }, 1).handled, "非浮层区域不拦截主图");
+        return std::format("---- navigation: {} ok, {} failed ----\n", passed, failed) + report;
+    }
+
     std::string runAudioTest(const std::wstring& path) {
         std::string report;
 
@@ -607,6 +675,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool languageTest = false;
     bool batchTest = false;
     bool annotateTest = false;
+    bool navigationTest = false;
+    bool thumbnailTest = false;
+    bool shellThumbnailTest = false;
+    int thumbnailWriter = -1;
     std::wstring annotateOutDir;
     jark::BatchOptions batchOptions;
     bool outputFormatGiven = false;
@@ -628,6 +700,22 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--batch") {
             batchTest = true;
+            continue;
+        }
+        if (argv[i] == L"--navigation-test") {
+            navigationTest = true;
+            continue;
+        }
+        if (argv[i] == L"--thumbnail-writer" && i + 1 < argv.size()) {
+            thumbnailWriter = ::_wtoi(argv[++i].c_str());
+            continue;
+        }
+        if (argv[i] == L"--thumbnail-test") {
+            thumbnailTest = true;
+            continue;
+        }
+        if (argv[i] == L"--shell-thumbnail") {
+            shellThumbnailTest = true;
             continue;
         }
         if (argv[i] == L"--annotate") {
@@ -735,7 +823,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 标注自检不需要输入文件（用合成底图断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest) {
+    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !thumbnailTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -746,6 +834,32 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         if (report.is_open())
             report.write(line.data(), static_cast<std::streamsize>(line.size())) << '\n';
     };
+
+    if (navigationTest) {
+        const auto text = runNavigationTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (thumbnailTest || shellThumbnailTest || thumbnailWriter >= 0) {
+        // probe 在 GUI 设置初始化前运行，明确使用独立测试目录，不迁移或清理用户缓存。
+        const std::filesystem::path directory = batchOptions.outputDirectory.empty()
+            ? std::filesystem::temp_directory_path() / L"JarkViewer-thumbnail-tests"
+            : std::filesystem::path(batchOptions.outputDirectory);
+        std::filesystem::create_directories(directory);
+        std::ostringstream output;
+        bool ok = true;
+        if (thumbnailWriter >= 0)
+            ok = !batchOptions.outputDirectory.empty() && runThumbnailCacheWriter(output, directory, thumbnailWriter);
+        else if (thumbnailTest)
+            ok = runThumbnailCacheTests(output, directory);
+        else {
+            size_t index = 0;
+            for (const auto& path : targets)
+                ok = probeShellThumbnail(path, directory / std::format(L"shell-{}.png", index++), output) && ok;
+        }
+        emit(output.str());
+        return ok ? 0 : 1;
+    }
 
     if (languageTest) {
         emit(runLanguageTest());

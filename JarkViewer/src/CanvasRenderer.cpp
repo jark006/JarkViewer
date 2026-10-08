@@ -5,6 +5,41 @@
 #include <ppl.h>
 
 namespace jark {
+
+CanvasGeometry imageGeometry(const ViewState& view, cv::Size canvasSize, cv::Size fallbackSize) {
+    CanvasGeometry geometry;
+    geometry.nominalSize = view.imageWidth > 0 && view.imageHeight > 0
+        ? cv::Size(view.imageWidth, view.imageHeight) : fallbackSize;
+    if (view.rotation & 1)
+        std::swap(geometry.nominalSize.width, geometry.nominalSize.height);
+    if (geometry.nominalSize.empty() || canvasSize.empty() || view.zoom <= 0 || view.zoomBase <= 0)
+        return geometry;
+
+    geometry.scale = static_cast<double>(view.zoom) / view.zoomBase;
+    geometry.renderedSize = { geometry.nominalSize.width * geometry.scale,
+        geometry.nominalSize.height * geometry.scale };
+    geometry.origin = { view.slideX + static_cast<int>(std::round((canvasSize.width - geometry.renderedSize.width) / 2.0)),
+        view.slideY + static_cast<int>(std::round((canvasSize.height - geometry.renderedSize.height) / 2.0)) };
+    const double left = std::clamp(-geometry.origin.x / geometry.renderedSize.width, 0.0, 1.0);
+    const double top = std::clamp(-geometry.origin.y / geometry.renderedSize.height, 0.0, 1.0);
+    const double right = std::clamp((canvasSize.width - geometry.origin.x) / geometry.renderedSize.width, 0.0, 1.0);
+    const double bottom = std::clamp((canvasSize.height - geometry.origin.y) / geometry.renderedSize.height, 0.0, 1.0);
+    geometry.visible = { left, top, (std::max)(0.0, right - left), (std::max)(0.0, bottom - top) };
+    return geometry;
+}
+
+cv::Point navigationSlide(const CanvasGeometry& geometry, cv::Size canvasSize, cv::Point2d center) {
+    const auto slide = [](double rendered, int canvas, double position) {
+        if (rendered <= canvas)
+            return 0;
+        const double left = std::clamp(canvas / 2.0 - std::clamp(position, 0.0, 1.0) * rendered,
+            canvas - rendered, 0.0);
+        return static_cast<int>(std::round(left) - std::round((canvas - rendered) / 2.0));
+    };
+    return { slide(geometry.renderedSize.width, canvasSize.width, center.x),
+        slide(geometry.renderedSize.height, canvasSize.height, center.y) };
+}
+
 namespace {
 
     constexpr int BG_GRID_WIDTH = 16; // 透明区域棋盘格边长
@@ -82,38 +117,18 @@ namespace {
         if (srcH <= 0 || srcW <= 0)
             return;
 
-        // 名义尺寸（100% 缩放时屏幕上应有的尺寸）。矢量图（SVG）的位图分辨率会随缩放
-        // 变化，因此几何尺寸必须按名义尺寸计算，位图分辨率只影响采样密度。
-        int nominalW, nominalH;
-        if (view.rotation == 0 || view.rotation == 2) {
-            nominalW = view.imageWidth;
-            nominalH = view.imageHeight;
-        }
-        else {
-            nominalW = view.imageHeight;
-            nominalH = view.imageWidth;
-        }
-        if (nominalW <= 0 || nominalH <= 0) {
-            nominalW = srcW;
-            nominalH = srcH;
-        }
-
-        const float srcScaleX = (float)srcW / (float)nominalW; // 位图分辨率 / 名义尺寸
+        // 主画布与鸟瞰共用几何；位图尺寸仍只决定采样密度。
+        const auto geometry = imageGeometry(view, canvas.size(), srcImg.size());
+        if (geometry.scale <= 0.0)
+            return;
+        const int nominalW = geometry.nominalSize.width;
+        const int nominalH = geometry.nominalSize.height;
+        const float srcScaleX = (float)srcW / (float)nominalW;
         const float srcScaleY = (float)srcH / (float)nominalH;
-
-        // 源图和画板canvas均100%缩放且居中重合，此时随机取一个点，先只考虑水平方向
-        // 该点与画板中心的距离，等于该点与源图中心的距离
-        // 即 canvasW / 2 - x = srcW / 2 - srcX
-        // 再考虑偏移量：canvasW / 2 - x = srcW / 2 - srcX - slide * srcW
-        // 再考虑源图缩放：canvasW / 2 - x = (srcW / 2 - srcX - slide * srcW) * zoom
-        // 即为源图和画板在特定位移和缩放的坐标变换公式
-        // x = canvasW / 2.0 - (srcW / 2.0 - srcX - slide * srcW) * zoom
-        // srcX = srcW / 2.0 - ((canvasW / 2.0 - x) / zoom + slide * srcW)
-
-        const double renderedW = (double)nominalW * view.zoom / view.zoomBase;
-        const double renderedH = (double)nominalH * view.zoom / view.zoomBase;
-        const int deltaW = view.slideX + (int)std::round((canvasW - renderedW) / 2.0);
-        const int deltaH = view.slideY + (int)std::round((canvasH - renderedH) / 2.0);
+        const double renderedW = geometry.renderedSize.width;
+        const double renderedH = geometry.renderedSize.height;
+        const int deltaW = geometry.origin.x;
+        const int deltaH = geometry.origin.y;
 
         int xStart = deltaW < 0 ? 0 : deltaW;
         int yStart = deltaH < 0 ? 0 : deltaH;

@@ -15,6 +15,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\NavigationOverlay.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ThumbnailService.h">
+      <Filter>include</Filter>
+    </ClInclude>
     <ClInclude Include="Resource.h">
       <Filter>include</Filter>
     </ClInclude>
@@ -74,6 +80,12 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\NavigationOverlay.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ThumbnailService.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="src\main.cpp">
       <Filter>src</Filter>
     </ClCompile>

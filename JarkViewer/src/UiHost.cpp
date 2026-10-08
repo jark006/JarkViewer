@@ -493,6 +493,17 @@ ImTextureID UiHost::textureFromImage(const cv::Mat& image, int slot) {
     return reinterpret_cast<ImTextureID>(entry.view);
 }
 
+void UiHost::releaseTexture(int slot) {
+    const auto it = textures_.find(slot);
+    if (it == textures_.end())
+        return;
+    if (it->second.view)
+        it->second.view->Release();
+    if (it->second.texture)
+        it->second.texture->Release();
+    textures_.erase(it);
+}
+
 void UiHost::releaseTextures() {
     for (auto& [slot, entry] : textures_) {
         (void)slot;

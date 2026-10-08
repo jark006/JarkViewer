@@ -4,6 +4,8 @@
 #include "UiHost.h"
 #include "EditorWindow.h"
 #include "CanvasRenderer.h"
+#include "NavigationOverlay.h"
+#include "ThumbnailService.h"
 #include "DecodeProbe.h"
 #include "Localization.h"
 #include "MediaPlayer.h"
@@ -257,6 +259,9 @@ class JarkViewerApp : public D3D11App {
 public:
 
     OperateQueue operateQueue;
+    jark::ui::NavigationOverlay navigation;
+    uint64_t navigationImageVersion = 1;
+    uint64_t directoryVersion = 1;
 
     CursorPos cursorPos = CursorPos::centerArea;
     CursorPos cursorPosLast = CursorPos::centerArea;
@@ -298,6 +303,8 @@ public:
     }
 
     ~JarkViewerApp() {
+        jark::ThumbnailService::instance().shutdown();
+        navigation.releaseTextures();
     }
 
     HRESULT InitWindow(HINSTANCE hInstance) {
@@ -308,6 +315,8 @@ public:
             return S_FALSE;
 
         imgDB.setColorManagementWindow(m_hWnd);
+        jark::ThumbnailService::instance().initialize(
+            std::filesystem::path(GlobalVar::settingPath).parent_path() / L"JarkViewer.thumbnail");
 
         updateTextDrawerScale();
 
@@ -320,6 +329,8 @@ public:
         curFileIdx = -1;
         imgFileList.clear();
         imgDB.clear();
+        stopMediaPlayback();
+        updateNavigationDirectory();
 
         if (filePath.empty()) {
             imgFileList.emplace_back(m_wndCaption);
@@ -388,6 +399,7 @@ public:
 
         curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + 1) % imgFileList.size()]);
         curPar.Init(winWidth, winHeight);
+        updateNavigationDirectory();
     }
 
     inline void handleAnimationControl(int x, int y) {
@@ -438,7 +450,70 @@ public:
         }
     }
 
+    void syncNavigation() {
+        const bool hasImage = curFileIdx >= 0 && curFileIdx < static_cast<int>(imgFileList.size()) &&
+            imgFileList[curFileIdx] != m_wndCaption;
+        navigation.sync(viewState(), { winWidth, winHeight }, uiScale(),
+            !GlobalVar::settingParameter.hideNavigator, anyWindowVisible() || !hasImage,
+            navigationImageVersion, curFileIdx);
+    }
+
+    void updateNavigationDirectory() {
+        ++directoryVersion;
+        ++navigationImageVersion;
+        navigation.setDirectory(imgFileList.size() == 1 && imgFileList[0] == m_wndCaption
+            ? std::vector<std::wstring>{} : imgFileList, curFileIdx);
+    }
+
+    static unsigned pointerButton(WPARAM message) {
+        if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP) return 1;
+        if (message == WM_RBUTTONDOWN || message == WM_RBUTTONUP) return 2;
+        if (message == WM_MBUTTONDOWN || message == WM_MBUTTONUP) return 4;
+        return 8;
+    }
+
+    bool applyNavigationEvent(const jark::ui::NavigationOverlay::Event& event) {
+        if (event.redraw)
+            markPresentRequested();
+        if (event.handled) {
+            extraUIFlag = ShowExtraUI::none;
+            cursorPosLast = cursorPos = CursorPos::centerArea;
+        }
+        if (event.selected >= 0 && event.selected != curFileIdx)
+            operateQueue.push({ ActionENUM::jumpToImage, event.selected, 0, directoryVersion });
+        if (event.slide)
+            operateQueue.push({ ActionENUM::navigateImage, event.slide->x, event.slide->y, navigationImageVersion });
+        return event.handled;
+    }
+
+    bool OnMouseRelease(WPARAM button, int x, int y, WPARAM state) override {
+        const auto event = navigation.mouseUp(pointerButton(button));
+        if (event.handled) {
+            mouseIsPressing = false;
+            applyNavigationEvent(event);
+            applyNavigationEvent(navigation.mouseMove({ x, y }, false));
+            return true;
+        }
+        if (button == WM_LBUTTONUP)
+            mouseIsPressing = false; // 即使这次抬起被二级窗口拦截，也结束旧的画布拖动
+        return false;
+    }
+
+    void OnPointerCancel() override {
+        navigation.cancel();
+        mouseIsPressing = false;
+        ctrlIsPressing = false;
+        extraUIFlag = ShowExtraUI::none;
+        cursorPosLast = cursorPos = CursorPos::centerArea;
+        markPresentRequested();
+    }
+
     void OnMouseDown(WPARAM btnState, int x, int y, WPARAM wParam) override {
+        syncNavigation();
+        if (!mouseIsPressing && applyNavigationEvent(navigation.mouseDown({ x, y }, pointerButton(btnState))))
+            return;
+        // 按下前重算旧按钮命中，不能依赖上一条 mousemove 的位置。
+        OnMouseMove(btnState, x, y);
         switch ((uint64_t)btnState)
         {
         case WM_LBUTTONDOWN: {//左键
@@ -539,6 +614,9 @@ public:
 
     void OnMouseMove(WPARAM btnState, int x, int y) override {
         mousePos = { x, y };
+        syncNavigation();
+        if (applyNavigationEvent(navigation.mouseMove({ x, y }, mouseIsPressing)))
+            return;
 
         const int edgeWidth = dp(50);   // 悬停热区宽度按 DPI 缩放，与按钮资源图一致
         const int edgeHeight = dp(50);
@@ -665,13 +743,20 @@ public:
     }
 
     void OnMouseLeave() override {
+        navigation.mouseLeave();
         cursorPosLast = cursorPos = CursorPos::centerArea;
         extraUIFlag = ShowExtraUI::none;
-        mouseIsPressing = false;
-        operateQueue.push({ ActionENUM::refresh });
+        if (GetCapture() != m_hWnd)
+            mouseIsPressing = false;
+        markPresentRequested();
     }
 
     void OnMouseWheel(UINT nFlags, short zDelta, int x, int y) override {
+        POINT clientPoint{ x, y };
+        ScreenToClient(m_hWnd, &clientPoint);
+        syncNavigation();
+        if (applyNavigationEvent(navigation.mouseWheel({ clientPoint.x, clientPoint.y }, zDelta)))
+            return;
         switch (cursorPos)
         {
         case CursorPos::centerArea:
@@ -1064,6 +1149,8 @@ public:
     }
 
     void OnResize(UINT width, UINT height) override {
+        ++navigationImageVersion;
+        navigation.cancel();
         if (width == 0 || height == 0)
             return;
 
@@ -1098,7 +1185,7 @@ public:
         operateQueue.push({ ActionENUM::refresh });
     }
 
-    void drawCanvas(const cv::Mat& srcImg, cv::Mat& canvas) const {
+    jark::ViewState viewState() const {
         jark::ViewState view;
         view.imageWidth = curPar.width;
         view.imageHeight = curPar.height;
@@ -1107,8 +1194,11 @@ public:
         view.slideX = curPar.slideCur.x;
         view.slideY = curPar.slideCur.y;
         view.rotation = curPar.rotation;
+        return view;
+    }
 
-        jark::drawImageToCanvas(srcImg, canvas, view);
+    void drawCanvas(const cv::Mat& srcImg, cv::Mat& canvas) const {
+        jark::drawImageToCanvas(srcImg, canvas, viewState());
     }
 
 
@@ -1497,7 +1587,7 @@ public:
         if (imgFileList.size() <= 1 || newIndex < 0 || newIndex >= (int)imgFileList.size())
             return;
 
-        if (GlobalVar::settingParameter.switchImageAnimationMode) { // 开动画时才需要
+        if (direction != 0 && GlobalVar::settingParameter.switchImageAnimationMode) { // 直接选图不准备动画画布
             cv::Mat srcImg = currentSourceImage();
 
             drawCanvas(srcImg, mainCanvas); //先更新无额外按钮UI的原图
@@ -1508,6 +1598,8 @@ public:
             curPar.imageAssetPtr->format = ImageFormat::Animated;
         }
 
+        stopMediaPlayback(); // 本次绘制就必须丢弃旧视频帧，不能等下一个主循环
+        ++navigationImageVersion;
         curFileIdx = newIndex;
 
         if (direction > 0)
@@ -1517,7 +1609,7 @@ public:
 
         curPar.Init(winWidth, winHeight);
 
-        const int animationMode = GlobalVar::settingParameter.switchImageAnimationMode;
+        const int animationMode = direction == 0 ? 0 : GlobalVar::settingParameter.switchImageAnimationMode;
         if (animationMode == 1)
             direction > 0 ? mainCanvasSlideToNextAnimationVertical() : mainCanvasSlideToPreAnimationVertical();
         else if (animationMode == 2)
@@ -1814,9 +1906,11 @@ public:
 
     void DrawUi() override {
         const bool windowVisibleBefore = anyWindowVisible();
+        syncNavigation();
 
         drawOverlayUi();
         drawExifPanel();
+        navigation.draw(currentSourceImage(), uiPos(0.0f, 0.0f));
         SettingWindow::instance().draw();
         BatchWindow::instance().draw();
         PrintWindow::instance().draw();
@@ -1837,6 +1931,9 @@ public:
     void DrawScene() {
         updateMediaPlayback(); // 实时播放推进（含音频时钟驱动的帧切换）
         updateSlideshow();     // 幻灯片按间隔自动切换
+        if (jark::ThumbnailService::instance().consumeChanged())
+            markPresentRequested();
+        syncNavigation();
 
         if (GlobalVar::isNeedUpdateTheme) {
             GlobalVar::isNeedUpdateTheme = false;
@@ -1850,6 +1947,9 @@ public:
             if (curFileIdx >= 0 && curFileIdx < (int)imgFileList.size()) {
                 const auto currentPath = imgFileList[curFileIdx];
                 imgDB.clear();
+                ++navigationImageVersion;
+                if (currentPath != m_wndCaption)
+                    jark::ThumbnailService::instance().invalidate(currentPath);
 
                 if (currentPath == m_wndCaption) {
                     imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32) });
@@ -1879,8 +1979,8 @@ public:
             // 有界面在显示、或系统要求重绘时要继续出帧（不能停在空白后缓冲上）。
             // 窗口的可见性要单独看：刚被打开的窗口还没经过一帧，uiVisible() 还是旧值，
             // 少了这一项就要等鼠标动了才会画出来。
-            if (anyWindowVisible() || jark::ui::UiHost::instance().uiVisible() ||
-                consumePresentRequest())
+            const bool presentRequested = consumePresentRequest();
+            if (anyWindowVisible() || jark::ui::UiHost::instance().uiVisible() || presentRequested)
                 PresentUiOnly();
 
             Sleep(1); // Windows机制限制，实际时长最小只能 15.6ms
@@ -1962,6 +2062,19 @@ public:
         };
 
         switch (operateAction.action) {
+        case ActionENUM::jumpToImage: {
+            if (operateAction.generation == directoryVersion && operateAction.value1 != curFileIdx)
+                switchToFile(operateAction.value1, 0);
+        } break;
+
+        case ActionENUM::navigateImage: {
+            if (operateAction.generation == navigationImageVersion && !anyWindowVisible()) {
+                curPar.zoomTarget = curPar.zoomCur;
+                curPar.slideTarget = curPar.slideCur = { operateAction.x, operateAction.y };
+                smoothShift = false;
+            }
+        } break;
+
         case ActionENUM::preImg: {
             if (--curFileIdx < 0)
                 curFileIdx = (int)imgFileList.size() - 1;
@@ -2046,6 +2159,8 @@ public:
         } break;
 
         case ActionENUM::rotateLeft: {
+            ++navigationImageVersion;
+            navigation.cancel();
             if (GlobalVar::settingParameter.isAllowRotateAnimation) {
                 rotateLeftAnimation();
             }
@@ -2055,6 +2170,8 @@ public:
         } break;
 
         case ActionENUM::rotateRight: {
+            ++navigationImageVersion;
+            navigation.cancel();
             if (GlobalVar::settingParameter.isAllowRotateAnimation) {
                 rotateRightAnimation();
             }
@@ -2098,6 +2215,8 @@ public:
                 break;
             }
 
+            jark::ThumbnailService::instance().invalidate(std::wstring(target));
+            stopMediaPlayback();
             imgFileList.erase(imgFileList.begin() + curFileIdx);
 
             if (imgFileList.empty()) {
@@ -2113,6 +2232,7 @@ public:
                 imgFileList[curFileIdx],
                 imgFileList[(curFileIdx + 1) % imgFileList.size()]);
             curPar.Init(winWidth, winHeight);
+            updateNavigationDirectory();
         } break;
 
         case ActionENUM::requestExit: {

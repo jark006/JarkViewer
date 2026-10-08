@@ -33,6 +33,16 @@ python tools/gen_testdata.py <输出目录>
 # 标注逻辑自检（合成底图 + 像素断言，不需要人眼）
 ./x64/Release/JarkViewer.exe --probe --annotate [--annotate-out 输出目录] [图片]
 
+# 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch）
+./x64/Release/JarkViewer.exe --probe --navigation-test
+./x64/Release/JarkViewer.exe --probe --thumbnail-test [--out-dir 临时目录]
+
+# 系统缩略图链路自检（经 Shell 取一张缩略图存 PNG，验证处理器/方向/透明度）
+./x64/Release/JarkViewer.exe --probe --shell-thumbnail <图片> [--out-dir 输出目录]
+
+# 主界面导航实机交互（鸟瞰拖动/拖出客户区释放/悬停缩略图带/点击换图/滚轮隔离）
+pwsh tools/test_navigation.ps1 -Exe x64/Release/JarkViewer.exe -Image <图片> -OutDirectory <截图目录> [-CheckSettings]
+
 # 列出某进程的可见窗口（自动化测试定位窗口用）
 pwsh tools/list_windows.ps1 -ProcessId <pid>
 ```
@@ -52,7 +62,7 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
 - `JarkViewer/include/D3D11App.h` 与 `JarkViewer/src/D3D11App.cpp` 提供 Win32 窗口、消息分发、Direct3D 11 设备/交换链和 `PresentCanvas()`。业务层通过继承并实现鼠标、键盘、拖放、右键菜单和绘制回调。
 - `JarkViewer/include/ImageDatabase.h` 与 `JarkViewer/src/ImageDatabase.cpp` 负责图片加载、格式分派、EXIF 处理和 LRU 缓存。核心路径是 `ImageDatabase::loader()` → `myLoader()` → **按文件头（魔数）嗅探格式后再分派**：`FormatSniffer` 判定真实格式 → `decodeByFormat()` 调用 JXL/WP2/AVIF/HEIF/RAW/SVG/PSD/OpenCV/WIC/FFmpeg 等解码器 → 统一转为 OpenCV `cv::Mat`；嗅探失败或解码失败时再用扩展名路由兜底，最后才是 OpenCV/WIC 通用兜底。EXIF 后处理统一由 `applyExifInfo()` 按 `ExifPolicy`（None/SimpleOnly/Full/FullWithOrientation）完成，不再散落在各格式分支里。
 - `JarkViewer/include/FormatSniffer.h` 与 `JarkViewer/src/FormatSniffer.cpp` 是纯文件头嗅探模块（不依赖任何第三方库）：扩展名与文件头冲突时以文件头为准，但 RAW/视频/LIVP/LEP/TGA 等扩展名携带文件头无法表达的信息（`isExtensionAuthoritative()`）时优先按扩展名路由。`JarkThumbnailProvider` 里的同名模块与其同源，后续计划合并为两个工程共用的模块。
-- 界面改动可用 `tools/capture_window.ps1` 做视觉验证：`-Keys "{F1}"` 注入按键（窗口都在主窗口内，不再需要 `-Window` 选择）、`-Keys2 "{ESC}i"` + `-Keys2DelayMs` 送第二批按键（开窗、点击、再按键这类时序）、`-Hover "x,y"` 悬停、`-Drag "x1,y1,x2,y2[;...]"` 拖动或点击（物理客户区坐标）、`-RightClick "x,y"` + `-MenuKeys "b{ENTER}"` 右键菜单（菜单是独立弹窗，要配 `-Screen` 才截得到）、`-DragHold` 拖到最后一个点**不松手**再截图（验证"拖动中"才有的画面，如马赛克/裁剪的拖框）。ImGui 的窗口默认居中于主窗口。编辑窗口的文字工具另有 `tools/test_editor_text.ps1`：选文字工具 → 点锚点 → 点侧栏文字框 → 投递 Unicode `WM_CHAR`（等价于输入法上屏后的字符），一张图同时验证锚点光标、文字预览和中文能进输入框。
+- 界面改动可用 `tools/capture_window.ps1` 做视觉验证：`-Keys "{F1}"` 注入按键（窗口都在主窗口内，不再需要 `-Window` 选择）、`-Keys2 "{ESC}i"` + `-Keys2DelayMs` 送第二批按键（开窗、点击、再按键这类时序）、`-Hover "x,y"` 悬停、`-Drag "x1,y1,x2,y2[;...]"` 拖动或点击（物理客户区坐标）、`-RightClick "x,y"` + `-MenuKeys "b{ENTER}"` 右键菜单（菜单是独立弹窗，要配 `-Screen` 才截得到）、`-DragHold` 拖到最后一个点**不松手**再截图（验证"拖动中"才有的画面，如马赛克/裁剪的拖框）。ImGui 的窗口默认居中于主窗口。编辑窗口的文字工具另有 `tools/test_editor_text.ps1`：选文字工具 → 点锚点 → 点侧栏文字框 → 投递 Unicode `WM_CHAR`（等价于输入法上屏后的字符），一张图同时验证锚点光标、文字预览和中文能进输入框。主界面导航另有 `tools/test_navigation.ps1`：动态按 DPI 换算客户区坐标，依次验证鸟瞰拖动、拖出客户区释放、悬停展开缩略图带、点击直接换图、滚轮只滚条带不穿透、移出后隐藏、设置窗口往返；加 `-CheckSettings` 时还会点「清理缓存」「显示鸟瞰图」并重启核对设置文件字节（该分支要求 `-Exe` 指向 `%TEMP%` 下的独立副本，避免动到用户的设置与缓存）。
 - 视频相关改动除 `--probe` 外，可用 `--probe --audio-test <文件>` 验证音频链路：它以音量 0 提交音频并观察播放时钟是否按采样率推进（不发出声音）。
 - `JarkViewer/src/DecodeProbe.cpp` 提供无界面解码自检（`--probe`），用于在没有窗口的情况下验证解码路由与 EXIF 处理。
 - `JarkViewer/include/BatchProcessor.h` 与 `src/BatchProcessor.cpp` 是批量处理逻辑（转换格式/缩放/旋转翻转/重命名，**没有删除任务**——删文件走主窗口的「删除到回收站」）：解码走工程内解码器（HEIC/AVIF/RAW 等也能参与转换），编码用 OpenCV；不依赖窗口，可用命令行 `--probe --batch <文件...> [--out-dir 目录] [--to 格式] [--quality N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--rename 前缀] [--overwrite]` 直接验证。
@@ -100,6 +110,45 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   后端返回非 0 表示这条消息它已经处理完（`WM_IME_COMPOSITION` 带 `GCS_RESULTSTR`、`WM_SETCURSOR`），
   再落到 `DefWindowProc` 会把输入法上屏的结果生成两遍：中文变成双份（输入"安装"落进编辑框变成
   "安装安装"），英文走 `WM_CHAR` 不受影响——所以这个 bug 只在中文输入时出现。
+- `D3D11App` 另有两个**先于 ImGui 捕获判定**的输入钩子（新增导航浮层时加入）：`OnMouseRelease`
+  在 `uiWantsMouse` 之前调用，让"已在浮层上按下"的手势即使拖出客户区、或此时 ImGui 想接管，
+  也能收到对应的抬起（返回 true 表示这条抬起已被消费）；`OnPointerCancel` 在
+  `WM_KILLFOCUS`/`WM_CANCELMODE`/异常 `WM_CAPTURECHANGED` 时清理画布与浮层的拖动状态。
+  坑：ImGui 后端在正常抬起时会先 `ReleaseCapture()`，同步重入的 `WM_CAPTURECHANGED` 不是取消，
+  WndProc 用 `m_processingMouseRelease` 区分。鼠标坐标一律用有符号的 `GET_X_LPARAM/GET_Y_LPARAM`
+  （拖动允许出客户区，负坐标被 `LOWORD/HIWORD` 折成大正数会飞掉）；`WM_MOUSEWHEEL` 的 lParam 是
+  **屏幕坐标**，`OnMouseWheel` 里先 `ScreenToClient`。
+- 主界面导航浮层 `JarkViewer/include|src/NavigationOverlay.{h,cpp}`：右下角**鸟瞰图**（显示旋转后的
+  整图与当前可见区域框；框上拖动平移、点其它位置定位过去，几何用 `zoomCur/slideCur` 而不是动画
+  目标值——小图从当前已加载的 `currentSourceImage()` 缩小，绝不读文件）+ 底部**悬停缩略图带**
+  （进入底部窄触发区才展开，滚轮/左右按钮翻页，点击排队 `jumpToImage` 直接换图）。它**不加入
+  `anyWindowVisible()`**，而是自己画在 `GetForegroundDrawList()` 上、自己做客户区命中
+  （`OnMouseDown/Move/Wheel` 顶部优先处理，命中即拦截旧边缘按钮/画布拖动逻辑，二级窗口打开或
+  图片切换时 `cancel()`）。动作走 `OperateQueue` 新增的 `jumpToImage`/`navigateImage` 在
+  `DrawScene()` 消费：`navigateImage` 是**绝对位置**（队列里按“同 generation 覆盖”合并，不能走
+  `slide` 的位移相加），两者都带 `Action::generation`（`navigationImageVersion`/`directoryVersion`），
+  换图/旋转/改尺寸后旧坐标作废。手势归属由 `ownedButtons_` 管理：浮层上按下后，移动/抬起即使出了
+  控件矩形也由浮层收尾（对应的抬起不能让给 `uiWantsMouse`）；失焦/失捕获时 `swallowedButtons_`
+  保证残余抬起仍被吞掉。`switchToFile(index, direction)` 的 **direction==0 就是“直接切图”**
+  （不准备滑动动画、不按上一张预取），点当前缩略图直接忽略；切图前必须 `stopMediaPlayback()`，
+  否则同一次绘制还会取到旧视频帧。鸟瞰开关是 `SettingParameter::hideNavigator`（**原 `reserve2`
+  原位复用**，保持 4096 字节布局；旧设置默认 false=显示），别再加新字段。
+- `JarkViewer/include|src/ThumbnailService.{h,cpp}` 是缩略图服务（`jark` 命名空间，单例）：
+  取图顺序是**内存缓存 → `JarkViewer.thumbnail` 持久缓存 → `IThumbnailCache`(`WTS_INCACHEONLY`)
+  → Shell 正常提取（`WTS_EXTRACT`）**——提取默认走系统 surrogate，**禁止 `WTS_EXTRACTINPROC`、
+  禁止直接加载 provider DLL、禁止回退查看器的原图解码链**（失败只显示占位图）；因此 JPEG 等无
+  自研处理器的格式用系统缩略图缓存，本程序注册过的扩展名（wp2/raw 等）由 JarkThumbnailProvider
+  经 Shell 提供，缩略图带自身不解码原图。缓存文件固定在**实际设置文件（`GlobalVar::settingPath`）
+  同目录**、固定名 `JarkViewer.thumbnail`（不是 `JarkViewer.db` 的扩展名）：64 字节文件头 +
+  **1000 个定长索引槽** + 追加数据区（规范化路径 + ≤256px PNG，显式序列化、CRC 校验、损坏只丢
+  单条）；LRU 按“实际展示”更新（预取不刷热），跨进程用命名互斥锁提交、`generation/epoch` 保证
+  在途旧结果不覆盖清理后的缓存；原图只查文件属性（大小/修改时间），覆盖保存等已知变化要
+  `invalidate()`。两个常驻 worker（缓存 I/O 与 Shell COM 各自 `CoInitializeEx`）：慢提取不阻塞
+  缓存查询/清理，退出有界等待，同步 COM 调用**不能**强制中断、线程只持有自己的状态。
+  GPU 侧：鸟瞰用纹理槽 5、缩略图带用 16..79，`UiHost::releaseTexture(slot)` 是新增的单槽释放
+  （清理缩略图**不能**调全局 `releaseTextures()`，会连其它窗口的纹理一起失效）；后台只产 CPU 位图，
+  上传/释放在界面线程。设置页常规页有「显示鸟瞰图」与「清理缩略图缓存」
+  （`ThumbnailService::stats()/clear()`，`stats().clearVersion` 变化时浮层释放自己的纹理槽）。
 - 输入法（IME）不能靠 `ImmDisableIME()` 禁用：它是**线程级且没有反向接口**，一旦调用，
   界面里的所有 ImGui 文本框就永远打不了中文。改为 `UiHost` 在窗口上挂/摘 IME 上下文
   （`ImmAssociateContext`）：默认把上下文摘下来（中文输入法会吃掉 p/c 这类单键快捷键），
@@ -135,7 +184,7 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   字形位图按 (字号, 码位) 缓存。字体全部取系统字体（微软雅黑/等线/黑体/宋体…），工程不再内嵌 ttf。
   界面文字由 ImGui 负责，不要再往 TextRenderer 里加界面相关职责。
 - `JarkViewer/include/MediaDecoder.h` / `MediaPlayer.h` / `AudioOutput.h`（对应 `src/*.cpp`）组成媒体播放链路：`MediaDecoder` 在内存数据上做解复用+解码，按出现顺序产出视频帧或音频批（音频统一重采样为 48kHz 立体声 16 位）；`AudioOutput` 用 XAudio2 输出并提供已播放样本数作为主时钟；`MediaPlayer` 以音频时钟驱动视频帧、一次播完。实况照片（livp / MotionPhoto）与视频文件都走这条路：静态图/首帧作 `ImageAsset::primaryFrame`，视频字节放在 `ImageAsset::videoSource`，由主窗口自动播放一次后回到静态图（不再预解码成帧序列，避免上百 MB 内存）。
-- `JarkViewer/include/CanvasRenderer.h` 与 `JarkViewer/src/CanvasRenderer.cpp` 是从 `JarkViewerApp` 抽出的画布绘制模块：按 `ViewState`（名义尺寸 / 定点缩放 / 平移 / 旋转）把图像绘制到 BGRA 画布，含透明区域棋盘格与图像边框。`JarkViewerApp::drawCanvas()` 只是把 `curPar` 转成 `ViewState` 后调用它。
+- `JarkViewer/include/CanvasRenderer.h` 与 `JarkViewer/src/CanvasRenderer.cpp` 是从 `JarkViewerApp` 抽出的画布绘制模块：按 `ViewState`（名义尺寸 / 定点缩放 / 平移 / 旋转）把图像绘制到 BGRA 画布，含透明区域棋盘格与图像边框。`JarkViewerApp::drawCanvas()` 只是把 `curPar` 转成 `ViewState` 后调用它。`imageGeometry()` 是主画布与鸟瞰**共用**的纯几何（旋转后名义尺寸、显示矩形、归一化可见区域——`slide + round((canvas-rendered)/2)` 的定位公式只有这一处），`navigationSlide()` 把归一化图像点换算成目标 slide（某轴完整可见时保持居中、不改动原有“允许留白”的拖图夹取）；`--probe --navigation-test` 用合成断言覆盖旋转/平移/端点夹取与浮层输入归属。
 - `JarkViewer/include/VectorImage.h` 与 `JarkViewer/src/VectorImage.cpp` 负责矢量图（SVG）的按需光栅化：`ImageAsset::vectorSource` 持有 lunasvg 文档与文档尺寸（intrinsic），位图分辨率随缩放变化（`vectorTargetEdge()` + `refreshVectorRaster()`，滞后阈值 1.25 避免缩放动画中反复渲染，长边上限 4096）。主窗口在画面稳定后（`DrawScene` 空闲分支）调用 `refreshVectorRasterIfNeeded()` 升级分辨率。
 - `JarkViewer/include/jarkUtils.h` 与 `JarkViewer/src/jarkUtils.cpp` 集中放置 Win32/OpenCV 工具、主题/设置全局状态、剪贴板、全屏、资源读取、文件操作和日志。
 - `JarkViewer/src/TextRenderer.cpp`、`stringRes.cpp`、`exifParse.cpp`、`videoDecoder.cpp`、`blpDecoder.cpp` 分别支撑图像文字渲染、多语言字符串、元数据解析、视频帧解码和 BLP 解码。

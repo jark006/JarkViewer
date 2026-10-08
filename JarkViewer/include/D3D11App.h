@@ -18,6 +18,9 @@ public:
 
     virtual void OnMouseDown(WPARAM btnState, int x, int y, WPARAM wParam) = 0;
     virtual void OnMouseUp(WPARAM btnState, int x, int y, WPARAM wParam) = 0;
+    // 不受 ImGui 捕获状态影响的手势收尾，仅消费自己拥有的抬起。
+    virtual bool OnMouseRelease(WPARAM button, int x, int y, WPARAM state) { return false; }
+    virtual void OnPointerCancel() {}
     virtual void OnMouseMove(WPARAM btnState, int x, int y) = 0;
     virtual void OnMouseLeave() = 0;
     virtual void OnMouseWheel(UINT nFlags, short zDelta, int x, int y) = 0;
@@ -97,6 +100,7 @@ protected:
     // 后缓冲渲染目标（ImGui 需要绑定 RTV 才能绘制）
     ID3D11RenderTargetView* m_pBackBufferRTV = nullptr;
     bool m_presentRequested = true;
+    bool m_processingMouseRelease = false; // 区分 backend 正常释放捕获与异常失捕获
     // 所创设备特性等级
     D3D_FEATURE_LEVEL m_featureLevel;
 

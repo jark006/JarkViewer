@@ -11,6 +11,7 @@
 #include "ImageDatabase.h"
 #include "Localization.h"
 #include "UiHost.h"
+#include "ThumbnailService.h"
 #include "jarkUtils.h"
 
 #include <imgui.h>
@@ -56,9 +57,9 @@ public:
         const float scale = jark::ui::UiHost::instance().scale();
         const std::string title = jarkUtils::wstringToUtf8(getUIStringW(39).c_str()) + "###settings";
 
-        ImGui::SetNextWindowSize({ 660.0f * scale, 540.0f * scale }, ImGuiCond_FirstUseEver);
-        // 不能再缩小到藏住页签与底部按钮
-        ImGui::SetNextWindowSizeConstraints({ 600.0f * scale, 440.0f * scale }, { FLT_MAX, FLT_MAX });
+        ImGui::SetNextWindowSize({ 680.0f * scale, 640.0f * scale }, ImGuiCond_FirstUseEver);
+        // 常规页包含导航开关与缓存管理，不能缩小到藏住底部控件
+        ImGui::SetNextWindowSizeConstraints({ 640.0f * scale, 580.0f * scale }, { FLT_MAX, FLT_MAX });
         if (focusRequested_) {
             const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
             ImGui::SetNextWindowPos(center, ImGuiCond_Always, { 0.5f, 0.5f });
@@ -146,6 +147,9 @@ private:
         };
         for (const auto& item : checkItems)
             ImGui::Checkbox(getUIString(item.stringID), item.value);
+        bool showNavigator = !parameter.hideNavigator;
+        if (ImGui::Checkbox(getUIString(kStrShowNavigator), &showNavigator))
+            parameter.hideNavigator = !showNavigator;
 
         ImGui::Spacing();
         drawRadioRow(20, { getUIString(21), getUIString(22), getUIString(23) }, &parameter.switchImageAnimationMode, 0);
@@ -173,6 +177,28 @@ private:
 
         ImGui::Spacing();
         drawRadioRow(36, { getUIString(37), getUIString(38) }, &parameter.rightClickAction, 0);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        auto& thumbnails = jark::ThumbnailService::instance();
+        const auto stats = thumbnails.stats();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("%s: %zu / 1000, %.1f MiB", getUIString(kStrThumbnailCache),
+            stats.entries, stats.bytes / (1024.0 * 1024.0));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(stats.clearState == jark::ClearState::Pending);
+        if (ImGui::Button(getUIString(kStrClearCache)))
+            thumbnails.clear();
+        ImGui::EndDisabled();
+        if (stats.clearState == jark::ClearState::Pending)
+            ImGui::TextDisabled("%s", getUIString(kStrClearingCache));
+        else if (stats.clearState == jark::ClearState::Done)
+            ImGui::TextDisabled("%s", getUIString(kStrCacheCleared));
+        else if (stats.clearState == jark::ClearState::Failed)
+            ImGui::TextWrapped("%s", getUIString(kStrClearCacheFailed));
+        else if (!stats.diskAvailable)
+            ImGui::TextWrapped("%s", getUIString(kStrMemoryCacheOnly));
 
         applySideEffects();
     }
@@ -431,6 +457,14 @@ private:
         }
         return aboutIcon_;
     }
+
+    static constexpr uint32_t kStrShowNavigator = 149;
+    static constexpr uint32_t kStrThumbnailCache = 150;
+    static constexpr uint32_t kStrClearCache = 151;
+    static constexpr uint32_t kStrClearingCache = 152;
+    static constexpr uint32_t kStrCacheCleared = 153;
+    static constexpr uint32_t kStrClearCacheFailed = 154;
+    static constexpr uint32_t kStrMemoryCacheOnly = 155;
 
     // 帮助页文案（窄表新增条目）
     static constexpr uint32_t kStrHelpTitle = 127;
