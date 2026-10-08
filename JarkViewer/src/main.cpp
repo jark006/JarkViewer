@@ -2504,7 +2504,9 @@ public:
 
     // 等待解码的浮标：贴客户区左上角显示已等待秒数；"画面"本身由主页垫底或旧图停留
     void drawLoadingBadge() {
-        if (!pendingLoad_)
+        // 幻灯片播放中不闪这个浮标：换图时若目标图还没落缓存就会亮一下（通常只亮 0.0s，
+        // 但每张都闪，全屏播放里很扎眼）。加载本身照旧进行，只是不画。
+        if (!pendingLoad_ || hidesOverlayUi())
             return;
 
         const float scale = uiScale();
