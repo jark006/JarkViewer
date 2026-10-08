@@ -138,22 +138,33 @@ private:
         auto& parameter = GlobalVar::settingParameter;
         const float scale = jark::ui::UiHost::instance().scale();
 
+        // 六个勾选项排成 3 行 2 列。ImGui 没有等宽列：第二列起点取第一列（偶数下标项）中
+        // 最长文本的宽度，再补上勾选框本身（框宽 + 框与文本间距）和一个列间距。
+        bool showNavigator = !parameter.hideNavigator;
         struct CheckItem {
-            uint32_t stringID;
+            const char* label;
             bool* value;
         };
         const CheckItem checkItems[] = {
-            { 12, &parameter.isAllowRotateAnimation },
-            { 13, &parameter.isAllowZoomAnimation },
-            { 14, &parameter.isNoteBeforeDelete },
-            { 15, &parameter.enableColorManagement },
-            { 54, &parameter.isOneToOnePreferred },
+            { getUIString(12), &parameter.isAllowRotateAnimation },
+            { getUIString(13), &parameter.isAllowZoomAnimation },
+            { getUIString(14), &parameter.isNoteBeforeDelete },
+            { getUIString(15), &parameter.enableColorManagement },
+            { getUIString(54), &parameter.isOneToOnePreferred },
+            { getUIString(kStrShowNavigator), &showNavigator }, // 界面上是"显示"，存储取反
         };
-        for (const auto& item : checkItems)
-            ImGui::Checkbox(getUIString(item.stringID), item.value);
-        bool showNavigator = !parameter.hideNavigator;
-        if (ImGui::Checkbox(getUIString(kStrShowNavigator), &showNavigator))
-            parameter.hideNavigator = !showNavigator;
+        float secondColumn = 0.0f;
+        for (int index = 0; index < IM_ARRAYSIZE(checkItems); index += 2)
+            secondColumn = (std::max)(secondColumn, ImGui::CalcTextSize(checkItems[index].label).x);
+        secondColumn += ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+            2.0f * ImGui::GetStyle().ItemSpacing.x;
+
+        for (int index = 0; index < IM_ARRAYSIZE(checkItems); ++index) {
+            if (index % 2)
+                ImGui::SameLine(secondColumn);
+            ImGui::Checkbox(checkItems[index].label, checkItems[index].value);
+        }
+        parameter.hideNavigator = !showNavigator; // 循环后同步回存储（✕ 收起鸟瞰也是写这个字段）
 
         ImGui::Spacing();
         drawRadioRow(20, { getUIString(21), getUIString(22), getUIString(23) }, &parameter.switchImageAnimationMode, 0);

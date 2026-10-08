@@ -85,7 +85,9 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   **2 列**表格排版：列数不能再多，单元格宽度按窗口默认宽度算，3 列以上"窗口左右边缘：上一张 /
   下一张"这类长条目会被裁掉；关于页顶部的软件图标是 `IDB_PNG_ABOUT_ICON`
   （`file/aboutIcon.png`，从旧版设置页贴图 `settingRes.png` 里抠出来的透明底图标，纹理槽 4），
-  深浅主题通用，不需要两套图。
+  深浅主题通用，不需要两套图。常规页最上面的六个勾选项按 **3 行 2 列**排布（ImGui 没有等宽列：
+  第二列起点 = 第一列最长项的实际文本宽 + 勾选框宽 + 列间距，随语言自适应；增减勾选项时
+  记得同步这个列宽推导）。
 - 各窗口都是 ImGui 窗口（不再是独立窗口线程）：`SettingWindow.h`（常规/文件关联/帮助/关于）、
   `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）。
   **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
@@ -136,7 +138,10 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   控件矩形也由浮层收尾（对应的抬起不能让给 `uiWantsMouse`）；失焦/失捕获时 `swallowedButtons_`
   保证残余抬起仍被吞掉。`switchToFile(index, direction)` 的 **direction==0 就是“直接切图”**
   （不准备滑动动画、不按上一张预取），点当前缩略图直接忽略；切图前必须 `stopMediaPlayback()`，
-  否则同一次绘制还会取到旧视频帧。鸟瞰开关是 `SettingParameter::hideNavigator`（**原 `reserve2`
+  否则同一次绘制还会取到旧视频帧。鸟瞰面板**右上角有 ✕ 收起按钮**（常态灰 ✕、悬停垫按钮底色；
+  按下即返回 `Event::closeNavigator`，主窗口把它写进 `hideNavigator`——与设置页勾选同一字段，
+  随退出统一写盘；`closeRect()` 供自检观察）：点击只收起鸟瞰，不影响预览带，也不进入面板拖动。
+  鸟瞰开关是 `SettingParameter::hideNavigator`（**原 `reserve2`
   原位复用**，保持 4096 字节布局；旧设置默认 false=显示），别再加新字段。
 - `JarkViewer/include|src/ThumbnailService.{h,cpp}` 是缩略图服务（`jark` 命名空间，单例）：
   取图顺序是**内存缓存 → `JarkViewer.thumbnail` 持久缓存 → `IThumbnailCache`(`WTS_INCACHEONLY`)

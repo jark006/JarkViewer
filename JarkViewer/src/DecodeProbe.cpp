@@ -587,6 +587,15 @@ namespace {
         overlay.cancel();
         check(!overlay.ownsGesture() && overlay.mouseUp(1).handled, "失捕获取消后吞掉残余抬起");
         check(!overlay.mouseDown({ 500, 400 }, 1).handled, "非浮层区域不拦截主图");
+        // 面板右上角的 ✕：按下即请求收起（上层写进 settingParameter.hideNavigator），且不进入拖动
+        const cv::Rect2f closeRect = overlay.closeRect();
+        const cv::Point closeCenter{
+            static_cast<int>(closeRect.x + closeRect.width / 2),
+            static_cast<int>(closeRect.y + closeRect.height / 2) };
+        const auto closeEvent = overlay.mouseDown(closeCenter, 1);
+        check(closeEvent.handled && closeEvent.closeNavigator && !closeEvent.slide.has_value(),
+            "鸟瞰关闭按钮按下请求收起且不触发拖动");
+        check(overlay.mouseUp(1).handled, "关闭按钮的抬起仍由浮层收尾");
 
         // 预览带：整块控件区域都是触发区；展开后当前图片严格水平居中，两侧不够就留空
         ui::NavigationOverlay stripOverlay;

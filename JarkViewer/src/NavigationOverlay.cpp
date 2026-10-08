@@ -60,6 +60,7 @@ void NavigationOverlay::sync(const ViewState& view, cv::Size clientSize, float s
 
 void NavigationOverlay::layout() {
     overviewPanel_ = overviewImage_ = viewFrame_ = {};
+    overviewClose_ = {};
     strip_ = previous_ = next_ = {};
     if (blocked_)
         return;
@@ -106,6 +107,10 @@ void NavigationOverlay::layout() {
     viewFrame_ = { overviewImage_.x + static_cast<float>(visible.x) * iw,
         overviewImage_.y + static_cast<float>(visible.y) * ih,
         static_cast<float>(visible.width) * iw, static_cast<float>(visible.height) * ih };
+    // 面板右上角的收起按钮：点击后隐藏鸟瞰（等同取消设置里的「显示鸟瞰图」勾选）
+    const float closeSize = 18.0f * scale_;
+    overviewClose_ = { overviewPanel_.x + panelWidth - closeSize - 4.0f * scale_,
+        overviewPanel_.y + 4.0f * scale_, closeSize, closeSize };
 }
 
 cv::Rect2f NavigationOverlay::cellRect(int visibleIndex) const {
@@ -180,6 +185,10 @@ NavigationOverlay::Event NavigationOverlay::mouseDown(cv::Point point, unsigned 
     ownedButtons_ |= button;
     if (button != 1)
         return event;
+    if (contains(overviewClose_, point)) {
+        event.closeNavigator = true; // 按下即收起（不进入拖动；抬起仍由浮层收尾）
+        return event;
+    }
     if (stripVisible_ && contains(strip_, point)) {
         if (contains(previous_, point))
             first_ -= (std::max)(1, capacity_ - 1);
@@ -232,10 +241,12 @@ NavigationOverlay::Event NavigationOverlay::mouseWheel(cv::Point point, int delt
 }
 
 bool NavigationOverlay::mouseLeave() {
+    // 鼠标移出客户区后 ✕ 的悬停底色要擦掉：mouse_ 马上会被清掉，先把状态记下来
+    const bool wasOverClose = contains(overviewClose_, mouse_);
     mouse_ = { -1, -1 };
     if (ownsGesture())
         return false;
-    const bool changed = stripVisible_ || hovered_ >= 0;
+    const bool changed = stripVisible_ || hovered_ >= 0 || wasOverClose;
     stripVisible_ = false;
     hovered_ = -1;
     layout();
@@ -328,6 +339,22 @@ void NavigationOverlay::draw(const cv::Mat& source, ImVec2 screenOrigin) {
             draw->AddRect(topLeft(viewFrame_), bottomRight(viewFrame_), IM_COL32(255, 255, 255, 255), 0, 0, 1.5f * scale_);
         }
         draw->PopClipRect();
+        // 右上角收起按钮：常态只有一枚灰 ✕（尽量不抢画面），悬停时垫按钮底色并加亮
+        if (!overviewClose_.empty()) {
+            const bool closeHovered = contains(overviewClose_, mouse_);
+            if (closeHovered)
+                draw->AddRectFilled(topLeft(overviewClose_), bottomRight(overviewClose_),
+                    ImGui::GetColorU32(ImGuiCol_ButtonHovered), radius);
+            const float inset = 5.0f * scale_;
+            const ImU32 closeColor = closeHovered ? ImGui::GetColorU32(ImGuiCol_Text) : text;
+            draw->AddLine(pos(overviewClose_.x + inset, overviewClose_.y + inset),
+                pos(overviewClose_.x + overviewClose_.width - inset,
+                    overviewClose_.y + overviewClose_.height - inset),
+                closeColor, 1.5f * scale_);
+            draw->AddLine(pos(overviewClose_.x + overviewClose_.width - inset, overviewClose_.y + inset),
+                pos(overviewClose_.x + inset, overviewClose_.y + overviewClose_.height - inset),
+                closeColor, 1.5f * scale_);
+        }
     }
     if (!stripVisible_)
         return;

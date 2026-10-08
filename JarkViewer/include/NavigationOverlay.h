@@ -16,6 +16,7 @@ public:
     struct Event {
         bool handled = false;
         bool redraw = false;
+        bool closeNavigator = false; // 面板右上角 ✕：收起鸟瞰图（上层写进设置，配置页勾选同步取消）
         int selected = -1;
         std::optional<cv::Point> slide;
     };
@@ -32,6 +33,7 @@ public:
     bool cancel();
     bool ownsGesture() const { return ownedButtons_ != 0; }
     bool stripVisible() const { return stripVisible_; } // 预览带是否展开（供自检/调试观察）
+    cv::Rect2f closeRect() const { return overviewClose_; } // 鸟瞰收起按钮（供自检/调试观察）
     void releaseTextures();
 
 private:
@@ -70,7 +72,7 @@ private:
     unsigned swallowedButtons_ = 0;
     cv::Point mouse_{ -1, -1 };
     cv::Point2d grabOffset_;
-    cv::Rect2f overviewPanel_, overviewImage_, viewFrame_;
+    cv::Rect2f overviewPanel_, overviewImage_, viewFrame_, overviewClose_;
     cv::Rect2f strip_, previous_, next_; // strip_ 同时是展开触发区（鼠标进入即展开）
     int capacity_ = 0;
     int first_ = 0;

@@ -564,6 +564,9 @@ public:
             extraUIFlag = ShowExtraUI::none;
             cursorPosLast = cursorPos = CursorPos::centerArea;
         }
+        // 鸟瞰面板右上角的 ✕：收起鸟瞰图，等同取消设置里的「显示鸟瞰图」勾选（随退出统一写盘）
+        if (event.closeNavigator)
+            GlobalVar::settingParameter.hideNavigator = true;
         if (event.selected >= 0 && event.selected != curFileIdx)
             operateQueue.push({ ActionENUM::jumpToImage, event.selected, 0, directoryVersion });
         if (event.slide)
