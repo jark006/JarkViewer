@@ -296,12 +296,21 @@ bool jarkUtils::copyToClipboard(wstring_view text) {
 }
 
 bool jarkUtils::limitSizeTo16K(cv::Mat& image) {
-    // 检查并缩放图像（保持宽高比）
+    // 检查并缩放图像（保持宽高比）。短边夹到至少 1 像素：极端长宽比（如 20000x1）按比例
+    // 算出的短边会是 0，cv::resize 直接抛异常，调用方（打印预览等）会跟着崩。
     if (image.cols > 16384 || image.rows > 16384) {
-        double scale = std::min(16384.0 / image.cols, 16384.0 / image.rows);
-        int newWidth = static_cast<int>(image.cols * scale);
-        int newHeight = static_cast<int>(image.rows * scale);
-        cv::resize(image, image, cv::Size(newWidth, newHeight), 0, 0, cv::INTER_LINEAR);
+        try {
+            const double scale = std::min(16384.0 / image.cols, 16384.0 / image.rows);
+            const int newWidth = (std::max)(1, static_cast<int>(image.cols * scale));
+            const int newHeight = (std::max)(1, static_cast<int>(image.rows * scale));
+            cv::Mat resized;
+            cv::resize(image, resized, cv::Size(newWidth, newHeight), 0, 0, cv::INTER_LINEAR);
+            image = std::move(resized);
+        }
+        catch (const cv::Exception& e) {
+            JARK_LOG("limitSizeTo16K failed: {}", e.what());
+            return false;
+        }
         MessageBoxW(nullptr, std::format(L"{} {}x{}", getUIStringW(16).c_str(), image.cols, image.rows).c_str(), getUIStringW(15), MB_OK | MB_ICONWARNING);
     }
     return true;

@@ -227,18 +227,30 @@ private:
         // 预览按窗口宽度缩放，避免大图每帧全尺寸处理
         const int previewEdge = 1400;
         cv::Mat resized;
-        const int maxEdge = (std::max)(sourceImage_.cols, sourceImage_.rows);
-        if (maxEdge > previewEdge) {
-            const double factor = static_cast<double>(previewEdge) / maxEdge;
-            cv::resize(sourceImage_, resized, {}, factor, factor, cv::INTER_AREA);
+        try {
+            const int maxEdge = (std::max)(sourceImage_.cols, sourceImage_.rows);
+            if (maxEdge > previewEdge) {
+                const double factor = static_cast<double>(previewEdge) / maxEdge;
+                // 短边夹到至少 1 像素：极端长宽比（如 10000x1）按比例算出 0 会让 resize 抛异常
+                cv::resize(sourceImage_, resized, cv::Size(
+                    (std::max)(1, static_cast<int>(std::round(sourceImage_.cols * factor))),
+                    (std::max)(1, static_cast<int>(std::round(sourceImage_.rows * factor)))),
+                    0, 0, cv::INTER_AREA);
+            }
+            else {
+                // 小图直接用原图缩放的副本（调整是就地做的，不能改到 sourceImage_，
+                // 否则预览会叠加前一次的效果，另存/打印也跟着错）
+                resized = sourceImage_.clone();
+            }
+
+            jark::applyImageAdjustments(resized, brightness_, contrast_, colorMode_, invert_);
         }
-        else {
-            // 小图直接用原图缩放的副本（调整是就地做的，不能改到 sourceImage_，
-            // 否则预览会叠加前一次的效果，另存/打印也跟着错）
-            resized = sourceImage_.clone();
+        catch (const cv::Exception& e) {
+            JARK_LOG("print preview failed: {}", e.what());
+            previewTexture_ = 0;
+            return;
         }
 
-        jark::applyImageAdjustments(resized, brightness_, contrast_, colorMode_, invert_);
         previewWidth_ = resized.cols;
         previewHeight_ = resized.rows;
         previewTexture_ = jark::ui::UiHost::instance().textureFromImage(resized, 1);
@@ -297,37 +309,47 @@ private:
         const int pageWidth = GetDeviceCaps(dialog.hDC, HORZRES);
         const int pageHeight = GetDeviceCaps(dialog.hDC, VERTRES);
 
-        // 留 5% 边距
-        const double factor = 0.9 * (std::min)(
-            static_cast<double>(pageWidth) / output.cols,
-            static_cast<double>(pageHeight) / output.rows);
+        bool drew = false;
+        try {
+            // 留 5% 边距；短边夹到至少 1 像素（极端长宽比按比例算出 0 会让 resize 抛异常）
+            const double factor = 0.9 * (std::min)(
+                static_cast<double>(pageWidth) / output.cols,
+                static_cast<double>(pageHeight) / output.rows);
 
-        cv::Mat resized;
-        cv::resize(output, resized, cv::Size(
-            static_cast<int>(std::round(output.cols * factor)),
-            static_cast<int>(std::round(output.rows * factor))), 0, 0);
+            cv::Mat resized;
+            cv::resize(output, resized, cv::Size(
+                (std::max)(1, static_cast<int>(std::round(output.cols * factor))),
+                (std::max)(1, static_cast<int>(std::round(output.rows * factor)))), 0, 0);
 
-        jark::applyImageAdjustments(resized, brightness_, contrast_, colorMode_, invert_);
+            jark::applyImageAdjustments(resized, brightness_, contrast_, colorMode_, invert_);
 
-        cv::Mat page(pageHeight, pageWidth, CV_8UC3, cv::Scalar(255, 255, 255));
-        const int offsetX = (pageWidth - resized.cols + 1) / 2;
-        const int offsetY = (pageHeight - resized.rows + 1) / 2;
-        resized.copyTo(page(cv::Rect(offsetX, offsetY, resized.cols, resized.rows)));
+            cv::Mat page(pageHeight, pageWidth, CV_8UC3, cv::Scalar(255, 255, 255));
+            const int offsetX = (pageWidth - resized.cols + 1) / 2;
+            const int offsetY = (pageHeight - resized.rows + 1) / 2;
+            resized.copyTo(page(cv::Rect(offsetX, offsetY, resized.cols, resized.rows)));
 
-        HBITMAP bitmap = toBitmap(page);
-        if (bitmap) {
-            HDC memoryDc = CreateCompatibleDC(dialog.hDC);
-            SelectObject(memoryDc, bitmap);
+            HBITMAP bitmap = toBitmap(page);
+            if (bitmap) {
+                HDC memoryDc = CreateCompatibleDC(dialog.hDC);
+                SelectObject(memoryDc, bitmap);
 
-            SetStretchBltMode(dialog.hDC, COLORONCOLOR);
-            SetBrushOrgEx(dialog.hDC, 0, 0, nullptr);
-            StretchBlt(dialog.hDC, 0, 0, pageWidth, pageHeight,
-                memoryDc, 0, 0, pageWidth, pageHeight, SRCCOPY);
+                SetStretchBltMode(dialog.hDC, COLORONCOLOR);
+                SetBrushOrgEx(dialog.hDC, 0, 0, nullptr);
+                StretchBlt(dialog.hDC, 0, 0, pageWidth, pageHeight,
+                    memoryDc, 0, 0, pageWidth, pageHeight, SRCCOPY);
 
-            DeleteDC(memoryDc);
-            DeleteObject(bitmap);
-            rememberParameters();
+                DeleteDC(memoryDc);
+                DeleteObject(bitmap);
+                drew = true;
+            }
         }
+        catch (const cv::Exception& e) {
+            // 未捕获的异常会让整个进程退出，兜住后照常结束打印作业
+            JARK_LOG("print failed: {}", e.what());
+        }
+
+        if (drew)
+            rememberParameters();
 
         EndPage(dialog.hDC);
         EndDoc(dialog.hDC);
@@ -352,10 +374,12 @@ private:
             return nullptr;
 
         const int rowBytes = bgr.cols * 3;
+        // 24bpp DIB 的行距按 4 字节对齐，宽度不是 4 的倍数时不能按 cols*3 走行，否则逐行错位
+        const int stride = (rowBytes + 3) & ~3;
         uint8_t* target = static_cast<uint8_t*>(bits);
         for (int y = 0; y < bgr.rows; ++y) {
             const uint8_t* source = bgr.ptr<uint8_t>(bgr.rows - 1 - y);
-            memcpy(target + static_cast<size_t>(y) * rowBytes, source, rowBytes);
+            memcpy(target + static_cast<size_t>(y) * stride, source, rowBytes);
         }
         return bitmap;
     }
