@@ -7,6 +7,7 @@
 #include "Localization.h"
 #include "BatchProcessor.h"
 #include "CanvasRenderer.h"
+#include "InfoScreen.h"
 #include "NavigationOverlay.h"
 #include "ThumbnailService.h"
 #include <sstream>
@@ -39,7 +40,7 @@ namespace {
         size_t frameCount = 0;
         long long frameDurationMs = 0;
         size_t exifBytes = 0;
-        bool tips = false;
+        PlaceholderKind placeholder = PlaceholderKind::None;
         int orientation = 1;
         double elapsedMs = 0.0;
         std::string firstExifLine;
@@ -199,10 +200,8 @@ namespace {
         result.firstExifLine = firstLineOf(imageAsset.exifInfo);
         result.exifText = imageAsset.exifInfo;
 
-        // 解码失败时 myLoader 会返回错误提示图，比对像素指针即可识别
-        const auto tipsMat = imageDatabase.getErrorTipsMat();
-        result.tips = !tipsMat.empty() && !imageAsset.primaryFrame.empty() &&
-            imageAsset.primaryFrame.data == tipsMat.data;
+        // 解码失败时 myLoader 返回空帧 + 占位类型（界面层才会渲染成画面）
+        result.placeholder = imageAsset.placeholder;
 
         result.vectorReport = buildVectorReport(imageAsset);
         result.mediaReport = buildMediaReport(path, result.sniffed);
@@ -219,7 +218,7 @@ namespace {
     // 语言自检：逐一切换语言并打印若干条文案，验证字符串表与回退逻辑
     std::string runLanguageTest() {
         std::string report;
-        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 155 }; // 含新增导航与缓存文案
+        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 156, 165 }; // 含新增导航/缓存/占位界面文案
         const uint32_t wideIds[] = { 1, 13, 30, 49 };            // 窗口标题/窗口创建失败/删除到回收站/批量无图提示
 
         const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;
@@ -234,7 +233,7 @@ namespace {
             report += "\n     宽字符: ";
             for (const uint32_t id : wideIds)
                 report += std::format("{} | ", jarkUtils::wstringToUtf8(getUIStringW(id).c_str()));
-            report += std::format("\n     资源图使用{}文案", jark::prefersChineseResources() ? "中文" : "英文");
+            report += std::format("\n     EXIF 标签文案：{}", jark::prefersChineseResources() ? "中文" : "英文");
         }
 
         GlobalVar::settingParameter.UI_LANG = savedLanguage;
@@ -899,7 +898,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
 
     for (const auto& target : targets) {
         const auto result = probeOne(imageDatabase, target);
-        const bool filled = result.decodeOk && !result.tips;
+        const bool filled = result.decodeOk;
         filled ? ++okCount : ++failCount;
 
         std::string status = filled
@@ -918,8 +917,8 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
 
         if (filled && result.frameCount > 1)
             line += std::format(" total={}ms", result.frameDurationMs);
-        if (result.tips)
-            line += " TIPS";
+        if (result.placeholder != PlaceholderKind::None)
+            line += std::format(" placeholder={}", placeholderName(result.placeholder));
 
         line += " | " + utf8(target);
         if (fullExif) {

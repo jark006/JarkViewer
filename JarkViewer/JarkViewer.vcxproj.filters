@@ -15,6 +15,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\InfoScreen.h">
+      <Filter>include</Filter>
+    </ClInclude>
     <ClInclude Include="include\NavigationOverlay.h">
       <Filter>include</Filter>
     </ClInclude>
@@ -80,6 +83,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\InfoScreen.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="src\NavigationOverlay.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -132,15 +138,9 @@
     <Image Include="JarkViewer.ico">
       <Filter>resources</Filter>
     </Image>
-    <Image Include="file\home.png">
+    <Image Include="file\mainRes.png">
       <Filter>resources</Filter>
     </Image>
-  <Image Include="file\mainRes.png">
-    <Filter>resources</Filter>
-  </Image>
-  <Image Include="file\tips.png">
-    <Filter>Resource Files</Filter>
-  </Image>
   </ItemGroup>
   <ItemGroup>
      </ItemGroup>

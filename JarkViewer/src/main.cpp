@@ -4,6 +4,7 @@
 #include "UiHost.h"
 #include "EditorWindow.h"
 #include "CanvasRenderer.h"
+#include "InfoScreen.h"
 #include "NavigationOverlay.h"
 #include "ThumbnailService.h"
 #include "DecodeProbe.h"
@@ -323,6 +324,32 @@ public:
         return S_OK;
     }
 
+    // 主页/解码失败等占位资源：不再是资源图，画面由 InfoScreen 按当前语言与主题实时绘制
+    static ImageAsset placeholderAsset(PlaceholderKind kind, std::wstring detail = {}, std::string exifInfo = {}) {
+        ImageAsset asset;
+        asset.format = ImageFormat::Still;
+        asset.placeholder = kind;
+        asset.placeholderDetail = std::move(detail);
+        asset.exifInfo = std::move(exifInfo);
+        return asset;
+    }
+
+    // 尺寸、DPI、语言或主题变化时重新绘制当前占位画面；返回 true 表示有更新
+    bool updatePlaceholderImage() {
+        ImageAsset* asset = curPar.imageAssetPtr.get();
+        if (!asset || asset->placeholder == PlaceholderKind::None)
+            return false;
+
+        const cv::Size size{ winWidth, winHeight };
+        const uint64_t stamp = jark::infoScreenStamp(size, uiScale());
+        if (asset->placeholderStamp == stamp)
+            return false;
+
+        asset->placeholderStamp = stamp;
+        asset->primaryFrame = jark::renderInfoScreen(asset->placeholder, asset->placeholderDetail, size, uiScale());
+        return true;
+    }
+
     void initOpenFile(wstring filePath) {
         namespace fs = std::filesystem;
 
@@ -335,8 +362,9 @@ public:
         if (filePath.empty()) {
             imgFileList.emplace_back(m_wndCaption);
             curFileIdx = 0;
-            imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32) });
+            imgDB.put(m_wndCaption, placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
             curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[curFileIdx]);
+            updatePlaceholderImage();
             curPar.Init(winWidth, winHeight);
             return;
         }
@@ -381,9 +409,9 @@ public:
             if (filePath.empty()) { //直接打开软件，没有传入参数
                 imgFileList.emplace_back(m_wndCaption);
                 curFileIdx = 0;
-                imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32) });
+                imgDB.put(m_wndCaption, placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
             }
-            else { // 打开的文件不支持，默认加到尾部
+            else { // 文件不在支持列表里：区分"不支持的格式"和"文件根本不存在/打不开"
                 imgFileList.emplace_back(fullPath.wstring());
                 curFileIdx = (int)imgFileList.size() - 1;
 
@@ -392,12 +420,19 @@ public:
                     filePath.substr(dotPos + 1) : filePath);
                 for (auto& c : ext)	c = std::tolower(c);
 
-                if (!ImageDatabase::videoExt.contains(ext)) // 非视频文件直接提示错误。若是视频文件则尝试当做动态照片处理(仅解码前 MAX_VIDEO_FRAMES 帧)
-                    imgDB.put(fullPath.wstring(), { ImageFormat::Still, imgDB.getErrorTipsMat(), {}, {}, getUIString(33) });
+                // 视频文件不加占位，交给加载器当动态照片处理(仅解码前 MAX_VIDEO_FRAMES 帧)
+                if (!ImageDatabase::videoExt.contains(ext)) {
+                    const bool readable = std::filesystem::exists(fullPath) &&
+                        GetFileAttributesW(fullPath.c_str()) != INVALID_FILE_ATTRIBUTES;
+                    imgDB.put(fullPath.wstring(), placeholderAsset(
+                        readable ? PlaceholderKind::UnsupportedFormat : PlaceholderKind::FileMissing,
+                        fullPath.wstring(), getUIString(33)));
+                }
             }
         }
 
         curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + 1) % imgFileList.size()]);
+        updatePlaceholderImage();
         curPar.Init(winWidth, winHeight);
         updateNavigationDirectory();
     }
@@ -1194,6 +1229,8 @@ public:
         view.slideX = curPar.slideCur.x;
         view.slideY = curPar.slideCur.y;
         view.rotation = curPar.rotation;
+        // 主页/解码失败是界面画面，不画"图像边框"
+        view.border = !(curPar.imageAssetPtr && curPar.imageAssetPtr->placeholder != PlaceholderKind::None);
         return view;
     }
 
@@ -1607,6 +1644,7 @@ public:
         else
             curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + imgFileList.size() - 1) % imgFileList.size()]);
 
+        updatePlaceholderImage();
         curPar.Init(winWidth, winHeight);
 
         const int animationMode = direction == 0 ? 0 : GlobalVar::settingParameter.switchImageAnimationMode;
@@ -1931,6 +1969,13 @@ public:
     void DrawScene() {
         updateMediaPlayback(); // 实时播放推进（含音频时钟驱动的帧切换）
         updateSlideshow();     // 幻灯片按间隔自动切换
+
+        // 主页/解码失败占位画面：尺寸、DPI、语言或主题变化时重新绘制
+        if (updatePlaceholderImage()) {
+            curPar.Init(winWidth, winHeight);
+            operateQueue.push({ ActionENUM::refresh });
+        }
+
         if (jark::ThumbnailService::instance().consumeChanged())
             markPresentRequested();
         syncNavigation();
@@ -1952,7 +1997,7 @@ public:
                     jark::ThumbnailService::instance().invalidate(currentPath);
 
                 if (currentPath == m_wndCaption) {
-                    imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32) });
+                    imgDB.put(m_wndCaption, placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
                     curPar.imageAssetPtr = imgDB.getSafePtr(currentPath, currentPath);
                 }
                 else {
@@ -1960,6 +2005,7 @@ public:
                     curPar.imageAssetPtr = imgDB.getSafePtr(currentPath, nextPath);
                 }
 
+                updatePlaceholderImage();
                 curPar.Init(winWidth, winHeight);
                 operateQueue.push({ ActionENUM::refresh });
             }
@@ -2222,7 +2268,7 @@ public:
             if (imgFileList.empty()) {
                 imgFileList.emplace_back(m_wndCaption);
                 curFileIdx = 0;
-                imgDB.put(m_wndCaption, { ImageFormat::Still, imgDB.getHomeMat(), {}, {}, getUIString(32) });
+                imgDB.put(m_wndCaption, placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
             }
             else if (curFileIdx >= (int)imgFileList.size()) {
                 curFileIdx = (int)imgFileList.size() - 1;
@@ -2231,6 +2277,7 @@ public:
             curPar.imageAssetPtr = imgDB.getSafePtr(
                 imgFileList[curFileIdx],
                 imgFileList[(curFileIdx + 1) % imgFileList.size()]);
+            updatePlaceholderImage();
             curPar.Init(winWidth, winHeight);
             updateNavigationDirectory();
         } break;

@@ -52,18 +52,6 @@ private:
     cmsHTRANSFORM transform = nullptr;
 };
 
-bool isInternalTipsImage(const cv::Mat& mat) {
-    if (mat.empty() || mat.type() != CV_8UC4)
-        return false;
-
-    const bool isTipsSize = (mat.cols == 800 && mat.rows == 600) || (mat.cols == 600 && mat.rows == 800);
-    if (!isTipsSize)
-        return false;
-
-    const uint32_t firstPixel = *reinterpret_cast<const uint32_t*>(mat.ptr());
-    return firstPixel == deepTheme.BG || firstPixel == lightTheme.BG;
-}
-
 std::vector<uint8_t> readFileBytes(const std::wstring& path) {
     std::ifstream file(std::filesystem::path(path), std::ios::binary);
     if (!file)
@@ -166,7 +154,7 @@ std::vector<uint8_t>& ColorManager::readMonitorIccProfileCached() {
 }
 
 bool ColorManager::applyToMat(cv::Mat& mat, const std::vector<uint8_t>& sourceIcc, const std::vector<uint8_t>& monitorIcc) {
-    if (mat.empty() || isInternalTipsImage(mat))
+    if (mat.empty())
         return false;
 
     const uint32_t pixelType = mat.type() == CV_8UC3 ? TYPE_BGR_8 :

@@ -146,11 +146,7 @@ namespace {
         uint32_t* ptrEnd = ptrStart + canvasH * canvasW;
         std::fill(ptrStart, ptrEnd, GlobalVar::currentTheme.BG);
 
-        if (((srcH == 600 and srcW == 800) or (srcH == 800 and srcW == 600)) and 
-            (*((uint32_t*)srcImg.ptr()) == deepTheme.BG) or (*((uint32_t*)srcImg.ptr()) == lightTheme.BG)) {
-            // 内置的用于提示的图像
-        }
-        else { // 普通图像  画边框
+        if (view.border) { // 普通图像  画边框（主页/解码失败的界面画面不画）
             const uint32_t lineColor = 0xFF808080;
             if (0 < xStart and xStart < canvasW) {
                 const int yMax = (std::min)(yEnd + 1, canvasH);

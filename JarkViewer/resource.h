@@ -7,11 +7,7 @@
 #define IDC_JARKVIEWER                  109
 #define IDR_MAINFRAME                   128
 #define IDR_ACCELERATOR1                134
-#define IDB_PNG_TIPS                    136
-#define IDB_PNG_HOME                    137
-#define IDB_PNG_SETTING_RES             139
 #define IDB_PNG_MAIN_RES                140
-#define IDB_PNG_PRINTER_RES             141
 #define IDB_PNG_ABOUT_ICON              142
 #define IDC_STATIC                      -1
 

@@ -59,6 +59,32 @@ namespace {
         return std::wstring(windowsDir) + L"\\Fonts\\";
     }
 
+    // 字体文件数据按完整路径进程内共享：TextRenderer 可能有多个实例（EXIF 面板、占位界面），
+    // 每个实例只保留自己的 stbtt_fontinfo 与字形缓存，不重复把几十 MB 的 ttf 读进内存。
+    // 仅在界面线程使用（TextRenderer 的既有约束）。
+    std::shared_ptr<const std::vector<uint8_t>> sharedFontData(const std::wstring& filePath) {
+        static std::unordered_map<std::wstring, std::shared_ptr<const std::vector<uint8_t>>> cache;
+
+        const auto cached = cache.find(filePath);
+        if (cached != cache.end())
+            return cached->second;
+
+        std::shared_ptr<const std::vector<uint8_t>> data;
+        std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+        if (file.is_open()) {
+            const auto fileSize = static_cast<size_t>(file.tellg());
+            if (fileSize > 0 && fileSize <= (64u << 20)) {
+                auto bytes = std::make_shared<std::vector<uint8_t>>(fileSize);
+                file.seekg(0);
+                file.read(reinterpret_cast<char*>(bytes->data()), static_cast<std::streamsize>(fileSize));
+                if (file)
+                    data = std::move(bytes);
+            }
+        }
+        cache.emplace(filePath, data);
+        return data;
+    }
+
 } // namespace
 
 // —— FontFace ——
@@ -96,25 +122,19 @@ bool TextRenderer::loadPrimaryFont() const {
 
     // 常见中文字体，按优先级尝试（.ttc 取第 0 个字面）
     for (const wchar_t* fileName : { L"msyh.ttc", L"msyhl.ttc", L"Deng.ttf", L"simhei.ttf", L"simsun.ttc", L"segoeui.ttf" }) {
-        std::ifstream file(fontDir + fileName, std::ios::binary | std::ios::ate);
-        if (!file.is_open())
-            continue;
-
-        const auto fileSize = static_cast<size_t>(file.tellg());
-        if (fileSize == 0 || fileSize > (64u << 20))
+        auto data = sharedFontData(fontDir + fileName);
+        if (!data)
             continue;
 
         FontFace face;
-        face.data.resize(fileSize);
-        file.seekg(0);
-        file.read(reinterpret_cast<char*>(face.data.data()), static_cast<std::streamsize>(fileSize));
+        face.data = std::move(data);
 
-        const int offset = stbtt_GetFontOffsetForIndex(face.data.data(), 0);
+        const int offset = stbtt_GetFontOffsetForIndex(face.data->data(), 0);
         if (offset < 0)
             continue;
 
         face.info = new stbtt_fontinfo();
-        if (!stbtt_InitFont(face.info, face.data.data(), offset)) {
+        if (!stbtt_InitFont(face.info, face.data->data(), offset)) {
             delete face.info;
             face.info = nullptr;
             continue;
@@ -142,25 +162,19 @@ bool TextRenderer::loadFallbackFonts() const {
 
     // 主字体缺字形时按需追加（韩文/日文特殊字形等）
     for (const wchar_t* fileName : { L"malgun.ttf", L"gulim.ttc", L"meiryo.ttc", L"YuGothM.ttc", L"msjh.ttc" }) {
-        std::ifstream file(fontDir + fileName, std::ios::binary | std::ios::ate);
-        if (!file.is_open())
-            continue;
-
-        const auto fileSize = static_cast<size_t>(file.tellg());
-        if (fileSize == 0 || fileSize > (64u << 20))
+        auto data = sharedFontData(fontDir + fileName);
+        if (!data)
             continue;
 
         FontFace face;
-        face.data.resize(fileSize);
-        file.seekg(0);
-        file.read(reinterpret_cast<char*>(face.data.data()), static_cast<std::streamsize>(fileSize));
+        face.data = std::move(data);
 
-        const int offset = stbtt_GetFontOffsetForIndex(face.data.data(), 0);
+        const int offset = stbtt_GetFontOffsetForIndex(face.data->data(), 0);
         if (offset < 0)
             continue;
 
         face.info = new stbtt_fontinfo();
-        if (!stbtt_InitFont(face.info, face.data.data(), offset)) {
+        if (!stbtt_InitFont(face.info, face.data->data(), offset)) {
             delete face.info;
             face.info = nullptr;
             continue;

@@ -19,6 +19,7 @@ struct ViewState {
     int slideX = 0;
     int slideY = 0;
     int rotation = 0; // 0/1/2/3 分别表示 0°、逆时针 90°、180°、顺时针 90°
+    bool border = true; // 占位界面（主页/解码失败）不画图像边框
 };
 
 // 旋转后的图像几何。visible 为归一化可见区域，位图采样分辨率不参与定位。

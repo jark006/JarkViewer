@@ -338,6 +338,16 @@ enum class ImageFormat {
     //LivePhoto       // 实况图: livp/MVIMG ...
 };
 
+// 主页/解码失败等占位内容的类型：画面由 jark::renderInfoScreen 按当前语言、主题与 DPI 实时绘制，
+// 不再是 home.png / tips.png 那样的固定资源图。
+enum class PlaceholderKind : int {
+    None = 0,
+    Home,               // 打开软件但未指定图片时的主页
+    UnsupportedFormat,  // 扩展名与文件头都不是受支持的格式
+    DecodeFailed,       // 格式已知但解码失败（损坏、数据异常等）
+    FileMissing,        // 文件不存在或无法读取
+};
+
 struct ImageAsset {
     ImageFormat format = ImageFormat::None;  // 图像类型：静态/动图/实况
     cv::Mat primaryFrame;                    // 静态图或实况的静态图
@@ -348,6 +358,12 @@ struct ImageAsset {
     std::shared_ptr<jark::VectorImage> vectorSource; // 矢量图源（SVG），按需重新光栅化
     std::shared_ptr<jark::VideoSource> videoSource;  // 视频源（实况照片/视频文件），用于实时播放
     int orientation = 1;                     // EXIF 方向（1~8），解码器已按此旋转像素
+
+    // 占位内容（主页/解码失败）：primaryFrame 为空时表示尚未生成（probe 等无界面场景保持为空，
+    // 据此判定解码失败；界面层在尺寸/DPI/语言/主题变化时按 placeholderStamp 重新绘制）
+    PlaceholderKind placeholder = PlaceholderKind::None;
+    std::wstring placeholderDetail;          // 展示用补充信息（文件路径或扩展名）
+    uint64_t placeholderStamp = 0;           // 生成 primaryFrame 时的 jark::infoScreenStamp
 };
 
 enum class ActionENUM:int64_t {

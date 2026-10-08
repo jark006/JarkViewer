@@ -9,6 +9,7 @@
 // 字体来自系统（微软雅黑/等线/黑体/宋体…），工程不再内嵌 ttf。
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -53,7 +54,8 @@ public:
 
 private:
     struct FontFace {
-        std::vector<uint8_t> data;
+        // 字体文件数据按文件路径进程内共享（多个 TextRenderer 实例不再各读一份 ttf）
+        std::shared_ptr<const std::vector<uint8_t>> data;
         stbtt_fontinfo* info = nullptr;
         bool ready = false;
 

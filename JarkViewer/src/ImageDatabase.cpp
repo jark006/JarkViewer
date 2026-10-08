@@ -470,7 +470,6 @@ ImageAsset ImageDatabase::loadJXL(wstring_view path, std::span<const uint8_t> bu
 
     if (imageAsset.frames.empty()) {
         imageAsset.format = ImageFormat::None;
-        imageAsset.primaryFrame = getErrorTipsMat();
     }
     else if (imageAsset.frames.size() == 1) {
         imageAsset.format = ImageFormat::Still;
@@ -617,7 +616,6 @@ ImageAsset ImageDatabase::loadWP2(wstring_view path, std::span<const uint8_t> bu
 
     if (imageAsset.frames.empty()) {
         imageAsset.format = ImageFormat::None;
-        imageAsset.primaryFrame = getErrorTipsMat();
     }
     else if (imageAsset.frames.size() == 1) {
         imageAsset.format = ImageFormat::Still;
@@ -803,7 +801,6 @@ ImageAsset ImageDatabase::loadAvif(wstring_view path, std::span<const uint8_t> f
 
     if (imageAsset.frames.empty()) {
         imageAsset.format = ImageFormat::None;
-        imageAsset.primaryFrame = getErrorTipsMat();
     }
     else if (imageAsset.frames.size() == 1) {
         imageAsset.format = ImageFormat::Still;
@@ -1562,7 +1559,7 @@ std::tuple<cv::Mat, string> ImageDatabase::loadICO(wstring_view path, std::span<
         }
         else {
             JARK_LOG("Unsupported image format");
-            img = getErrorTipsMat();
+            continue; // 异常通道的帧直接跳过，不拿提示图凑数
         }
 
         totalWidth += img.cols;
@@ -2202,10 +2199,9 @@ ImageAsset ImageDatabase::loadAnimation(wstring_view path, std::span<const uint8
         cv::Mat(1, static_cast<int>(buf.size()), CV_8UC1, const_cast<uint8_t*>(buf.data())),
         animation);
 
-    if (!success || animation.frames.empty()) {
-        imageAsset.primaryFrame = getErrorTipsMat();
-    }
-    else if (animation.frames.size() == 1) {
+    if (!success || animation.frames.empty())
+        return imageAsset; // 解码失败（format 保持 None），交由 myLoader 继续尝试后续路由
+    if (animation.frames.size() == 1) {
         imageAsset.format = ImageFormat::Still;
         imageAsset.primaryFrame = std::move(animation.frames[0]);
     }
@@ -2228,7 +2224,6 @@ ImageAsset ImageDatabase::loadTiff(wstring_view path, std::span<const uint8_t> b
     if (buf.empty()) {
         JARK_LOG("TIFF buffer is empty: {}", jarkUtils::wstringToUtf8(path));
         imageAsset.format = ImageFormat::None;
-        imageAsset.primaryFrame = getErrorTipsMat();
         return imageAsset;
     }
 
@@ -2255,14 +2250,12 @@ ImageAsset ImageDatabase::loadTiff(wstring_view path, std::span<const uint8_t> b
         catch ([[maybe_unused]] const cv::Exception& e) {
             JARK_LOG("cv::imdecode exception: {} [{}]", jarkUtils::wstringToUtf8(path), e.what());
             imageAsset.format = ImageFormat::None;
-            imageAsset.primaryFrame = getErrorTipsMat();
             return imageAsset;
         }
 
         if (singleFrame.empty()) {
             JARK_LOG("cv::imdecode failed: {}", jarkUtils::wstringToUtf8(path));
             imageAsset.format = ImageFormat::None;
-            imageAsset.primaryFrame = getErrorTipsMat();
             return imageAsset;
         }
 
@@ -2273,7 +2266,6 @@ ImageAsset ImageDatabase::loadTiff(wstring_view path, std::span<const uint8_t> b
         if (frame.empty()) {
             JARK_LOG("TIFF frame is empty: {}", jarkUtils::wstringToUtf8(path));
             imageAsset.format = ImageFormat::None;
-            imageAsset.primaryFrame = getErrorTipsMat();
             return imageAsset;
         }
 
@@ -2283,7 +2275,6 @@ ImageAsset ImageDatabase::loadTiff(wstring_view path, std::span<const uint8_t> b
         if (frame.channels() != 3 && frame.channels() != 4) {
             JARK_LOG("TIFF unsupport channel: {}", frame.channels());
             imageAsset.format = ImageFormat::None;
-            imageAsset.primaryFrame = getErrorTipsMat();
             return imageAsset;
         }
 
@@ -3368,15 +3359,25 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
     FunctionTimeCount FunctionTimeCount(__func__);
     JARK_LOG("loading: {}", jarkUtils::wstringToUtf8(path));
 
+    // 解码失败的占位资源：只记录类型与路径，画面由界面层的 InfoScreen 按当前语言与主题实时绘制
+    const auto failedAsset = [&path](PlaceholderKind kind) {
+        ImageAsset asset;
+        asset.format = ImageFormat::Still;
+        asset.placeholder = kind;
+        asset.placeholderDetail = path;
+        return asset;
+    };
+
     if (path.length() < 4) {
         JARK_LOG("path.length() < 4: {}", jarkUtils::wstringToUtf8(path));
-        return { ImageFormat::Still, getErrorTipsMat(), {}, {}, "" };
+        return failedAsset(PlaceholderKind::FileMissing);
     }
 
     auto fileReader = MappedFileReader(path);
     if (fileReader.isEmpty()) {
         JARK_LOG("File is empty: {}", jarkUtils::wstringToUtf8(path));
-        return { ImageFormat::Still, getErrorTipsMat(), {}, {}, "" };
+        return failedAsset(GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES
+            ? PlaceholderKind::FileMissing : PlaceholderKind::DecodeFailed);
     }
 
     auto fileBuf = fileReader.view();
@@ -3438,7 +3439,10 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
         imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
 
     imageAsset.format = ImageFormat::Still;
-    imageAsset.primaryFrame = getErrorTipsMat();
+    // 文件头与扩展名都识别不出 → 不是支持的格式；否则是已知格式但解码失败
+    imageAsset.placeholder = (sniffedFormat == jark::FileFormat::Unknown && extFormat == jark::FileFormat::Unknown)
+        ? PlaceholderKind::UnsupportedFormat : PlaceholderKind::DecodeFailed;
+    imageAsset.placeholderDetail = path;
     return imageAsset;
 }
 
