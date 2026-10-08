@@ -1599,7 +1599,8 @@ cv::Mat ImageDatabase::loadPSD(wstring_view path, std::span<const uint8_t> buf) 
     psd::MallocAllocator allocator;
     psd::NativeFile file(&allocator);
 
-    if (!file.OpenRead(path.data())) {
+    const std::wstring pathStr(path); // wstring_view 的 data() 不保证有结尾零，交给 Win32 前先成串
+    if (!file.OpenRead(pathStr.c_str())) {
         JARK_LOG("Cannot open file {}", jarkUtils::wstringToUtf8(path));
         return {};
     }
@@ -3236,9 +3237,13 @@ ImageAsset ImageDatabase::decodeByFormat(jark::FileFormat format, const wstring&
     }
 
     case jark::FileFormat::Psd: {
-        auto img = loadSTB(path, buf);
+        // psd_sdk 优先、stb 兜底。顺序不能反：stb 解「16 位 + RLE」的 PSD 会返回成功但
+        // 内容错位（RLE 按每通道 pixelCount 个字节解，16 位应为 pixelCount*2），
+        // 从第二个通道起全部错位、透明通道整层为零，全图不可见且不报错，
+        // 放在前面的话兜底永远轮不到。回归防护见 --probe 自检与源码约定。
+        auto img = loadPSD(path, buf);
         if (img.empty())
-            img = loadPSD(path, buf);
+            img = loadSTB(path, buf);
         if (img.empty())
             return {};
 
