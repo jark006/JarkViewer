@@ -65,8 +65,11 @@ pwsh tools/test_navigation.ps1 -Exe x64/Release/JarkViewer.exe -Image <图片> -
 pwsh tools/list_windows.ps1 -ProcessId <pid>
 
 # 源码不变量检查（字符串表 // N 编号、格式清单与 README 交叉核对、PSD 顺序、LRU 析构、
-# 菜单加速键、版本号一致；只读源码、秒级出结果，提交前可单独跑）
+# 菜单加速键、版本号一致、两个 VS 工程的文件列表齐不齐；只读源码、秒级出结果，提交前可单独跑）
 pwsh tools/check_source_invariants.ps1
+
+# 重排 VS 工程文件列表与筛选器目录树（新增/移动/删除源文件后跑一次；--check 只报告不写）
+python -I tools/gen_vs_project_files.py
 # 反向验证上面这套检查：逐项制造错误确认真能抓到，跑完按原字节还原（新增检查项要同步加破坏）
 pwsh tools/verify_source_invariant_checks.ps1
 ```
@@ -76,6 +79,16 @@ pwsh tools/verify_source_invariant_checks.ps1
 ## 构建前提
 
 - 项目文件是 `JarkViewer/JarkViewer.vcxproj`，工具集为 `v145`，语言标准为 C++23，目标平台为 x64；需要安装支持 v145 工具集的 Visual Studio/Build Tools。
+- **工程文件列表与筛选器目录树是生成出来的**：`tools/gen_vs_project_files.py` 按磁盘上的文件重排
+  `ClInclude/ClCompile/ResourceCompile/Image` 条目并重写 `.vcxproj.filters`（筛选器 GUID 用名字派生、
+  稳定可重复）。自有代码按模块挂在 `App / Ui / Image / Media / Metadata / Core` 下，第三方挂在
+  `ThirdParty\<库>\…`（保留库内子目录），资源在 `Resources`。**第三方只列头文件**（`.lib` 是预编译好的，
+  源码不参与本工程编译；`imgui` 例外，它是参与编译的 vendored 源码）；平台相关头文件
+  （CUDA/DRM/VAAPI/va_intel/Vulkan/OpenCL/Android JNI/mediacodec/videotoolbox/vdpau/qsv，脚本里的
+  `EXCLUDED`）不进工程，免得 IntelliSense 满屏解析错误——它们仍可由包含路径使用。
+  `tools/check_source_invariants.ps1` 的第 10 项检查盯着这件事（两个工程都查：自有 `src/*.cpp`、
+  `include/*.h` 全部在列、工程条目都指向存在的文件、`.vcxproj` 与 `.filters` 一一对应），
+  反向验证在 `tools/verify_source_invariant_checks.ps1` 里。加文件后忘了跑生成器时，跑一次即修正。
 - `JarkViewer.vcxproj` 中 `VcpkgEnabled=false`，默认使用仓库内的静态库目录：`JarkViewer/lib*`、`JarkViewer/ffmpeg`、`JarkViewer/include`。
 - README 说明第三方静态库需从 release 的 `static_lib` 包准备；如果改为 vcpkg，需要在项目属性中启用并补齐依赖。
 - `JarkViewer/libopencv/zlib.lib` 已换成 **zlib-ng 的 compat 构建**（大 PNG 解压约快 25%）。compat 模式不改符号名，OpenCV 是最终链接时才解析 inflate，所以是原地替换、不用重建 OpenCV；但 **include 下的 `zlib.h`/`zconf.h`/`zlib_name_mangling.h` 必须与 .lib 是同一来源**。换机器或重建静态库环境时跑一次 `pwsh tools/build-zlib-ng.ps1 -Install`（原件备份在同目录 `zlib-1.3.1.lib`；头文件回退用 git checkout）。

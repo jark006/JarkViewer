@@ -92,6 +92,21 @@ Test-Break "版本号数字版与字符串版不一致" @{
     "JarkViewer/JarkViewer.rc" = @("FILEVERSION 2,0,0,0", "FILEVERSION 1,35,0,0")
 }
 
+Test-Break "VS 工程漏收录一个源文件" @{
+    "JarkViewer/JarkViewer.vcxproj" = @(
+        ('    <ClCompile Include="src\InfoScreen.cpp" />' + "`n"), "")
+}
+
+Test-Break "VS 工程条目指向不存在的文件" @{
+    "JarkViewer/JarkViewer.vcxproj" = @('<ClCompile Include="src\InfoScreen.cpp" />',
+        '<ClCompile Include="src\InfoScreen2.cpp" />')
+}
+
+Test-Break ".filters 缺条目（与 vcxproj 不一一对应）" @{
+    "JarkViewer/JarkViewer.vcxproj.filters" = @(
+        ('    <ClCompile Include="src\InfoScreen.cpp">' + "`n"), "")
+}
+
 Write-Host ""
 # 全部还原后再跑一遍完整检查，确认真文件恢复了
 & pwsh -NoProfile -File $checkScript *> $null
@@ -101,5 +116,5 @@ if ($script:failed -or -not $restored) {
     Write-Host "反向验证存在失败项（或还原后检查未通过）" -ForegroundColor Red
     exit 1
 }
-Write-Host "反向验证全部通过：9 项破坏全被抓到，文件已按原字节还原" -ForegroundColor Green
+Write-Host "反向验证全部通过：12 项破坏全被抓到，文件已按原字节还原" -ForegroundColor Green
 exit 0

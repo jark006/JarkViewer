@@ -10,6 +10,8 @@
 #   7.   ImageDatabase 析构里先停 LRU 预读线程（不然退出时在途解码访问已释放成员）
 #   8.   右键菜单加速键不重复（重复时只有先出现的那个能按）
 #   9.   main.cpp / .rc 字符串版 / .rc 数字版 版本号一致（升级时最容易漏改 .rc 数字）
+#   10.  VS 工程收齐了自有源码/头文件，且 .filters 与 .vcxproj 条目一一对应、路径都存在
+#        （漏收录的文件在 VS 里根本看不到，重命名的旧条目会指向不存在的文件）
 param([string]$Root = (Split-Path -Parent $PSScriptRoot))
 
 $ErrorActionPreference = "Stop"
@@ -158,6 +160,45 @@ $stringMajorMinor = ($stringVersion -split '\.')[0..1] -join '.'
 $numberMajorMinor = (($numberVersion -split ',')[0..1] -join '.')
 Report ($appVersion -ne "" -and $stringMajorMinor -eq $appVersion -and $numberMajorMinor -eq $appVersion) `
     "版本号一致（main v$appVersion / rc 串 $stringVersion / rc 数 $numberVersion）"
+
+# 10. VS 工程文件列表（漏收录的文件在 VS 里看不到、IntelliSense 也跳不过去；改文件名后
+#     .filters 里的旧条目会指向不存在的路径）。两个工程都查。
+$itemPattern = '<(?:ClCompile|ClInclude|ResourceCompile|Image|None) Include="([^"]+)"'
+foreach ($project in @(@{Name = "JarkViewer"; Dir = "JarkViewer" },
+                       @{Name = "JarkThumbnailProvider"; Dir = "JarkThumbnailProvider" })) {
+    $base = "$($project.Dir)/$($project.Name)"
+    $projectItems = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($m in [regex]::Matches((Read-Source "$base.vcxproj"), $itemPattern)) {
+        [void]$projectItems.Add($m.Groups[1].Value)
+    }
+    $filterItems = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($m in [regex]::Matches((Read-Source "$base.vcxproj.filters"), $itemPattern)) {
+        [void]$filterItems.Add($m.Groups[1].Value)
+    }
+
+    $ownMissing = @()
+    foreach ($dir in @("src", "include")) {
+        $fullDir = Join-Path $Root "$($project.Dir)/$dir"
+        if (-not (Test-Path -LiteralPath $fullDir)) { continue }
+        foreach ($file in Get-ChildItem -LiteralPath $fullDir -File) {
+            if ($file.Extension -notin @(".cpp", ".h")) { continue }
+            # include 根目录下的第三方单文件头也要收录（归到"第三方"）；库目录里的头不查
+            $relative = "$dir\$($file.Name)"
+            if (-not $projectItems.Contains($relative)) { $ownMissing += $relative }
+        }
+    }
+
+    $staleInProject = @($projectItems | Where-Object {
+            -not (Test-Path -LiteralPath (Join-Path $Root "$($project.Dir)/$_")) })
+    $filtersMismatch = @($projectItems | Where-Object { -not $filterItems.Contains($_) })
+
+    Report ($ownMissing.Count -eq 0) "$($project.Name)：工程收录了所有自有源码/头文件（漏收 $($ownMissing.Count)）"
+    Report ($staleInProject.Count -eq 0) "$($project.Name)：工程条目都指向存在的文件（失效 $($staleInProject.Count)）"
+    Report ($filtersMismatch.Count -eq 0) "$($project.Name)：.vcxproj 与 .filters 条目一一对应（缺 $($filtersMismatch.Count)）"
+    $ownMissing | Select-Object -First 5 | ForEach-Object { Write-Host "    漏收录: $_" }
+    $staleInProject | Select-Object -First 5 | ForEach-Object { Write-Host "    失效条目: $_" }
+    $filtersMismatch | Select-Object -First 3 | ForEach-Object { Write-Host "    缺筛选器条目: $_" }
+}
 
 Write-Host ""
 if ($script:failed) {

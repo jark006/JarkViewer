@@ -1,147 +1,3307 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="include">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    <Filter Include="App">
+      <UniqueIdentifier>{0E5DC5DE-39FB-5499-B71F-A9D70FC25218}</UniqueIdentifier>
     </Filter>
-    <Filter Include="src">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    <Filter Include="Core">
+      <UniqueIdentifier>{0CA64EA8-8374-5C24-8C15-AB88CF840B6D}</UniqueIdentifier>
     </Filter>
-    <Filter Include="resources">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    <Filter Include="Image">
+      <UniqueIdentifier>{A0902C0B-44CE-564E-ADBE-E371D680889E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Media">
+      <UniqueIdentifier>{AAA3DD06-0E51-5A50-AD75-162B207D2A7D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Metadata">
+      <UniqueIdentifier>{4C0C51CC-46A3-549E-98BE-ABC30A88E4EF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{608E4E61-28FC-5099-BE8F-E650AD46879F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty">
+      <UniqueIdentifier>{C28E9B30-8A57-5D75-87B9-FE9A24F26518}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Ui">
+      <UniqueIdentifier>{E5053C8F-DBA1-5722-AA9B-BFB2AF143BAA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\aom">
+      <UniqueIdentifier>{1515F646-1D07-565B-9810-1150EB6EF1EA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\dav1d">
+      <UniqueIdentifier>{6C71D85F-009E-59B8-BBD6-CD59A98A7669}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\exiv2">
+      <UniqueIdentifier>{0A537F69-4A11-5A40-9511-5EA96E347E88}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\ffmpeg">
+      <UniqueIdentifier>{593BE95D-24A7-5466-BF35-58B7F6B6F499}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\imgui">
+      <UniqueIdentifier>{B6686A58-642D-5931-AD68-8768E9E55748}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libavif">
+      <UniqueIdentifier>{A2157F45-4725-5018-9FCF-45C2BD57870F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libde265">
+      <UniqueIdentifier>{43DB2D67-BDE4-5171-B56E-772EDBCEA31E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libheif">
+      <UniqueIdentifier>{53DAC675-4EC7-5874-8B01-27512B84FC66}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libjxl">
+      <UniqueIdentifier>{88D68FF5-6F7D-55D1-B576-9B3151EA392C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libraw">
+      <UniqueIdentifier>{076AD885-9220-556E-8232-E085142D3632}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2">
+      <UniqueIdentifier>{07B647B3-FE64-59ED-BDCF-243E92303599}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libyuv">
+      <UniqueIdentifier>{72C1A7BE-1D96-5139-BEA8-C6A67A8092F7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\minizip">
+      <UniqueIdentifier>{02F32858-F177-5F98-B5A2-30A3BAB28226}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2">
+      <UniqueIdentifier>{8A0F88CF-EFB5-5CB9-A632-C8EAE8F50E49}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\psdsdk">
+      <UniqueIdentifier>{BCC053C2-BD40-50E7-84DD-5BE50FADD7FB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\single-header">
+      <UniqueIdentifier>{62F0AD1D-50CF-5086-AF75-7E301CDB9653}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\tinyxml2">
+      <UniqueIdentifier>{BB5614B6-C204-53F1-9C6C-EDD780D2FCAD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\ffmpeg\libavcodec">
+      <UniqueIdentifier>{7EE4CCEE-D260-53B7-8D51-0917E94CF74B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\ffmpeg\libavdevice">
+      <UniqueIdentifier>{9AF9C719-32A5-5FB5-92DC-4C63E5F89B5B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\ffmpeg\libavfilter">
+      <UniqueIdentifier>{9879E74B-8877-5DC6-ACE6-41BCA4E7B4D1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\ffmpeg\libavformat">
+      <UniqueIdentifier>{A6D87944-CC5D-508B-861B-7319A2FD306E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\ffmpeg\libavutil">
+      <UniqueIdentifier>{F52DB3F9-3054-5CB0-947A-0D3C64FD9336}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\ffmpeg\libswresample">
+      <UniqueIdentifier>{8237AA41-AF08-5D63-AD97-1C265C4B0BEF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\ffmpeg\libswscale">
+      <UniqueIdentifier>{41224D9C-A2AC-527B-B376-46704F942881}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\imgui\backends">
+      <UniqueIdentifier>{E8E621E1-6883-5CD1-8ECD-F25B28258D22}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\imgui\misc">
+      <UniqueIdentifier>{91933E4A-921E-5DB2-86E4-A66819E26D20}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\imageio">
+      <UniqueIdentifier>{85EAED9C-F357-5C88-89BD-D1917112E9B1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src">
+      <UniqueIdentifier>{D7275144-D045-536A-BBCE-8A6C9F4F8F1C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\bioinspired">
+      <UniqueIdentifier>{2BBCAB39-5110-5B69-85C3-CFCA4A3A1997}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\calib3d">
+      <UniqueIdentifier>{239F689F-AFCE-5653-86C9-9B5368397FE8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\ccalib">
+      <UniqueIdentifier>{FBA790C5-C0BA-5E3C-AC4A-DC1936384CB2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\core">
+      <UniqueIdentifier>{EECF154D-DB00-5BED-B2F9-ED495FD3131F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\features2d">
+      <UniqueIdentifier>{B35B1E8B-B9BB-544E-8C35-63F969D59ED5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\flann">
+      <UniqueIdentifier>{6030EF5F-3388-5DFC-87A3-1100AE40ED80}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\fuzzy">
+      <UniqueIdentifier>{4FFA69B6-BF9E-5FC0-A437-A60C3D7E8C22}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi">
+      <UniqueIdentifier>{F4C8E5F8-708D-5D3A-947A-7DCCBF218F4D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\highgui">
+      <UniqueIdentifier>{A0572AF5-D247-52A1-AFD3-27C9686B6A62}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\img_hash">
+      <UniqueIdentifier>{85CE185F-E305-5093-90BB-5C6D82826A8C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\imgcodecs">
+      <UniqueIdentifier>{A1942638-FAF5-591A-BA1F-0D7AD1F8C865}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\imgproc">
+      <UniqueIdentifier>{C8A61DF3-C11E-527B-A40E-EAF533EF6AFC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\line_descriptor">
+      <UniqueIdentifier>{5CA4D685-4303-5F6A-9FC8-79B7D66B5F52}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\ml">
+      <UniqueIdentifier>{3598F4E0-BA37-517E-87D4-1815E86C9D2F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\optflow">
+      <UniqueIdentifier>{7AB81FD8-4CAB-5D0C-BF67-B67E2CC6168C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\phase_unwrapping">
+      <UniqueIdentifier>{D275A64F-B564-54F3-8558-40668DADB40B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\photo">
+      <UniqueIdentifier>{BCBF4371-AB89-5359-A310-B8A8C6A8A207}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\quality">
+      <UniqueIdentifier>{91B82A1F-8D50-5F73-AE02-A80EAA6118A1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\reg">
+      <UniqueIdentifier>{683C70B7-CE52-5D86-B131-0287D9CB67F4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\rgbd">
+      <UniqueIdentifier>{54AE7C92-5E71-5AF6-8EDB-F944612C2D36}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\saliency">
+      <UniqueIdentifier>{66360DF6-3291-59EC-A3E3-F2EFF2EFC8E7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\shape">
+      <UniqueIdentifier>{ACC302CE-8670-530A-8817-CF09845B9DFF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\signal">
+      <UniqueIdentifier>{E6D5D437-393D-50B8-A0B1-B4500319CB51}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\stereo">
+      <UniqueIdentifier>{A11F7046-5B9D-5D5D-AA4C-751594A0998E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\stitching">
+      <UniqueIdentifier>{9974F826-9B0B-5CD4-8481-DA2D461CDBF4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\structured_light">
+      <UniqueIdentifier>{A5152AE1-DBED-5BD6-B665-5DE714DB1544}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\superres">
+      <UniqueIdentifier>{3938D72A-05C4-5886-9133-45C946C12D8A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\surface_matching">
+      <UniqueIdentifier>{61CD3C61-12EA-55CD-9F6E-761F1E38C7E7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\tracking">
+      <UniqueIdentifier>{5F59CCFF-7436-5E8E-8DD7-190109334408}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\video">
+      <UniqueIdentifier>{36EF751F-B194-539A-BB9E-1AADC92B5CDA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\videoio">
+      <UniqueIdentifier>{AF768960-E083-5F8F-8E79-1C25180D1B05}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\videostab">
+      <UniqueIdentifier>{49DA4286-AB97-5F07-8B2F-0A6EA22115A8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\xfeatures2d">
+      <UniqueIdentifier>{C191E01F-90AF-537E-A604-2FE191B1605B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\ximgproc">
+      <UniqueIdentifier>{2B7D4068-3E17-575E-9C1E-DB6C42DE31D4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\xphoto">
+      <UniqueIdentifier>{8DCDE00E-79E2-5277-8410-AAED8AC01493}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\imgui\misc\cpp">
+      <UniqueIdentifier>{3B17A7F0-BBC0-5CEB-B332-37F5F6D5F8F9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\common">
+      <UniqueIdentifier>{D3098CE3-E0C4-515F-9D2A-FDBA8D3F8CC6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\dec">
+      <UniqueIdentifier>{FAACF406-9018-567B-B315-4110CC059B79}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\dsp">
+      <UniqueIdentifier>{46E95173-2E4E-56D4-B5A8-8B8FF02C4485}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\enc">
+      <UniqueIdentifier>{4B6D4682-8C30-5F5B-A5F7-797AC8AAC720}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\utils">
+      <UniqueIdentifier>{090DDA5D-452A-5E94-BFDD-6A6F8C643AE9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\wp2">
+      <UniqueIdentifier>{BDA0DF21-0E67-5172-AB2B-BAA0F7BF32E6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\core\detail">
+      <UniqueIdentifier>{B22A49F5-4817-5B88-8C31-A8AB63D5A53F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\core\hal">
+      <UniqueIdentifier>{BAAA47D6-6295-5C55-A920-155966C3B078}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\core\parallel">
+      <UniqueIdentifier>{3D071AE4-4EF1-5E95-8570-3C6E6D010D61}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\core\utils">
+      <UniqueIdentifier>{F4F9F283-0E45-5CFB-ACF0-FDA564E9ABCC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\features2d\hal">
+      <UniqueIdentifier>{81B30DFA-31F1-5EEA-A8E9-C2F6CCFC61FC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\cpu">
+      <UniqueIdentifier>{4200FFB8-155E-51A9-8E9A-7D0F9397BB44}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\fluid">
+      <UniqueIdentifier>{222FF08F-B592-5999-BF10-0FF036A1613D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\gpu">
+      <UniqueIdentifier>{C2D7340A-B455-51A0-9F5B-1F7A2BD6C3AA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\infer">
+      <UniqueIdentifier>{BD9E3D4B-5684-52E4-99A6-ADE8BB6BBC1B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\oak">
+      <UniqueIdentifier>{F3F5609D-ACB7-579A-9AC4-EC80083277F6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\ocl">
+      <UniqueIdentifier>{BBDED3C2-7746-58D5-A98D-8325ECCD1AA2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\own">
+      <UniqueIdentifier>{D2C5C2A6-DA32-500B-B461-F30BEAFB19E5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\plaidml">
+      <UniqueIdentifier>{CE87B71B-443D-522E-A8F9-5F00DC8E4037}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\pysrc">
+      <UniqueIdentifier>{572F0D56-E387-5E90-8639-809A378800CC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\python">
+      <UniqueIdentifier>{17DA4F7D-6DF1-55C2-9CE1-DD8DFA5D0BF0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\render">
+      <UniqueIdentifier>{20C1FB64-9C4C-5135-86A2-F2D91C214424}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\s11n">
+      <UniqueIdentifier>{FEDF2AE9-CDFD-5657-A9CE-36CEB17DEA7F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\streaming">
+      <UniqueIdentifier>{5A1FFACC-388C-5833-BC97-860A584D93E4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\util">
+      <UniqueIdentifier>{232D4B5B-3067-5955-8256-D5A92E76EC83}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\imgcodecs\legacy">
+      <UniqueIdentifier>{55644061-96A7-50C3-9FDA-FE0D465D07D8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\imgproc\detail">
+      <UniqueIdentifier>{7AE7051E-0F1D-5675-8148-C6FA5D565DAE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\imgproc\hal">
+      <UniqueIdentifier>{17E3C8FC-DCF3-5E06-A24C-AEDE189C98A3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\photo\legacy">
+      <UniqueIdentifier>{C3233194-7460-560D-8E70-A4DE410D51D6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\rgbd\detail">
+      <UniqueIdentifier>{86D6A00B-C11C-520A-BC66-17F32C87A1FA}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\stitching\detail">
+      <UniqueIdentifier>{F6239F0A-F6D0-565A-B92E-633677DA6960}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\video\detail">
+      <UniqueIdentifier>{E2449D3E-130B-5458-A9E3-9D03938A79B1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\video\legacy">
+      <UniqueIdentifier>{657AB63E-152D-50C4-8049-CCF381A488A9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\videoio\legacy">
+      <UniqueIdentifier>{1550E128-A7AA-5878-9ED9-E65E7E17F35A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\common\filters">
+      <UniqueIdentifier>{764E6273-5D47-5BAA-8134-E4FED7967CAE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\common\lossless">
+      <UniqueIdentifier>{0B25881B-0702-566C-9696-164C48406F35}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\common\lossy">
+      <UniqueIdentifier>{FB7DA23D-6A10-54E0-9783-0F7B660F8EA5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\common\preview">
+      <UniqueIdentifier>{9D8DC74B-4CFF-508C-B44A-25B40C67BE76}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\dec\filters">
+      <UniqueIdentifier>{565E6D28-4BD9-5D74-A1EB-FCF1F0DCC644}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\dec\incr">
+      <UniqueIdentifier>{A3144F8F-41EC-56A6-8091-586583DF8E17}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\dec\lossless">
+      <UniqueIdentifier>{8AA22230-34EF-55E5-8C5C-5E73ACE3F941}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\dec\preview">
+      <UniqueIdentifier>{9596C291-E708-52DF-8ADA-CAD90641EF8C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\dsp\lossless">
+      <UniqueIdentifier>{60502ED2-0E16-5BD0-8A50-FA373DBF908E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\enc\anim">
+      <UniqueIdentifier>{49FF0A48-B0F6-5422-B055-41AC48FF7B37}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\enc\lossless">
+      <UniqueIdentifier>{D656D751-0FEC-5EB1-80FA-57B844F148CD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\enc\partitioning">
+      <UniqueIdentifier>{3A896620-3264-556A-A717-D9273BB15D48}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\enc\preview">
+      <UniqueIdentifier>{0C7869E3-690D-57C1-B408-E957C318B584}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\libwebp2\src\enc\screen_content">
+      <UniqueIdentifier>{C3CD01A4-6FA4-5121-B764-7434C16301D7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\core\parallel\backend">
+      <UniqueIdentifier>{6D55B6E4-14BD-59E3-BA3E-2A9882DA482F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\streaming\gstreamer">
+      <UniqueIdentifier>{809AB6E9-035D-5E5B-A4C9-783909778AFD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ThirdParty\opencv2\gapi\streaming\onevpl">
+      <UniqueIdentifier>{B65D668B-2865-53E3-A5F1-830004B66559}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\InfoScreen.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\NavigationOverlay.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\ThumbnailService.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="Resource.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\LRU.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\exifParse.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\ImageDatabase.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\D3D11App.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\printer.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\TextRenderer.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\jarkUtils.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SettingWindow.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\FileAssociationNaming.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\FileAssociationManager.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\ThumbnailProviderGuids.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\ThumbnailRegistrar.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\tinyxml2.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SVGPreprocessor.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\stringRes.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\blpDecoder.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\ColorManager.h">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="include\videoDecoder.h">
-      <Filter>include</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
+    <ClCompile Include="src\D3D11App.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DecodeProbe.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
     <ClCompile Include="src\InfoScreen.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\NavigationOverlay.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ThumbnailService.cpp">
-      <Filter>src</Filter>
+      <Filter>App</Filter>
     </ClCompile>
     <ClCompile Include="src\main.cpp">
-      <Filter>src</Filter>
+      <Filter>App</Filter>
     </ClCompile>
-    <ClCompile Include="src\D3D11App.cpp">
-      <Filter>src</Filter>
+    <ClCompile Include="src\UiHost.cpp">
+      <Filter>App</Filter>
     </ClCompile>
-    <ClCompile Include="src\exifParse.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ImageDatabase.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\jarkUtils.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\TextRenderer.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\tinyxml2.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\stringRes.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
-    <ClCompile Include="src\videoDecoder.cpp">
-      <Filter>src</Filter>
+    <ClCompile Include="src\NavigationOverlay.cpp">
+      <Filter>Ui</Filter>
     </ClCompile>
     <ClCompile Include="src\blpDecoder.cpp">
-      <Filter>src</Filter>
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CanvasRenderer.cpp">
+      <Filter>Image</Filter>
     </ClCompile>
     <ClCompile Include="src\ColorManager.cpp">
-      <Filter>src</Filter>
+      <Filter>Image</Filter>
     </ClCompile>
+    <ClCompile Include="src\FormatSniffer.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImageAdjust.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImageAnnotator.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImageDatabase.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ImageResampler.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TextRenderer.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VectorImage.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\videoDecoder.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AudioOutput.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MediaDecoder.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MediaPlayer.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AiPrompt.cpp">
+      <Filter>Metadata</Filter>
+    </ClCompile>
+    <ClCompile Include="src\exifParse.cpp">
+      <Filter>Metadata</Filter>
+    </ClCompile>
+    <ClCompile Include="src\BatchProcessor.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\jarkUtils.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Localization.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\stringRes.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ThumbnailService.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\tinyxml2.cpp">
+      <Filter>ThirdParty\tinyxml2</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\imgui\backends\imgui_impl_dx11.cpp">
+      <Filter>ThirdParty\imgui\backends</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>ThirdParty\imgui\backends</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\imgui\imgui.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\imgui\imgui_draw.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\imgui\imgui_tables.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\imgui\imgui_widgets.cpp">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\imgui\misc\cpp\imgui_stdlib.cpp">
+      <Filter>ThirdParty\imgui\misc\cpp</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\D3D11App.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="include\DecodeProbe.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="include\InfoScreen.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="include\UiHost.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="include\BatchWindow.h">
+      <Filter>Ui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\EditorWindow.h">
+      <Filter>Ui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\NavigationOverlay.h">
+      <Filter>Ui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\PrintWindow.h">
+      <Filter>Ui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\RenameWindow.h">
+      <Filter>Ui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SettingWindow.h">
+      <Filter>Ui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\blpDecoder.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\CanvasRenderer.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ColorManager.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FormatSniffer.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ImageAdjust.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ImageAnnotator.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ImageDatabase.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ImageResampler.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SVGPreprocessor.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\TextRenderer.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\VectorImage.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\videoDecoder.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AudioOutput.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MediaDecoder.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MediaPlayer.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AiPrompt.h">
+      <Filter>Metadata</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exifParse.h">
+      <Filter>Metadata</Filter>
+    </ClInclude>
+    <ClInclude Include="include\BatchProcessor.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FileAssociationManager.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FileAssociationNaming.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\framework.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jarkUtils.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Localization.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\LRU.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\stringRes.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\targetver.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ThumbnailProviderGuids.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ThumbnailRegistrar.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ThumbnailService.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom_codec.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom_decoder.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom_encoder.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom_external_partition.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom_frame_buffer.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom_image.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom_integer.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aomcx.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aomdx.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\avif\avif.h">
+      <Filter>ThirdParty\libavif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\avif\avif_cxx.h">
+      <Filter>ThirdParty\libavif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\bzlib.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dav1d\common.h">
+      <Filter>ThirdParty\dav1d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dav1d\data.h">
+      <Filter>ThirdParty\dav1d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dav1d\dav1d.h">
+      <Filter>ThirdParty\dav1d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dav1d\headers.h">
+      <Filter>ThirdParty\dav1d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dav1d\picture.h">
+      <Filter>ThirdParty\dav1d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\dav1d\version.h">
+      <Filter>ThirdParty\dav1d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\DirectXTex.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\basicio.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\bmffimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\bmpimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\config.h">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\convert.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\cr2image.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\crwimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\datasets.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\easyaccess.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\epsimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\error.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\exif.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\exiv2.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\exiv2lib_export.h">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\exv_conf.h">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\futils.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\gifimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\image.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\image_types.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\iptc.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\jp2image.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\jpgimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\metadatum.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\mrwimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\orfimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\pgfimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\photoshop.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\pngimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\preview.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\properties.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\psdimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\rafimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\rw2image.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\slice.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\tags.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\tgaimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\tiffimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\types.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\value.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\version.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\webpimage.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\xmp_exiv2.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\exiv2\xmpsidecar.hpp">
+      <Filter>ThirdParty\exiv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\ac3_parser.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\adts_parser.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\avcodec.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\avdct.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\avfft.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\bsf.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\codec.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\codec_desc.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\codec_id.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\codec_par.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\d3d11va.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\defs.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\dirac.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\dv_profile.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\dxva2.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\packet.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\version.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\version_major.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\vorbis_parser.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavdevice\avdevice.h">
+      <Filter>ThirdParty\ffmpeg\libavdevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavdevice\version.h">
+      <Filter>ThirdParty\ffmpeg\libavdevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavdevice\version_major.h">
+      <Filter>ThirdParty\ffmpeg\libavdevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavfilter\avfilter.h">
+      <Filter>ThirdParty\ffmpeg\libavfilter</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavfilter\buffersink.h">
+      <Filter>ThirdParty\ffmpeg\libavfilter</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavfilter\buffersrc.h">
+      <Filter>ThirdParty\ffmpeg\libavfilter</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavfilter\version.h">
+      <Filter>ThirdParty\ffmpeg\libavfilter</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavfilter\version_major.h">
+      <Filter>ThirdParty\ffmpeg\libavfilter</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavformat\avformat.h">
+      <Filter>ThirdParty\ffmpeg\libavformat</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavformat\avio.h">
+      <Filter>ThirdParty\ffmpeg\libavformat</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavformat\version.h">
+      <Filter>ThirdParty\ffmpeg\libavformat</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavformat\version_major.h">
+      <Filter>ThirdParty\ffmpeg\libavformat</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\adler32.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\aes.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\aes_ctr.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\ambient_viewing_environment.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\attributes.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\audio_fifo.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\avassert.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\avconfig.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\avstring.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\avutil.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\base64.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\blowfish.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\bprint.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\bswap.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\buffer.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\camellia.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\cast5.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\channel_layout.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\common.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\cpu.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\crc.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\csp.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\des.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\detection_bbox.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\dict.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\display.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\dovi_meta.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\downmix_info.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\encryption_info.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\error.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\eval.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\executor.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\ffversion.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\fifo.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\file.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\film_grain_params.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\frame.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\hash.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\hdr_dynamic_metadata.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\hdr_dynamic_vivid_metadata.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\hmac.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\hwcontext.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\hwcontext_dxva2.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\iamf.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\imgutils.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\intfloat.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\intreadwrite.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\lfg.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\log.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\lzo.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\macros.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\mastering_display_metadata.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\mathematics.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\md5.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\mem.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\motion_vector.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\murmur3.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\opt.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\parseutils.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\pixdesc.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\pixelutils.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\pixfmt.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\random_seed.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\rational.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\rc4.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\replaygain.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\ripemd.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\samplefmt.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\sha.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\sha512.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\spherical.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\stereo3d.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\tea.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\threadmessage.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\time.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\timecode.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\timestamp.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\tree.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\twofish.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\tx.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\uuid.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\version.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\video_enc_params.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\video_hint.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\xtea.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libswresample\swresample.h">
+      <Filter>ThirdParty\ffmpeg\libswresample</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libswresample\version.h">
+      <Filter>ThirdParty\ffmpeg\libswresample</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libswresample\version_major.h">
+      <Filter>ThirdParty\ffmpeg\libswresample</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libswscale\swscale.h">
+      <Filter>ThirdParty\ffmpeg\libswscale</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libswscale\version.h">
+      <Filter>ThirdParty\ffmpeg\libswscale</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libswscale\version_major.h">
+      <Filter>ThirdParty\ffmpeg\libswscale</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\cms.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\cms_interface.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\codestream_header.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\color_encoding.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\compressed_icc.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\decode.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\decode_cxx.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\encode.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\encode_cxx.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\gain_map.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\jxl_cms_export.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\jxl_export.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\jxl_threads_export.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\memory_manager.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\parallel_runner.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\resizable_parallel_runner.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\resizable_parallel_runner_cxx.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\stats.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\thread_parallel_runner.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\thread_parallel_runner_cxx.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\types.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\jxl\version.h">
+      <Filter>ThirdParty\libjxl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\lcms2.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\lcms2_plugin.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libde265\de265-version.h">
+      <Filter>ThirdParty\libde265</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libde265\de265.h">
+      <Filter>ThirdParty\libde265</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_aux_images.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_brands.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_color.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_components.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_context.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_cxx.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_decoding.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_encoding.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_entity_groups.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_error.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_export.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_image.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_image_handle.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_items.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_library.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_metadata.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_omaf.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_plugin.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_properties.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_regions.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_security.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_sequences.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_tai_timestamps.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_text.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_tiling.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_uncompressed.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libheif\heif_version.h">
+      <Filter>ThirdParty\libheif</Filter>
+    </ClInclude>
+    <ClInclude Include="include\liblepton.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libraw\libraw.h">
+      <Filter>ThirdParty\libraw</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libraw\libraw_alloc.h">
+      <Filter>ThirdParty\libraw</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libraw\libraw_config.h">
+      <Filter>ThirdParty\libraw</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libraw\libraw_const.h">
+      <Filter>ThirdParty\libraw</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libraw\libraw_datastream.h">
+      <Filter>ThirdParty\libraw</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libraw\libraw_internal.h">
+      <Filter>ThirdParty\libraw</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libraw\libraw_types.h">
+      <Filter>ThirdParty\libraw</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libraw\libraw_version.h">
+      <Filter>ThirdParty\libraw</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\imageio\anim_image_dec.h">
+      <Filter>ThirdParty\libwebp2\imageio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\imageio\file_format.h">
+      <Filter>ThirdParty\libwebp2\imageio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\imageio\image_dec.h">
+      <Filter>ThirdParty\libwebp2\imageio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\imageio\image_enc.h">
+      <Filter>ThirdParty\libwebp2\imageio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\imageio\imageio_util.h">
+      <Filter>ThirdParty\libwebp2\imageio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\av1_common.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\color_precision.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\constants.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\filters\rstr_flt_params.h">
+      <Filter>ThirdParty\libwebp2\src\common\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\global_params.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\header_enc_dec.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\integral.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossless\color_cache.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\block.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\block_size.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\block_size_io.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\context.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\predictor.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\quant_mtx.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\residuals.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\residuals_aom.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\rnd_mtx.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\segment.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\lossy\transforms.h">
+      <Filter>ThirdParty\libwebp2\src\common\lossy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\preview\preview.h">
+      <Filter>ThirdParty\libwebp2\src\common\preview</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\progress_watcher.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\symbols.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\common\vdebug.h">
+      <Filter>ThirdParty\libwebp2\src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\filters\alpha_filter.h">
+      <Filter>ThirdParty\libwebp2\src\dec\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\filters\block_map_filter.h">
+      <Filter>ThirdParty\libwebp2\src\dec\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\filters\deblocking_filter.h">
+      <Filter>ThirdParty\libwebp2\src\dec\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\filters\directional_filter.h">
+      <Filter>ThirdParty\libwebp2\src\dec\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\filters\grain_filter.h">
+      <Filter>ThirdParty\libwebp2\src\dec\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\filters\intertile_filter.h">
+      <Filter>ThirdParty\libwebp2\src\dec\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\filters\intratile_filter.h">
+      <Filter>ThirdParty\libwebp2\src\dec\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\filters\restoration_filter.h">
+      <Filter>ThirdParty\libwebp2\src\dec\filters</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\incr\decoder_context.h">
+      <Filter>ThirdParty\libwebp2\src\dec\incr</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\incr\decoder_info.h">
+      <Filter>ThirdParty\libwebp2\src\dec\incr</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\incr\decoder_skip.h">
+      <Filter>ThirdParty\libwebp2\src\dec\incr</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\incr\decoder_state.h">
+      <Filter>ThirdParty\libwebp2\src\dec\incr</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\lossless\losslessi_dec.h">
+      <Filter>ThirdParty\libwebp2\src\dec\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\preview\preview_dec.h">
+      <Filter>ThirdParty\libwebp2\src\dec\preview</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\residuals_dec_aom.h">
+      <Filter>ThirdParty\libwebp2\src\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\symbols_dec.h">
+      <Filter>ThirdParty\libwebp2\src\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\tile_dec.h">
+      <Filter>ThirdParty\libwebp2\src\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dec\wp2_dec_i.h">
+      <Filter>ThirdParty\libwebp2\src\dec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dsp\dsp.h">
+      <Filter>ThirdParty\libwebp2\src\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dsp\dsp_x86.h">
+      <Filter>ThirdParty\libwebp2\src\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dsp\lossless\decl_dsp.h">
+      <Filter>ThirdParty\libwebp2\src\dsp\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dsp\lossless\dspl.h">
+      <Filter>ThirdParty\libwebp2\src\dsp\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dsp\lossless\encl_dsp.h">
+      <Filter>ThirdParty\libwebp2\src\dsp\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\dsp\math.h">
+      <Filter>ThirdParty\libwebp2\src\dsp</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\analysis.h">
+      <Filter>ThirdParty\libwebp2\src\enc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\anim\anim_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc\anim</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\block_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\lossless\backward_references_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\lossless\histogram_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\lossless\losslessi_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\lossless\palette.h">
+      <Filter>ThirdParty\libwebp2\src\enc\lossless</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partition_score_func.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partition_score_func_area.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partition_score_func_block.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partition_score_func_multi.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partition_score_func_tile.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partitioner.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partitioner_area.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partitioner_exhaustive.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partitioner_multi.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partitioner_split.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partitioner_split_recurse.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\partitioning\partitioner_top_left.h">
+      <Filter>ThirdParty\libwebp2\src\enc\partitioning</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\preview\preview_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc\preview</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\residuals_enc_aom.h">
+      <Filter>ThirdParty\libwebp2\src\enc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\screen_content\screen_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc\screen_content</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\symbols_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\tile_enc.h">
+      <Filter>ThirdParty\libwebp2\src\enc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\trellis.h">
+      <Filter>ThirdParty\libwebp2\src\enc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\enc\wp2_enc_i.h">
+      <Filter>ThirdParty\libwebp2\src\enc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\ans.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\ans_enc.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\ans_utils.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\context_switch.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\csp.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\data_source.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\data_source_context.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\data_source_stream.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\front_mgr.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\hash.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\hash_map.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\orientation.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\plane.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\quantizer.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\random.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\split_iterator.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\stats.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\thread_utils.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\utils.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\vector.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\utils\wiener.h">
+      <Filter>ThirdParty\libwebp2\src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\wp2\base.h">
+      <Filter>ThirdParty\libwebp2\src\wp2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\wp2\debug.h">
+      <Filter>ThirdParty\libwebp2\src\wp2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\wp2\decode.h">
+      <Filter>ThirdParty\libwebp2\src\wp2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\wp2\encode.h">
+      <Filter>ThirdParty\libwebp2\src\wp2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libwebp2\src\wp2\format_constants.h">
+      <Filter>ThirdParty\libwebp2\src\wp2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\basic_types.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\compare.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\compare_row.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\convert.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\convert_argb.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\convert_from.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\convert_from_argb.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\cpu_id.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\loongson_intrinsics.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\macros_msa.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\mjpeg_decoder.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\planar_functions.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\rotate.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\rotate_argb.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\rotate_row.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\row.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\scale.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\scale_argb.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\scale_rgb.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\scale_row.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\scale_uv.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\version.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\video_common.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\lunasvg.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\minizip\crypt.h">
+      <Filter>ThirdParty\minizip</Filter>
+    </ClInclude>
+    <ClInclude Include="include\minizip\ioapi.h">
+      <Filter>ThirdParty\minizip</Filter>
+    </ClInclude>
+    <ClInclude Include="include\minizip\iowin32.h">
+      <Filter>ThirdParty\minizip</Filter>
+    </ClInclude>
+    <ClInclude Include="include\minizip\mztools.h">
+      <Filter>ThirdParty\minizip</Filter>
+    </ClInclude>
+    <ClInclude Include="include\minizip\unzip.h">
+      <Filter>ThirdParty\minizip</Filter>
+    </ClInclude>
+    <ClInclude Include="include\minizip\zip.h">
+      <Filter>ThirdParty\minizip</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\bgsegm.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\bioinspired.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\bioinspired\bioinspired.hpp">
+      <Filter>ThirdParty\opencv2\bioinspired</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\bioinspired\retina.hpp">
+      <Filter>ThirdParty\opencv2\bioinspired</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\bioinspired\retinafasttonemapping.hpp">
+      <Filter>ThirdParty\opencv2\bioinspired</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\bioinspired\transientareassegmentationmodule.hpp">
+      <Filter>ThirdParty\opencv2\bioinspired</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\calib3d.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\calib3d\calib3d.hpp">
+      <Filter>ThirdParty\opencv2\calib3d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\calib3d\calib3d_c.h">
+      <Filter>ThirdParty\opencv2\calib3d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ccalib.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ccalib\multicalib.hpp">
+      <Filter>ThirdParty\opencv2\ccalib</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ccalib\omnidir.hpp">
+      <Filter>ThirdParty\opencv2\ccalib</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ccalib\randpattern.hpp">
+      <Filter>ThirdParty\opencv2\ccalib</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\affine.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\async.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\base.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\bindings_utils.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\bufferpool.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\check.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\core.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\core_c.h">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\cv_cpu_dispatch.h">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\cv_cpu_helper.h">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\cvdef.h">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\cvstd.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\cvstd.inl.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\cvstd_wrapper.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\detail\async_promise.hpp">
+      <Filter>ThirdParty\opencv2\core\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\detail\dispatch_helper.impl.hpp">
+      <Filter>ThirdParty\opencv2\core\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\detail\exception_ptr.hpp">
+      <Filter>ThirdParty\opencv2\core\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\directx.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\dualquaternion.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\dualquaternion.inl.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\eigen.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\fast_math.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\hal.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\interface.h">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_avx.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_avx512.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_cpp.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_forward.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_lasx.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_legacy_ops.h">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_lsx.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_math.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_msa.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_neon.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_rvv071.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_rvv_scalable.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_sse.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_sse_em.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_vsx.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\intrin_wasm.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\msa_macros.h">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\hal\simd_utils.impl.hpp">
+      <Filter>ThirdParty\opencv2\core\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\mat.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\mat.inl.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\matx.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\matx.inl.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\neon_utils.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\ocl.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\ocl_genbase.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\opengl.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\operations.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\optim.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\ovx.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\parallel\backend\parallel_for.openmp.hpp">
+      <Filter>ThirdParty\opencv2\core\parallel\backend</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\parallel\backend\parallel_for.tbb.hpp">
+      <Filter>ThirdParty\opencv2\core\parallel\backend</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\parallel\parallel_backend.hpp">
+      <Filter>ThirdParty\opencv2\core\parallel</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\persistence.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\quaternion.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\quaternion.inl.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\saturate.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\simd_intrinsics.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\softfloat.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\sse_utils.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\traits.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\types.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\types_c.h">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utility.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\allocator_stats.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\allocator_stats.impl.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\filesystem.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\fp_control_utils.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\instrumentation.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\logger.defines.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\logger.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\logtag.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\tls.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\utils\trace.hpp">
+      <Filter>ThirdParty\opencv2\core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\version.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\core\vsx_utils.hpp">
+      <Filter>ThirdParty\opencv2\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\cvconfig.h">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\features2d.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\features2d\features2d.hpp">
+      <Filter>ThirdParty\opencv2\features2d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\features2d\hal\interface.h">
+      <Filter>ThirdParty\opencv2\features2d\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\all_indices.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\allocator.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\any.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\autotuned_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\composite_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\config.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\defines.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\dist.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\dummy.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\dynamic_bitset.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\flann.hpp">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\flann_base.hpp">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\general.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\ground_truth.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\heap.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\hierarchical_clustering_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\index_testing.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\kdtree_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\kdtree_single_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\kmeans_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\linear_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\logger.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\lsh_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\lsh_table.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\matrix.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\miniflann.hpp">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\nn_index.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\object_factory.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\params.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\random.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\result_set.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\sampling.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\saving.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\simplex_downhill.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\flann\timer.h">
+      <Filter>ThirdParty\opencv2\flann</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\fuzzy.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\fuzzy\fuzzy_F0_math.hpp">
+      <Filter>ThirdParty\opencv2\fuzzy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\fuzzy\fuzzy_F1_math.hpp">
+      <Filter>ThirdParty\opencv2\fuzzy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\fuzzy\fuzzy_image.hpp">
+      <Filter>ThirdParty\opencv2\fuzzy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\fuzzy\types.hpp">
+      <Filter>ThirdParty\opencv2\fuzzy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\core.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\cpu\core.hpp">
+      <Filter>ThirdParty\opencv2\gapi\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\cpu\gcpukernel.hpp">
+      <Filter>ThirdParty\opencv2\gapi\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\cpu\imgproc.hpp">
+      <Filter>ThirdParty\opencv2\gapi\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\cpu\ot.hpp">
+      <Filter>ThirdParty\opencv2\gapi\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\cpu\stereo.hpp">
+      <Filter>ThirdParty\opencv2\gapi\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\cpu\video.hpp">
+      <Filter>ThirdParty\opencv2\gapi\cpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\fluid\core.hpp">
+      <Filter>ThirdParty\opencv2\gapi\fluid</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\fluid\gfluidbuffer.hpp">
+      <Filter>ThirdParty\opencv2\gapi\fluid</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\fluid\gfluidkernel.hpp">
+      <Filter>ThirdParty\opencv2\gapi\fluid</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\fluid\imgproc.hpp">
+      <Filter>ThirdParty\opencv2\gapi\fluid</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\garg.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\garray.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gasync_context.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gcall.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gcommon.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gcompiled.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gcompiled_async.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gcompoundkernel.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gcomputation.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gcomputation_async.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gframe.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gkernel.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gmat.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gmetaarg.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gopaque.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gproto.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gpu\core.hpp">
+      <Filter>ThirdParty\opencv2\gapi\gpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gpu\ggpukernel.hpp">
+      <Filter>ThirdParty\opencv2\gapi\gpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gpu\imgproc.hpp">
+      <Filter>ThirdParty\opencv2\gapi\gpu</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gscalar.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gstreaming.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gtransform.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gtype_traits.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\gtyped.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\imgproc.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer\bindings_ie.hpp">
+      <Filter>ThirdParty\opencv2\gapi\infer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer\bindings_onnx.hpp">
+      <Filter>ThirdParty\opencv2\gapi\infer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer\bindings_ov.hpp">
+      <Filter>ThirdParty\opencv2\gapi\infer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer\ie.hpp">
+      <Filter>ThirdParty\opencv2\gapi\infer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer\onnx.hpp">
+      <Filter>ThirdParty\opencv2\gapi\infer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer\ov.hpp">
+      <Filter>ThirdParty\opencv2\gapi\infer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer\parsers.hpp">
+      <Filter>ThirdParty\opencv2\gapi\infer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\infer\workload_type.hpp">
+      <Filter>ThirdParty\opencv2\gapi\infer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\media.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\oak\infer.hpp">
+      <Filter>ThirdParty\opencv2\gapi\oak</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\oak\oak.hpp">
+      <Filter>ThirdParty\opencv2\gapi\oak</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\ocl\core.hpp">
+      <Filter>ThirdParty\opencv2\gapi\ocl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\ocl\goclkernel.hpp">
+      <Filter>ThirdParty\opencv2\gapi\ocl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\ocl\imgproc.hpp">
+      <Filter>ThirdParty\opencv2\gapi\ocl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\opencv_includes.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\operators.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\ot.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\own\assert.hpp">
+      <Filter>ThirdParty\opencv2\gapi\own</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\own\convert.hpp">
+      <Filter>ThirdParty\opencv2\gapi\own</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\own\cvdefs.hpp">
+      <Filter>ThirdParty\opencv2\gapi\own</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\own\exports.hpp">
+      <Filter>ThirdParty\opencv2\gapi\own</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\own\mat.hpp">
+      <Filter>ThirdParty\opencv2\gapi\own</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\own\saturate.hpp">
+      <Filter>ThirdParty\opencv2\gapi\own</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\own\scalar.hpp">
+      <Filter>ThirdParty\opencv2\gapi\own</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\own\types.hpp">
+      <Filter>ThirdParty\opencv2\gapi\own</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\plaidml\core.hpp">
+      <Filter>ThirdParty\opencv2\gapi\plaidml</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\plaidml\gplaidmlkernel.hpp">
+      <Filter>ThirdParty\opencv2\gapi\plaidml</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\plaidml\plaidml.hpp">
+      <Filter>ThirdParty\opencv2\gapi\plaidml</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\pysrc\python_stream_source.hpp">
+      <Filter>ThirdParty\opencv2\gapi\pysrc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\python\python.hpp">
+      <Filter>ThirdParty\opencv2\gapi\python</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\render.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\render\render.hpp">
+      <Filter>ThirdParty\opencv2\gapi\render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\render\render_types.hpp">
+      <Filter>ThirdParty\opencv2\gapi\render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\rmat.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\s11n.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\s11n\base.hpp">
+      <Filter>ThirdParty\opencv2\gapi\s11n</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\stereo.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\cap.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\desync.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\format.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\gstreamer\gstreamerpipeline.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming\gstreamer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\gstreamer\gstreamersource.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming\gstreamer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\meta.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\onevpl\accel_types.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming\onevpl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\onevpl\cfg_params.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming\onevpl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\onevpl\data_provider_interface.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming\onevpl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\onevpl\default.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming\onevpl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\onevpl\device_selector_interface.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming\onevpl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\onevpl\source.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming\onevpl</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\queue_source.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\source.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\streaming\sync.hpp">
+      <Filter>ThirdParty\opencv2\gapi\streaming</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\util\any.hpp">
+      <Filter>ThirdParty\opencv2\gapi\util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\util\compiler_hints.hpp">
+      <Filter>ThirdParty\opencv2\gapi\util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\util\copy_through_move.hpp">
+      <Filter>ThirdParty\opencv2\gapi\util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\util\optional.hpp">
+      <Filter>ThirdParty\opencv2\gapi\util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\util\throw.hpp">
+      <Filter>ThirdParty\opencv2\gapi\util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\util\type_traits.hpp">
+      <Filter>ThirdParty\opencv2\gapi\util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\util\util.hpp">
+      <Filter>ThirdParty\opencv2\gapi\util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\util\variant.hpp">
+      <Filter>ThirdParty\opencv2\gapi\util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\gapi\video.hpp">
+      <Filter>ThirdParty\opencv2\gapi</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\hfs.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\highgui.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\highgui\highgui.hpp">
+      <Filter>ThirdParty\opencv2\highgui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\highgui\highgui_c.h">
+      <Filter>ThirdParty\opencv2\highgui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\img_hash.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\img_hash\average_hash.hpp">
+      <Filter>ThirdParty\opencv2\img_hash</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\img_hash\block_mean_hash.hpp">
+      <Filter>ThirdParty\opencv2\img_hash</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\img_hash\color_moment_hash.hpp">
+      <Filter>ThirdParty\opencv2\img_hash</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\img_hash\img_hash_base.hpp">
+      <Filter>ThirdParty\opencv2\img_hash</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\img_hash\marr_hildreth_hash.hpp">
+      <Filter>ThirdParty\opencv2\img_hash</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\img_hash\phash.hpp">
+      <Filter>ThirdParty\opencv2\img_hash</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\img_hash\radial_variance_hash.hpp">
+      <Filter>ThirdParty\opencv2\img_hash</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgcodecs.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgcodecs\imgcodecs.hpp">
+      <Filter>ThirdParty\opencv2\imgcodecs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgcodecs\imgcodecs_c.h">
+      <Filter>ThirdParty\opencv2\imgcodecs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgcodecs\ios.h">
+      <Filter>ThirdParty\opencv2\imgcodecs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgcodecs\legacy\constants_c.h">
+      <Filter>ThirdParty\opencv2\imgcodecs\legacy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgcodecs\macosx.h">
+      <Filter>ThirdParty\opencv2\imgcodecs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\bindings.hpp">
+      <Filter>ThirdParty\opencv2\imgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\detail\gcgraph.hpp">
+      <Filter>ThirdParty\opencv2\imgproc\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\detail\legacy.hpp">
+      <Filter>ThirdParty\opencv2\imgproc\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\hal\hal.hpp">
+      <Filter>ThirdParty\opencv2\imgproc\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\hal\interface.h">
+      <Filter>ThirdParty\opencv2\imgproc\hal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\imgproc.hpp">
+      <Filter>ThirdParty\opencv2\imgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\imgproc_c.h">
+      <Filter>ThirdParty\opencv2\imgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\segmentation.hpp">
+      <Filter>ThirdParty\opencv2\imgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\imgproc\types_c.h">
+      <Filter>ThirdParty\opencv2\imgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\intensity_transform.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\line_descriptor.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\line_descriptor\descriptor.hpp">
+      <Filter>ThirdParty\opencv2\line_descriptor</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ml.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ml\ml.hpp">
+      <Filter>ThirdParty\opencv2\ml</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ml\ml.inl.hpp">
+      <Filter>ThirdParty\opencv2\ml</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\opencv.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\opencv_modules.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\optflow.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\optflow\motempl.hpp">
+      <Filter>ThirdParty\opencv2\optflow</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\optflow\pcaflow.hpp">
+      <Filter>ThirdParty\opencv2\optflow</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\optflow\rlofflow.hpp">
+      <Filter>ThirdParty\opencv2\optflow</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\optflow\sparse_matching_gpc.hpp">
+      <Filter>ThirdParty\opencv2\optflow</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\phase_unwrapping.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\phase_unwrapping\histogramphaseunwrapping.hpp">
+      <Filter>ThirdParty\opencv2\phase_unwrapping</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\phase_unwrapping\phase_unwrapping.hpp">
+      <Filter>ThirdParty\opencv2\phase_unwrapping</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\photo.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\photo\legacy\constants_c.h">
+      <Filter>ThirdParty\opencv2\photo\legacy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\photo\photo.hpp">
+      <Filter>ThirdParty\opencv2\photo</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\plot.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\quality.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\quality\quality_utils.hpp">
+      <Filter>ThirdParty\opencv2\quality</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\quality\qualitybase.hpp">
+      <Filter>ThirdParty\opencv2\quality</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\quality\qualitybrisque.hpp">
+      <Filter>ThirdParty\opencv2\quality</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\quality\qualitygmsd.hpp">
+      <Filter>ThirdParty\opencv2\quality</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\quality\qualitymse.hpp">
+      <Filter>ThirdParty\opencv2\quality</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\quality\qualitypsnr.hpp">
+      <Filter>ThirdParty\opencv2\quality</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\quality\qualityssim.hpp">
+      <Filter>ThirdParty\opencv2\quality</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rapid.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\map.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mapaffine.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mapper.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mappergradaffine.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mappergradeuclid.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mappergradproj.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mappergradshift.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mappergradsimilar.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mapperpyramid.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mapprojec.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\reg\mapshift.hpp">
+      <Filter>ThirdParty\opencv2\reg</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\colored_kinfu.hpp">
+      <Filter>ThirdParty\opencv2\rgbd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\depth.hpp">
+      <Filter>ThirdParty\opencv2\rgbd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\detail\pose_graph.hpp">
+      <Filter>ThirdParty\opencv2\rgbd\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\dynafu.hpp">
+      <Filter>ThirdParty\opencv2\rgbd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\intrinsics.hpp">
+      <Filter>ThirdParty\opencv2\rgbd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\kinfu.hpp">
+      <Filter>ThirdParty\opencv2\rgbd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\large_kinfu.hpp">
+      <Filter>ThirdParty\opencv2\rgbd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\linemod.hpp">
+      <Filter>ThirdParty\opencv2\rgbd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\rgbd\volume.hpp">
+      <Filter>ThirdParty\opencv2\rgbd</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\saliency.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\saliency\saliencyBaseClasses.hpp">
+      <Filter>ThirdParty\opencv2\saliency</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\saliency\saliencySpecializedClasses.hpp">
+      <Filter>ThirdParty\opencv2\saliency</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\shape.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\shape\emdL1.hpp">
+      <Filter>ThirdParty\opencv2\shape</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\shape\hist_cost.hpp">
+      <Filter>ThirdParty\opencv2\shape</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\shape\shape.hpp">
+      <Filter>ThirdParty\opencv2\shape</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\shape\shape_distance.hpp">
+      <Filter>ThirdParty\opencv2\shape</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\shape\shape_transformer.hpp">
+      <Filter>ThirdParty\opencv2\shape</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\signal.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\signal\signal_resample.hpp">
+      <Filter>ThirdParty\opencv2\signal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stereo.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stereo\descriptor.hpp">
+      <Filter>ThirdParty\opencv2\stereo</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stereo\quasi_dense_stereo.hpp">
+      <Filter>ThirdParty\opencv2\stereo</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stereo\stereo.hpp">
+      <Filter>ThirdParty\opencv2\stereo</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\autocalib.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\blenders.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\camera.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\exposure_compensate.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\matchers.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\motion_estimators.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\seam_finders.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\timelapsers.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\util.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\util_inl.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\warpers.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\detail\warpers_inl.hpp">
+      <Filter>ThirdParty\opencv2\stitching\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\stitching\warpers.hpp">
+      <Filter>ThirdParty\opencv2\stitching</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\structured_light.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\structured_light\graycodepattern.hpp">
+      <Filter>ThirdParty\opencv2\structured_light</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\structured_light\sinusoidalpattern.hpp">
+      <Filter>ThirdParty\opencv2\structured_light</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\structured_light\structured_light.hpp">
+      <Filter>ThirdParty\opencv2\structured_light</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\superres.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\superres\optical_flow.hpp">
+      <Filter>ThirdParty\opencv2\superres</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\surface_matching.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\surface_matching\icp.hpp">
+      <Filter>ThirdParty\opencv2\surface_matching</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\surface_matching\pose_3d.hpp">
+      <Filter>ThirdParty\opencv2\surface_matching</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\surface_matching\ppf_helpers.hpp">
+      <Filter>ThirdParty\opencv2\surface_matching</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\surface_matching\ppf_match_3d.hpp">
+      <Filter>ThirdParty\opencv2\surface_matching</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\surface_matching\t_hash_int.hpp">
+      <Filter>ThirdParty\opencv2\surface_matching</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\feature.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\kalman_filters.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\onlineBoosting.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\tldDataset.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\tracking.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\tracking_by_matching.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\tracking_internals.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\tracking_legacy.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\tracking\twist.hpp">
+      <Filter>ThirdParty\opencv2\tracking</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\video.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\video\background_segm.hpp">
+      <Filter>ThirdParty\opencv2\video</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\video\detail\tracking.detail.hpp">
+      <Filter>ThirdParty\opencv2\video\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\video\legacy\constants_c.h">
+      <Filter>ThirdParty\opencv2\video\legacy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\video\tracking.hpp">
+      <Filter>ThirdParty\opencv2\video</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\video\video.hpp">
+      <Filter>ThirdParty\opencv2\video</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videoio.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videoio\legacy\constants_c.h">
+      <Filter>ThirdParty\opencv2\videoio\legacy</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videoio\registry.hpp">
+      <Filter>ThirdParty\opencv2\videoio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videoio\videoio.hpp">
+      <Filter>ThirdParty\opencv2\videoio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videoio\videoio_c.h">
+      <Filter>ThirdParty\opencv2\videoio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\deblurring.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\fast_marching.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\fast_marching_inl.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\frame_source.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\global_motion.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\inpainting.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\log.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\motion_core.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\motion_stabilizing.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\optical_flow.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\outlier_rejection.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\ring_buffer.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\stabilizer.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\videostab\wobble_suppression.hpp">
+      <Filter>ThirdParty\opencv2\videostab</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\world.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xfeatures2d.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xfeatures2d\nonfree.hpp">
+      <Filter>ThirdParty\opencv2\xfeatures2d</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\brightedges.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\color_match.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\deriche_filter.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\disparity_filter.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\edge_drawing.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\edge_filter.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\edgeboxes.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\edgepreserving_filter.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\estimated_covariance.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\fast_hough_transform.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\fast_line_detector.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\find_ellipses.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\fourier_descriptors.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\lsc.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\paillou_filter.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\peilin.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\radon_transform.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\ridgefilter.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\run_length_morphology.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\scansegment.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\seeds.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\segmentation.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\slic.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\sparse_match_interpolator.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\structured_edge_detection.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\ximgproc\weighted_median_filter.hpp">
+      <Filter>ThirdParty\opencv2\ximgproc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xphoto.hpp">
+      <Filter>ThirdParty\opencv2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xphoto\bm3d_image_denoising.hpp">
+      <Filter>ThirdParty\opencv2\xphoto</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xphoto\dct_image_denoising.hpp">
+      <Filter>ThirdParty\opencv2\xphoto</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xphoto\inpainting.hpp">
+      <Filter>ThirdParty\opencv2\xphoto</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xphoto\oilpainting.hpp">
+      <Filter>ThirdParty\opencv2\xphoto</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xphoto\tonemap.hpp">
+      <Filter>ThirdParty\opencv2\xphoto</Filter>
+    </ClInclude>
+    <ClInclude Include="include\opencv2\xphoto\white_balance.hpp">
+      <Filter>ThirdParty\opencv2\xphoto</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\Psd.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdAllocator.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdAlphaChannel.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdAssert.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdBitUtil.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdBlendMode.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdChannel.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdChannelType.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdColorMode.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdColorModeDataSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdCompilerMacros.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdCompressionType.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdDecompressRle.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdDocument.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdDocumentation.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdEndianConversion.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdExport.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdExportChannel.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdExportColorMode.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdExportDocument.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdExportLayer.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdExportMetaDataAttribute.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdFile.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdFixedSizeString.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdImageDataSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdImageResourcesSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdImageResourceType.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdInterleave.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\Psdinttypes.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\Psdispod.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\Psdisunsigned.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdKey.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdLayer.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdLayerCanvasCopy.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdLayerMask.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdLayerMaskSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdLayerType.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdLog.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdMallocAllocator.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdMemoryUtil.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\Psdminiz.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdNamespace.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdNativeFile.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdNativeFile_Linux.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdNativeFile_Mac.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdParseColorModeDataSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdParseDocument.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdParseImageDataSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdParseImageResourcesSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdParseLayerMaskSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdPch.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdPlanarImage.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdPlatform.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdSection.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\Psdstdint.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdStringUtil.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdSyncFileReader.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdSyncFileUtil.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdSyncFileWriter.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdThumbnail.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdTypes.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdUnionCast.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\psdsdk\PsdVectorMask.h">
+      <Filter>ThirdParty\psdsdk</Filter>
+    </ClInclude>
+    <ClInclude Include="include\qoi.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\stb_image.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\stb_image_write.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\stb_truetype.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\tinyxml2.h">
+      <Filter>ThirdParty\tinyxml2</Filter>
+    </ClInclude>
+    <ClInclude Include="include\x265.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\x265_config.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\zconf.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\zlib.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="include\zlib_name_mangling.h">
+      <Filter>ThirdParty\single-header</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\backends\imgui_impl_dx11.h">
+      <Filter>ThirdParty\imgui\backends</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\backends\imgui_impl_win32.h">
+      <Filter>ThirdParty\imgui\backends</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\imconfig.h">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\imgui.h">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\imgui_internal.h">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\imstb_rectpack.h">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\imstb_textedit.h">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\imstb_truetype.h">
+      <Filter>ThirdParty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\imgui\misc\cpp\imgui_stdlib.h">
+      <Filter>ThirdParty\imgui\misc\cpp</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="JarkViewer.rc">
-      <Filter>resources</Filter>
+      <Filter>Resources</Filter>
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="small.ico">
-      <Filter>resources</Filter>
-    </Image>
-    <Image Include="JarkViewer.ico">
-      <Filter>resources</Filter>
+    <Image Include="file\aboutIcon.png">
+      <Filter>Resources</Filter>
     </Image>
     <Image Include="file\mainRes.png">
-      <Filter>resources</Filter>
+      <Filter>Resources</Filter>
+    </Image>
+    <Image Include="JarkViewer.ico">
+      <Filter>Resources</Filter>
+    </Image>
+    <Image Include="small.ico">
+      <Filter>Resources</Filter>
     </Image>
   </ItemGroup>
-  <ItemGroup>
-     </ItemGroup>
 </Project>
