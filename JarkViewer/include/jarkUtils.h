@@ -162,7 +162,11 @@ struct SettingParameter {
     // 旧设置此段为零，走"没有记录"的回退路径。
     wchar_t monitorDevice[CCHDEVICENAME] = {};
 
-    uint32_t reserve[784]; // 原 800，划出 32 个字（64 字节）给 monitorDevice
+    // 实况照片自动播放时是否出声（默认静音，对齐系统照片应用的习惯；
+    // 鼠标悬停「实况」角标是主动操作，会重播并出声，不受此项影响）
+    bool livePhotoAutoPlaySound = false;
+
+    uint32_t reserve[783]; // 原 800，划出 64+4 字节给 monitorDevice 与 livePhotoAutoPlaySound
 
     char extCheckedListStr[800];
 
@@ -244,6 +248,7 @@ static_assert(sizeof(SettingParameter) == 4096, "sizeof(SettingParameter) != 409
 static_assert(offsetof(SettingParameter, hideNavigator) == 67);
 static_assert(offsetof(SettingParameter, rightClickAction) == 92);
 static_assert(offsetof(SettingParameter, monitorDevice) == 96);
+static_assert(offsetof(SettingParameter, livePhotoAutoPlaySound) == 160);
 static_assert(offsetof(SettingParameter, extCheckedListStr) == 3296);
 
 struct rcFileInfo {

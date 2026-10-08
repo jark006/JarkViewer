@@ -152,6 +152,7 @@ private:
             { getUIString(15), &parameter.enableColorManagement },
             { getUIString(54), &parameter.isOneToOnePreferred },
             { getUIString(kStrShowNavigator), &showNavigator }, // 界面上是"显示"，存储取反
+            { getUIString(171), &parameter.livePhotoAutoPlaySound }, // 实况自动播放声音（默认静音）
         };
         float secondColumn = 0.0f;
         for (int index = 0; index < IM_ARRAYSIZE(checkItems); index += 2)

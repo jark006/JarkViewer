@@ -285,6 +285,19 @@ public:
     const ImageAsset* lastSeenAsset = nullptr;      // 用于检测切图
     int lastSeenFileIndex = -1;
 
+    // 「实况」角标：贴图片左上角显示，悬停就重播并出声（主动操作，设置静音也出声）
+    bool currentIsLivePhoto_ = false;
+    bool liveBadgeVisible_ = false;
+    bool liveBadgeHovered_ = false;
+    bool liveReplaySound_ = false;
+    cv::Rect2f liveBadgeRect_{};
+
+    bool liveBadgeHit(int x, int y) const {
+        return liveBadgeVisible_ &&
+            x >= liveBadgeRect_.x && x < liveBadgeRect_.x + liveBadgeRect_.width &&
+            y >= liveBadgeRect_.y && y < liveBadgeRect_.y + liveBadgeRect_.height;
+    }
+
     CurImageParameter curPar;
     std::chrono::steady_clock::time_point lastClickTimestamp{}, lastWinResizeTimestamp{};
 
@@ -638,6 +651,11 @@ public:
             return;
         // 按下前重算旧按钮命中，不能依赖上一条 mousemove 的位置。
         OnMouseMove(btnState, x, y);
+
+        // 「实况」角标消费自己的左键按下（悬停已经触发重播），不进入画布拖动/双击全屏
+        if ((uint64_t)btnState == WM_LBUTTONDOWN && liveBadgeHit(x, y))
+            return;
+
         switch ((uint64_t)btnState)
         {
         case WM_LBUTTONDOWN: {//左键
@@ -752,6 +770,19 @@ public:
         syncNavigation();
         if (applyNavigationEvent(navigation.mouseMove({ x, y }, mouseIsPressing)))
             return;
+
+        // 「实况」角标悬停：进入的瞬间重播并出声（悬停本身就是"想听"的主动操作，设置静音也出声）
+        const bool overBadge = liveBadgeHit(x, y);
+        if (overBadge != liveBadgeHovered_) {
+            liveBadgeHovered_ = overBadge;
+            markPresentRequested(); // 高亮反馈/擦除
+            if (overBadge && currentIsLivePhoto_ && curPar.imageAssetPtr && curPar.imageAssetPtr->videoSource) {
+                stopMediaPlayback();
+                playedAsset = nullptr;   // 从头再播
+                liveReplaySound_ = true; // 这次出声
+                operateQueue.push({ ActionENUM::refresh });
+            }
+        }
 
         if (isHomeScreen()) { // 主页「打开图片」按钮的悬停/按下反馈
             const int desired = homeButtonHit(x, y)
@@ -886,6 +917,7 @@ public:
     void OnMouseLeave() override {
         navigation.mouseLeave();
         setHomeButtonState(0);
+        liveBadgeHovered_ = false;
         cursorPosLast = cursorPos = CursorPos::centerArea;
         extraUIFlag = ShowExtraUI::none;
         if (GetCapture() != m_hWnd)
@@ -1835,6 +1867,19 @@ public:
             playedAsset = nullptr;
             lastSeenAsset = assetPtr;
             lastSeenFileIndex = curFileIdx;
+            liveBadgeHovered_ = false;
+
+            // 「实况」角标只给实况照片；直接打开的视频文件不带角标、也不受静音设置影响
+            currentIsLivePhoto_ = false;
+            if (assetPtr->videoSource && !assetPtr->videoSource->data.empty() &&
+                curFileIdx >= 0 && curFileIdx < static_cast<int>(imgFileList.size())) {
+                std::wstring ext = std::filesystem::path(imgFileList[curFileIdx]).extension().wstring();
+                if (!ext.empty())
+                    ext = ext.substr(1);
+                for (auto& c : ext)
+                    c = static_cast<wchar_t>(std::towlower(c));
+                currentIsLivePhoto_ = !ImageDatabase::videoExt.contains(ext);
+            }
         }
 
         const auto& asset = *curPar.imageAssetPtr;
@@ -1863,14 +1908,20 @@ public:
             return; // 已播放过（切换图片时会重置）
 
         auto player = jark::MediaPlayer::create();
-        if (!player || !player->start(asset.videoSource->data)) {
+        // 音量：视频文件是用户主动打开的、照常出声；实况照片按设置（默认静音）；
+        // 悬停「实况」角标触发的重播一律出声
+        const float volume = liveReplaySound_ ? 1.0f
+            : (currentIsLivePhoto_ && !GlobalVar::settingParameter.livePhotoAutoPlaySound ? 0.0f : 1.0f);
+        if (!player || !player->start(asset.videoSource->data, volume)) {
             JARK_LOG("视频播放启动失败，保持静态图");
             playedAsset = assetPtr;
+            liveReplaySound_ = false;
             return;
         }
 
-        JARK_LOG("视频播放开始，音频={}", player->hasAudio());
+        JARK_LOG("视频播放开始，音频={} 音量={:.1f}", player->hasAudio(), volume);
         mediaPlayer = std::move(player);
+        liveReplaySound_ = false;
 
         // 播放期间以视频尺寸作为名义尺寸（实况照片的静态图与视频尺寸可能不同）
         int videoWidth = 0;
@@ -1984,6 +2035,45 @@ public:
         }
     }
 
+    // 「实况」角标：贴图片左上角（放大裁切时夹回可视区内），半透明底 + 文字，悬停高亮；
+    // 悬停的重播动作在 OnMouseMove 里（见 liveBadgeHit）。只标实况照片，视频文件不带。
+    void drawLiveBadge() {
+        liveBadgeVisible_ = false;
+
+        if (!currentIsLivePhoto_ || !curPar.imageAssetPtr ||
+            curPar.imageAssetPtr->placeholder != PlaceholderKind::None)
+            return;
+
+        const auto geometry = jark::imageGeometry(viewState(), { winWidth, winHeight });
+        if (geometry.scale <= 0)
+            return;
+
+        const float scale = uiScale();
+        const std::string label = getUIString(172);
+        const float padX = 9.0f * scale;
+        const float padY = 4.0f * scale;
+        const ImVec2 textSize = ImGui::GetFont()->CalcTextSizeA(
+            ImGui::GetFontSize(), FLT_MAX, 0.0f, label.c_str());
+        const float badgeW = textSize.x + padX * 2.0f;
+        const float badgeH = textSize.y + padY * 2.0f;
+        const float margin = 8.0f * scale;
+
+        const float x = std::clamp(static_cast<float>(geometry.origin.x) + margin, margin,
+            (std::max)(margin, winWidth - badgeW - margin));
+        const float y = std::clamp(static_cast<float>(geometry.origin.y) + margin, margin,
+            (std::max)(margin, winHeight - badgeH - margin));
+
+        liveBadgeRect_ = { x, y, badgeW, badgeH };
+        liveBadgeVisible_ = true;
+
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        const ImU32 background = liveBadgeHovered_
+            ? ImGui::GetColorU32(ImGuiCol_ButtonHovered)
+            : imColor(GlobalVar::currentTheme.BG_DEEP, 0.72f);
+        drawList->AddRectFilled(uiPos(x, y), uiPos(x + badgeW, y + badgeH), background, 6.0f * scale);
+        drawList->AddText(uiPos(x + padX, y + padY), imColor(GlobalVar::currentTheme.FG), label.c_str());
+    }
+
     // EXIF/AI 提示词面板：半透明底 + 自动折行的文本
     void drawExifPanel() {
         if (!showExif || winWidth < dp(100) || winHeight < dp(100))
@@ -2095,6 +2185,7 @@ public:
 
         drawOverlayUi();
         drawExifPanel();
+        drawLiveBadge();
         navigation.draw(currentSourceImage(), uiPos(0.0f, 0.0f));
         SettingWindow::instance().draw();
         BatchWindow::instance().draw();
