@@ -10,47 +10,82 @@ namespace {
         return tagName.find("UserComment") != std::string::npos || tagName.ends_with("0x9286");
     }
 
-    // UTF-16（可带 BOM）转 UTF-8
-    std::string utf16ToUtf8(std::span<const uint8_t> bytes) {
+    // 粗略判断一段 UTF-16 解出来的文本"像不像话"：可打印 ASCII 加分；控制字符、
+    // 以及"低字节为 0"的高位字符（典型的字节序判反——ASCII 文本会被解成 0xXX00 形状的汉字）扣分
+    int textPlausibility(const std::wstring& text) {
+        int score = 0;
+        for (const wchar_t c : text) {
+            if (c == L'\t' || c == L'\r' || c == L'\n')
+                ++score;
+            else if (c < 0x20 || (c >= 0x7F && c < 0xA0))
+                score -= 6;
+            else if (c < 0x7F)
+                score += 2;
+            else if (c <= 0xFFFF && (c & 0xFF) == 0)
+                score -= 4;
+            else
+                ++score;
+        }
+        return score;
+    }
+
+    std::wstring decodeUtf16(std::span<const uint8_t> bytes, bool bigEndian) {
+        std::wstring text;
+        text.reserve(bytes.size() / 2);
+        for (size_t i = 0; i + 1 < bytes.size(); i += 2) {
+            const uint16_t unit = bigEndian
+                ? static_cast<uint16_t>((bytes[i] << 8) | bytes[i + 1])
+                : static_cast<uint16_t>(bytes[i] | (bytes[i + 1] << 8));
+            text.push_back(static_cast<wchar_t>(unit));
+        }
+        return text;
+    }
+
+    // 正文看起来是不是 UTF-16：偶数长度，且某一奇偶位置大量出现 0x00
+    bool looksLikeUtf16(std::span<const uint8_t> body) {
+        if (body.size() < 4 || (body.size() % 2) != 0)
+            return false;
+
+        size_t evenZeros = 0;
+        size_t oddZeros = 0;
+        for (size_t i = 0; i + 1 < body.size(); i += 2) {
+            if (body[i] == 0) ++evenZeros;
+            if (body[i + 1] == 0) ++oddZeros;
+        }
+        const size_t pairs = body.size() / 2;
+        return (evenZeros * 10 >= pairs * 3) != (oddZeros * 10 >= pairs * 3);
+    }
+
+    // UTF-16 转 UTF-8。UserComment 的 UNICODE 正文**不强制带 BOM**：写入器有的大端、
+    // 有的小端（实测 Exiv2 回吐的多为小端），只按固定端序解会把 ASCII 提示词整段解成汉字
+    // （"hyperdetailed" 会变成"栀礀瀀攀爀"）。这里先认 BOM；没有 BOM 就两种都解、
+    // 按"哪种更像话"定，难分伯仲时用文件自己的字节序（preferredBigEndian）。
+    std::string utf16ToUtf8(std::span<const uint8_t> bytes, bool preferredBigEndian) {
         if (bytes.size() < 2)
             return {};
 
-        bool bigEndian = true;
-        bool hadBom = false;
+        bool bigEndian = preferredBigEndian;
         if (bytes[0] == 0xFF && bytes[1] == 0xFE) {
             bigEndian = false;
-            hadBom = true;
             bytes = bytes.subspan(2);
         }
         else if (bytes[0] == 0xFE && bytes[1] == 0xFF) {
             bigEndian = true;
-            hadBom = true;
             bytes = bytes.subspan(2);
         }
+        else {
+            const int bigScore = textPlausibility(decodeUtf16(bytes, true));
+            const int littleScore = textPlausibility(decodeUtf16(bytes, false));
+            if (std::abs(bigScore - littleScore) >= 8)
+                bigEndian = bigScore > littleScore;
+        }
 
-        const auto decode = [&](bool be) {
-            std::wstring text;
-            text.reserve(bytes.size() / 2);
-            for (size_t i = 0; i + 1 < bytes.size(); i += 2) {
-                const uint16_t unit = be
-                    ? static_cast<uint16_t>((bytes[i] << 8) | bytes[i + 1])
-                    : static_cast<uint16_t>(bytes[i] | (bytes[i + 1] << 8));
-                text.push_back(static_cast<wchar_t>(unit));
-            }
-            return text;
-        };
-
-        auto text = decode(bigEndian);
-        const bool suspicious = std::any_of(text.begin(), text.end(), [](wchar_t c) {
-            return c < 0x09 || (c > 0x0D && c < 0x20);
-        });
-        if (suspicious && !hadBom)
-            text = decode(!bigEndian);
-
-        return jarkUtils::wstringToUtf8(text);
+        return jarkUtils::wstringToUtf8(decodeUtf16(bytes, bigEndian));
     }
 
     // 解析 Exif UserComment：8 字节字符集前缀 + 正文（ASCII / UNICODE / JIS）
+    // 注：Exiv2 回吐的字节序不一定与文件 TIFF 头一致（实测 'II' 文件也可能拿到小端），
+    // 所以正文的端序交给 utf16ToUtf8 自己判断，这里只把文件字节序当兜底偏好。
     std::string decodeUserCommentValue(const Exiv2::Value& value, Exiv2::ByteOrder byteOrder) {
         auto clonedValue = value.clone();
         const size_t size = clonedValue->size();
@@ -60,9 +95,20 @@ namespace {
         std::vector<uint8_t> buffer(size);
         clonedValue->copy(buffer.data(), byteOrder);
 
+        // 有的写入器用 8 个 0 表示"未指定字符集"，或在正文前后补 0 对齐，
+        // 统一去掉首尾的 0 字符（Exif 的 UNDEFINED 正文里 0 不承载信息）
+        const auto trimNuls = [](std::string text) {
+            const size_t begin = text.find_first_not_of('\0');
+            if (begin == std::string::npos)
+                return std::string();
+            return text.substr(begin, text.find_last_not_of('\0') - begin + 1);
+        };
+
         std::span<const uint8_t> body(buffer);
+        const bool preferBigEndian = byteOrder != Exiv2::ByteOrder::littleEndian;
+
         if (body.size() >= 8 && std::memcmp(body.data(), "UNICODE\0", 8) == 0)
-            return utf16ToUtf8(body.subspan(8));
+            return trimNuls(utf16ToUtf8(body.subspan(8), preferBigEndian));
 
         if (body.size() >= 8 && (std::memcmp(body.data(), "ASCII\0\0\0", 8) == 0 ||
             std::memcmp(body.data(), "JIS\0\0\0\0\0", 8) == 0)) {
@@ -70,9 +116,12 @@ namespace {
         }
 
         std::string text(reinterpret_cast<const char*>(body.data()), body.size());
-        while (!text.empty() && text.back() == '\0')
-            text.pop_back();
-        return text;
+        // 没有字符集前缀时正文也可能是 UTF-16（个别写入器不写前缀）：只有按单字节
+        // 读出来确实坏掉（中段出现 0x00）才改按 UTF-16 解，正常 ASCII/UTF-8 不受影响
+        if (text.find('\0') != std::string::npos && looksLikeUtf16(body))
+            return trimNuls(utf16ToUtf8(body, preferBigEndian));
+
+        return trimNuls(std::move(text));
     }
 
 } // namespace
@@ -326,7 +375,7 @@ namespace {
 
 }
 
-std::string ExifParse::exifDataToString(wstring_view path, const Exiv2::ExifData& exifData) {
+std::string ExifParse::exifDataToString(wstring_view path, const Exiv2::ExifData& exifData, Exiv2::ByteOrder byteOrder) {
     if (exifData.empty()) {
         JARK_LOG("No EXIF data {}", jarkUtils::wstringToUtf8(path));
         return "";
@@ -491,7 +540,7 @@ std::string ExifParse::exifDataToString(wstring_view path, const Exiv2::ExifData
             }
         }
         else if (isUserCommentTag(tagName)) { // 可能包含 AI 生图提示词
-            tagValue = decodeUserCommentValue(tag.value(), Exiv2::ByteOrder::bigEndian);
+            tagValue = decodeUserCommentValue(tag.value(), byteOrder);
 
             if (const auto promptText = jark::formatAiPromptText(tagValue); !promptText.empty())
                 tagValue = promptText;
@@ -572,7 +621,7 @@ ExifParse::Detail ExifParse::getExifDetail(wstring_view path, const uint8_t* buf
         auto image = Exiv2::ImageFactory::open(buf, fileSize);
         image->readMetadata();
 
-        auto exifStr = exifDataToString(path, image->exifData());
+        auto exifStr = exifDataToString(path, image->exifData(), image->byteOrder());
         auto xmpStr = xmpDataToString(path, image->xmpData());
         auto iptcStr = iptcDataToString(path, image->iptcData());
 

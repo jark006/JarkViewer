@@ -982,6 +982,132 @@ namespace {
         return report;
     }
 
+    // Exif UserComment 编码自检：AI 生图工具把提示词塞在 UserComment 里，各自的编码五花八门
+    // （UNICODE 前缀 + UTF-16 大端/小端、带不带 BOM、ASCII 前缀、无前缀 UTF-8/UTF-16、
+    // 8 个 0 前缀）。只按固定端序解，ASCII 提示词会整段变成汉字（"hyperdetailed" -> "栀礀瀀攀爀"）。
+    // 这里现造最小 JPEG（SOI + APP1 + EOI），逐个断言解出来的文本。
+    std::string runExifTest() {
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, std::string_view name, std::string_view got) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}{}\n", ok ? "ok" : "FAIL", name,
+                ok ? std::string() : std::format("（解出来是：{}）", got));
+        };
+
+        const std::string english = "hyperdetailed ultra-detailed realistic, dark shot, rtx";
+        const std::string chinese = "雾中古塔，水墨风格，极致细节，No.0123456789";
+
+        const auto utf16 = [](const std::string& utf8, bool bigEndian, bool withBom) {
+            std::vector<uint8_t> out;
+            if (withBom) {
+                out.push_back(bigEndian ? 0xFE : 0xFF);
+                out.push_back(bigEndian ? 0xFF : 0xFE);
+            }
+            // 输入是 ASCII / UTF-8：这里只做测试用，中文按 UTF-8 切码位再转 UTF-16
+            for (size_t i = 0; i < utf8.size();) {
+                uint32_t code = static_cast<uint8_t>(utf8[i]);
+                size_t length = 1;
+                if (code >= 0xF0) { code &= 0x07; length = 4; }
+                else if (code >= 0xE0) { code &= 0x0F; length = 3; }
+                else if (code >= 0xC0) { code &= 0x1F; length = 2; }
+                for (size_t k = 1; k < length && i + k < utf8.size(); ++k)
+                    code = (code << 6) | (static_cast<uint8_t>(utf8[i + k]) & 0x3F);
+                i += length;
+                if (bigEndian) {
+                    out.push_back(static_cast<uint8_t>(code >> 8));
+                    out.push_back(static_cast<uint8_t>(code & 0xFF));
+                }
+                else {
+                    out.push_back(static_cast<uint8_t>(code & 0xFF));
+                    out.push_back(static_cast<uint8_t>(code >> 8));
+                }
+            }
+            return out;
+        };
+
+        // 最小 JPEG：SOI + APP1(Exif) + EOI；UserComment 直接放 IFD0
+        const auto makeJpeg = [](const std::vector<uint8_t>& body, bool bigEndianTiff) {
+            std::vector<uint8_t> tiff;
+            const auto u16 = [&](uint16_t v) {
+                tiff.push_back(static_cast<uint8_t>(bigEndianTiff ? v >> 8 : v & 0xFF));
+                tiff.push_back(static_cast<uint8_t>(bigEndianTiff ? v & 0xFF : v >> 8));
+            };
+            const auto u32 = [&](uint32_t v) {
+                for (int shift : { bigEndianTiff ? 24 : 0, bigEndianTiff ? 16 : 8,
+                                   bigEndianTiff ? 8 : 16, bigEndianTiff ? 0 : 24 })
+                    tiff.push_back(static_cast<uint8_t>((v >> shift) & 0xFF));
+            };
+            tiff.push_back(bigEndianTiff ? 'M' : 'I');
+            tiff.push_back(bigEndianTiff ? 'M' : 'I');
+            u16(42);
+            u32(8);              // IFD0 偏移
+            u16(1);              // 条目数
+            u16(0x9286);         // UserComment
+            u16(7);              // UNDEFINED
+            u32(static_cast<uint32_t>(body.size()));
+            u32(8 + 2 + 12 + 4); // 正文偏移：目录(2) + 一项(12) + next IFD(4)
+            u32(0);              // 没有下一个 IFD
+            tiff.insert(tiff.end(), body.begin(), body.end());
+
+            std::vector<uint8_t> app1{ 'E', 'x', 'i', 'f', 0, 0 };
+            app1.insert(app1.end(), tiff.begin(), tiff.end());
+
+            std::vector<uint8_t> jpeg{ 0xFF, 0xD8, 0xFF, 0xE1 };
+            const uint16_t segmentLength = static_cast<uint16_t>(app1.size() + 2);
+            jpeg.push_back(static_cast<uint8_t>(segmentLength >> 8));
+            jpeg.push_back(static_cast<uint8_t>(segmentLength & 0xFF));
+            jpeg.insert(jpeg.end(), app1.begin(), app1.end());
+            jpeg.push_back(0xFF);
+            jpeg.push_back(0xD9);
+            return jpeg;
+        };
+
+        const auto prefix = [](const char* code) {
+            std::vector<uint8_t> out(8, 0);
+            std::memcpy(out.data(), code, std::strlen(code));
+            return out;
+        };
+        const auto text = [&](const std::string& s) {
+            std::vector<uint8_t> out(s.begin(), s.end());
+            return out;
+        };
+        const auto concat = [](std::vector<uint8_t> head, const std::vector<uint8_t>& tail) {
+            head.insert(head.end(), tail.begin(), tail.end());
+            return head;
+        };
+
+        const auto decode = [&](const std::vector<uint8_t>& body, bool bigEndianTiff,
+            const std::string& name, const std::string& expected) {
+            const auto jpeg = makeJpeg(body, bigEndianTiff);
+            const std::string decoded = ExifParse::getExif(L"uc-test.jpg", jpeg.data(), jpeg.size());
+            check(decoded.find(expected) != std::string::npos, name,
+                decoded.substr(0, 60));
+        };
+
+        decode(concat(prefix("UNICODE"), utf16(english, false, false)), false,
+            "UNICODE 前缀 + UTF-16LE（无 BOM）", english);
+        decode(concat(prefix("UNICODE"), utf16(english, true, false)), false,
+            "UNICODE 前缀 + UTF-16BE（无 BOM）", english);
+        decode(concat(prefix("UNICODE"), utf16(english, false, true)), false,
+            "UNICODE 前缀 + UTF-16LE + BOM", english);
+        decode(concat(prefix("UNICODE"), utf16(english, true, true)), true,
+            "UNICODE 前缀 + UTF-16BE + BOM", english);
+        decode(concat(prefix("UNICODE"), utf16(chinese, false, false)), false,
+            "UNICODE 前缀 + 中文 UTF-16LE", chinese);
+        decode(concat(prefix("UNICODE"), utf16(chinese, true, false)), true,
+            "UNICODE 前缀 + 中文 UTF-16BE", chinese);
+        decode(concat(prefix("ASCII"), text(english)), false,
+            "ASCII 前缀 + 单字节正文", english);
+        decode(text(chinese), false, "无前缀 + UTF-8 正文", chinese);
+        decode(utf16(chinese, false, false), false, "无前缀 + 中文 UTF-16LE", chinese);
+        decode(concat(std::vector<uint8_t>(8, 0), text(english)), false,
+            "8 个 0 前缀（未指定字符集）+ 单字节正文", english);
+
+        report = std::format("---- Exif 自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
+        return report;
+    }
+
     // 文件列表排序自检：造三个文件，使名称序、修改时间序、大小序互不相同，
     // 逐个排序方式断言顺序，并验证"当前图片"的下标能跟着重排走。
     std::string runSortTest() {
@@ -1078,6 +1204,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool shellThumbnailTest = false;
     bool vectorTest = false;
     bool sortTest = false;
+    bool exifTest = false;
     int thumbnailWriter = -1;
     std::wstring annotateOutDir;
     jark::BatchOptions batchOptions;
@@ -1116,6 +1243,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--sort-test") {
             sortTest = true;
+            continue;
+        }
+        if (argv[i] == L"--exif-test") {
+            exifTest = true;
             continue;
         }
         if (argv[i] == L"--thumbnail-writer" && i + 1 < argv.size()) {
@@ -1235,7 +1366,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !thumbnailTest && !vectorTest && !sortTest && thumbnailWriter < 0) {
+    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -1264,6 +1395,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (sortTest) {
         const auto text = runSortTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (exifTest) {
+        const auto text = runExifTest();
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

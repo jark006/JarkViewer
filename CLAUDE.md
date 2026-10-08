@@ -42,6 +42,9 @@ python tools/gen_testdata.py <输出目录>
 # 文件列表排序自检（名称自然序 / 修改时间 / 文件大小，以及当前图片下标跟随重排）
 ./x64/Release/JarkViewer.exe --probe --sort-test
 
+# Exif UserComment 编码自检（AI 生图提示词的 UNICODE/ASCII/无前缀 × UTF-16 大小端/BOM/中文）
+./x64/Release/JarkViewer.exe --probe --exif-test
+
 # 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
 ./x64/Release/JarkViewer.exe --probe --navigation-test
 ./x64/Release/JarkViewer.exe --probe --thumbnail-test [--out-dir 临时目录]
@@ -236,6 +239,7 @@ pwsh tools/verify_source_invariant_checks.ps1
   **放大超过 4096 上限后按可视区域出高清块**（`VECTOR_DETAIL_MAX_EDGE` / `VectorImage::detailFrame`）：全幅位图（鸟瞰、缩略图、打印/批处理仍用它）已经榨不出细节，这时用 `renderVectorImageRegion()` 只光栅化当前可视区域+25% 余量（`VectorImage.cpp` 把"文档→旋转后名义空间"的仿射系数写进 `Document::render(bitmap, matrix)` 的矩阵里一次完成，所以位图直接就是旋转后的名义空间，取样不必再套旋转）。`CanvasRenderer` 侧只多了 `ViewState::sourceLeft/Top/Width/Height`（归一化区域）与 `sourcePreRotated`：采样原点按区域左上角平移、采样密度按"位图像素 / 该区域的名义像素"算，元素级循环一行没改。**复用判断只看可视区域（不含余量）**，否则余量会被逐帧的微小移动吃掉、每帧重光栅化；可视区域跑出旧块外的那一帧退回全幅位图（糊但不缺块），稳定后自动重出。切图时释放上一张的高清块（`lastDetailVector_`），避免 LRU 里每张 SVG 各攒几十 MB。
 - `JarkViewer/include/jarkUtils.h` 与 `JarkViewer/src/jarkUtils.cpp` 集中放置 Win32/OpenCV 工具、主题/设置全局状态、剪贴板、全屏、资源读取、文件操作和日志。
 - `JarkViewer/src/TextRenderer.cpp`、`stringRes.cpp`、`exifParse.cpp`、`videoDecoder.cpp`、`blpDecoder.cpp` 分别支撑图像文字渲染、多语言字符串、元数据解析、视频帧解码和 BLP 解码。EXIF 数值的**摄影写法**（曝光时间 `1/60 s`、光圈 `f/2.8`、焦距 `89.9 mm`、曝光补偿 `+1/3 EV`、ISO、方向翻词）由 `exifParse.cpp` 的 `formatExifValue()` 负责：按**标签号**判定（不依赖落在哪个 IFD）、只翻认得的标签，认不得的返回空串退回通用显示（厂商私有标签照规范翻会翻出错的词）；曝光时间的分母按值重算，不能照搬 EXIF 里存的分母（尼康把 1/60 存成 10/600）。
+  **Exif UserComment 的编码不能靠猜固定端序**：AI 生图工具（A1111/ComfyUI/Fooocus…）把提示词、参数甚至整份 ComfyUI 工作流 JSON 塞进这个标签，正文是 8 字节字符集码（`UNICODE\0` / `ASCII\0\0\0` / `JIS\0\0\0\0\0` / 8 个 0 = 未指定）之后跟正文，**UNICODE 的 UTF-16 不强制带 BOM**，大小端都有；而且 Exiv2 回吐的字节序不一定等于文件 TIFF 头（实测 `II` 文件也可能拿到小端）。早先按 `bigEndian` 硬解，ASCII 提示词会被整段解成"低字节恒为 0"的汉字（`hyperdetailed` → `栀礀瀀攀爀`）。现在 `utf16ToUtf8()` 先认 BOM，没有 BOM 就两种端序都解、用 `textPlausibility()` 打分（可打印 ASCII 加分，控制字符与 `(c & 0xFF) == 0` 的高位字符扣分）挑更像话的那个，难分伯仲时才用调用者给的文件字节序；无前缀正文若中段出现 0x00（按单字节读明显坏掉）再按 UTF-16 补解，首尾的 0 一律去掉。文件字节序经 `getExifDetail` → `exifDataToString(path, exifData, image->byteOrder())` 传进来。`--probe --exif-test` 用现造的最小 JPEG（SOI+APP1+EOI）覆盖各种编码组合。
 
 ## 代码约定
 

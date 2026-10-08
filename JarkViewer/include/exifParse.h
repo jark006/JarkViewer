@@ -18,7 +18,8 @@ public:
     static std::string getSimpleInfo(std::wstring_view path, int width, int height, const uint8_t* buf, size_t fileSize);
     static std::string handleMathDiv(std::string_view str);
     static int jpegQualityFromBytes(std::span<const uint8_t> buf); // JPEG 质量因子（量化表反推，0=未知）
-    static std::string exifDataToString(std::wstring_view path, const Exiv2::ExifData& exifData);
+    static std::string exifDataToString(std::wstring_view path, const Exiv2::ExifData& exifData,
+        Exiv2::ByteOrder byteOrder = Exiv2::ByteOrder::invalidByteOrder);
     static std::string xmpDataToString(std::wstring_view path, const Exiv2::XmpData& xmpData);
     static std::string iptcDataToString(std::wstring_view path, const Exiv2::IptcData& IptcData);
     static Detail getExifDetail(std::wstring_view path, const uint8_t* buf, size_t fileSize);
