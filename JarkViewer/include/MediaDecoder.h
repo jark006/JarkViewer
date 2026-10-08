@@ -37,8 +37,14 @@ class MediaDecoder {
 public:
     ~MediaDecoder();
 
+    // 只解某一路流：视频与音频各自需要独立的解复用进度时才开两个实例
+    // （两个实例各读一遍同一段内存，被排除那一路的包只解复用不送去解码）。
+    // 见 MediaPlayer 为什么要拆成两个线程：视频要按播放进度背压，音频必须永远跑在前面。
+    enum class StreamFilter { Both, VideoOnly, AudioOnly };
+
     // 打开内存中的媒体数据；失败返回 nullptr
-    static std::unique_ptr<MediaDecoder> open(std::span<const uint8_t> data);
+    static std::unique_ptr<MediaDecoder> open(std::span<const uint8_t> data,
+        StreamFilter filter = StreamFilter::Both);
 
     const MediaInfo& info() const noexcept { return info_; }
 

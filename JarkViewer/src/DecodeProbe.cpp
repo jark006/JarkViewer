@@ -732,6 +732,208 @@ namespace {
         return report;
     }
 
+    // 实时播放自检：把"播放卡不卡"变成数字。
+    // 主循环每帧调一次 MediaPlayer::acquireFrame()，这里照做（定时轮询），
+    // 统计交付间隔、交付率、播放时钟是否按 1 倍速推进、时钟最长停滞——
+    // "画面卡顿 + 声音一卡一卡"在界面上只能靠眼睛看，看不出是解码、队列还是时钟的问题。
+    // 关键不变式：**播放时钟必须按 1 倍速推进**。音频时钟一停，取帧判定就不再满足，
+    // 画面也跟着停——两者是同一个故障，不是两个。
+    std::string runPlaybackTest(const std::vector<std::wstring>& targets) {
+        std::string report;
+        int passed = 0, failed = 0, skipped = 0;
+        const auto check = [&](bool ok, const std::string& name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+
+        for (const auto& path : targets) {
+            report += std::format("---- {} ----\n", utf8(std::filesystem::path(path).filename().wstring()));
+
+            std::vector<uint8_t> container;
+            {
+                std::ifstream file(path, std::ios::binary | std::ios::ate);
+                if (!file.is_open()) {
+                    report += "无法读取该文件\n";
+                    ++failed;
+                    continue;
+                }
+                const auto size = static_cast<size_t>(file.tellg());
+                file.seekg(0);
+                container.resize(size);
+                file.read(reinterpret_cast<char*>(container.data()), static_cast<std::streamsize>(size));
+            }
+
+            // 实况照片/动图的视频字节藏在容器里，要按查看器的方式取出来；
+            // 直接打开的视频文件本身就是媒体数据。mediaBytes 要活得比播放器久
+            // （MediaDecoder 只持指针不拷贝）。
+            // 注意不能用"直接拿整个文件去解"来试探：JPEG 单帧会被 FFmpeg 当 MJPEG 视频收下，
+            // 于是实况照片的静态图被误当成整段视频（时长 0、无音频）。按嗅探结果路由。
+            std::vector<uint8_t> head;
+            const bool isVideoFile = !readHead(path, head, 1u << 20).empty() &&
+                sniffFileFormat(head) == FileFormat::Video;
+
+            std::vector<uint8_t> mediaBytes;
+            if (isVideoFile) {
+                mediaBytes = std::move(container);
+            }
+            else {
+                ImageDatabase database;
+                auto asset = database.loader(path);
+                if (asset.videoSource && !asset.videoSource->data.empty())
+                    mediaBytes = asset.videoSource->data;
+            }
+
+            auto probeDecoder = MediaDecoder::open(mediaBytes);
+            if (!probeDecoder || !probeDecoder->info().hasVideo) {
+                // 查看器自己也取不出视频流（如 HEIC 里靠 trailer 塞的实况照片）：
+                // 这不是播放性能问题，记一笔跳过、但把文件名留在报告里
+                report += "跳过：没有可播放的媒体流\n";
+                ++skipped;
+                continue;
+            }
+
+            const auto info = probeDecoder->info();
+            probeDecoder.reset();
+
+            if (info.durationMs <= 0 || info.frameRate <= 0.0) {
+                report += std::format("时长/帧率不可知（时长 {}ms 帧率 {:.2f}），无法判定播放节奏\n",
+                    info.durationMs, info.frameRate);
+                ++failed;
+                continue;
+            }
+
+            // 预扫一遍：期望帧数必须来自"这段媒体到底有多少帧"，不能按 fps×时长估算
+            // （估出来的数会随帧率有零头，交付率就没法当断言用）；顺便看清楚音轨到底有多长——
+            // 播放时钟由音频队列驱动，音轨比视频短的话时钟会提前停住
+            size_t expectedFrames = 0;
+            int64_t videoEndMs = 0;
+            int64_t audioEndMs = 0;
+            {
+                MediaDecoder::Chunk chunk;
+                if (auto scan = MediaDecoder::open(mediaBytes, MediaDecoder::StreamFilter::VideoOnly)) {
+                    while (scan->readNext(chunk)) {
+                        if (chunk.type == MediaDecoder::Chunk::Type::Video && !chunk.video.empty()) {
+                            ++expectedFrames;
+                            videoEndMs = chunk.ptsMs;
+                        }
+                    }
+                }
+                if (auto scan = MediaDecoder::open(mediaBytes, MediaDecoder::StreamFilter::AudioOnly)) {
+                    while (scan->readNext(chunk)) {
+                        if (chunk.type == MediaDecoder::Chunk::Type::Audio && !chunk.audio.empty()) {
+                            audioEndMs = chunk.ptsMs + static_cast<int64_t>(chunk.audio.size()) /
+                                MediaDecoder::kOutputChannels * 1000 / MediaDecoder::kOutputSampleRate;
+                        }
+                    }
+                }
+            }
+            report += std::format("预扫: {} 帧 视频结束 {}ms 音频结束 {}ms\n",
+                expectedFrames, videoEndMs, audioEndMs);
+
+            const double frameMs = info.frameRate > 0.0 ? 1000.0 / info.frameRate : 40.0;
+            report += std::format("媒体: 显示 {}x{} fps={:.2f} 音频={} 时长={}ms 单帧={:.1f}ms\n",
+                info.displayWidth(), info.displayHeight(), info.frameRate, info.hasAudio, info.durationMs, frameMs);
+
+            auto player = MediaPlayer::create();
+            if (!player || !player->start(mediaBytes, 0.0f)) {
+                report += "播放启动失败\n";
+                ++failed;
+                continue;
+            }
+
+            std::vector<double> gaps;
+            double lastDeliver = -1.0;
+            int64_t lastClock = 0;
+            double lastClockChange = 0.0;
+            double maxStall = 0.0;
+            double maxGap = 0.0;
+            double totalGap = 0.0;
+            int frames = 0;
+
+            const auto begin = std::chrono::steady_clock::now();
+            const auto elapsedMs = [&] {
+                return std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - begin).count();
+            };
+            const double deadline = info.durationMs * 2.0 + 3000.0;
+
+            while (true) {
+                const double now = elapsedMs();
+
+                cv::Mat frame;
+                if (player->acquireFrame(frame)) {
+                    if (lastDeliver >= 0.0) {
+                        gaps.push_back(now - lastDeliver);
+                        maxGap = (std::max)(maxGap, gaps.back());
+                        totalGap += gaps.back();
+                    }
+                    lastDeliver = now;
+                    ++frames;
+                }
+
+                // 时钟停滞算到播放结束为止：结束后时钟本来就不再前进
+                if (now <= info.durationMs + 200.0) {
+                    const int64_t clock = player->positionMs();
+                    if (clock != lastClock) {
+                        lastClock = clock;
+                        lastClockChange = now;
+                    }
+                    else {
+                        maxStall = (std::max)(maxStall, now - lastClockChange);
+                    }
+                }
+
+                if (player->hasFinished())
+                    break;
+                if (now > deadline)
+                    break;
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(3));
+            }
+
+            const double totalMs = elapsedMs();
+            const int64_t clockEnd = player->positionMs();
+            const double clockRatio = info.durationMs > 0
+                ? static_cast<double>(clockEnd) / info.durationMs : 0.0;
+            player->stop();
+
+            const double delivered = expectedFrames > 0
+                ? static_cast<double>(frames) / static_cast<double>(expectedFrames) : 0.0;
+
+            // 交付间隔：中位数（偶数个取偏小的那个）——卡顿看不出来就靠它
+            std::vector<double> sorted = gaps;
+            std::sort(sorted.begin(), sorted.end());
+            const double medianGap = sorted.empty() ? 0.0 : sorted[sorted.size() / 2];
+
+            report += std::format(
+                "结果: 交付 {}/{} 帧 ({:.0f}%) 间隔 中位 {:.1f}ms 平均 {:.1f}ms 最大 {:.1f}ms | "
+                "时钟 {:.3f} 倍速 最大停滞 {:.0f}ms | 播放用时 {:.0f}ms (媒体 {}ms)\n",
+                frames, expectedFrames, delivered * 100.0,
+                medianGap, gaps.empty() ? 0.0 : totalGap / gaps.size(), maxGap,
+                clockRatio, maxStall, totalMs, info.durationMs);
+
+            check(delivered >= 0.85,
+                std::format("交付率 {:.0f}% ≥ 85%", delivered * 100.0));
+            check(medianGap <= (std::max)(1.6 * frameMs, 50.0),
+                std::format("交付间隔中位数 {:.1f}ms ≤ {:.0f}ms（约 1.6 帧）", medianGap, (std::max)(1.6 * frameMs, 50.0)));
+            check(maxGap <= (std::max)(6.0 * frameMs, 250.0),
+                std::format("最大交付间隔 {:.0f}ms ≤ {:.0f}ms", maxGap, (std::max)(6.0 * frameMs, 250.0)));
+            check(totalMs <= info.durationMs * 1.2 + 500.0,
+                std::format("总用时 {:.0f}ms ≤ {}ms（不能慢放）", totalMs, static_cast<int64_t>(info.durationMs * 1.2 + 500.0)));
+
+            // 音频时钟直接决定声卡是否饿死：它停下就是"声音一卡一卡 + 画面跟着停"
+            if (info.hasAudio) {
+                check(std::abs(clockRatio - 1.0) <= 0.1,
+                    std::format("播放时钟 {:.3f} 倍速（应在 1.0 附近）", clockRatio));
+                check(maxStall <= 100.0,
+                    std::format("时钟最大停滞 {:.0f}ms ≤ 100ms", maxStall));
+            }
+        }
+
+        report += std::format("---- playback: {} ok, {} failed, {} skipped ----\n", passed, failed, skipped);
+        return report;
+    }
+
     // 色彩管理自检：源与目标同为 sRGB 时变换是恒等的（跳过可省几百毫秒），大图按行并行——
     // 这两类改动出错不会崩也不会报错，只是颜色悄悄变了，必须用像素断言钉住。
     std::string runColorTest() {
@@ -1228,6 +1430,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     std::wstring reportPath = L"decode-probe.txt";
     bool fullExif = false;
     bool audioTest = false;
+    bool playbackTest = false;
     bool languageTest = false;
     bool batchTest = false;
     bool annotateTest = false;
@@ -1252,6 +1455,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--audio-test") {
             audioTest = true;
+            continue;
+        }
+        if (argv[i] == L"--playback-test") {
+            playbackTest = true;
             continue;
         }
         if (argv[i] == L"--lang-test") {
@@ -1487,6 +1694,12 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         const auto text = runAudioTest(targets.front());
         emit(text);
         return text.find("比值") == std::string::npos ? 1 : 0;
+    }
+
+    if (playbackTest) {
+        const auto text = runPlaybackTest(targets);
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
     }
 
     ImageDatabase imageDatabase;

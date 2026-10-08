@@ -25,6 +25,13 @@ public:
     // 已提交但尚未播完的样本帧数
     int64_t queuedFrames() const noexcept;
 
+    // 已提交但尚未播完的缓冲区个数。XAudio2 对单个 source voice 最多只接受
+    // XAUDIO2_MAX_QUEUED_BUFFERS(64) 个排队缓冲区，再多 SubmitSourceBuffer 直接失败
+    // （XAUDIO2_E_INVALID_CALL）——按"缓冲区个数"限流才拦得住，按样本数拦不住：
+    // 一个 21ms 的音频批 × 64 就已经到顶了。调用会顺手回收已播完的缓冲区记录。
+    // 只能由提交音频的那个线程调用（与 submit 同源）。
+    size_t queuedBuffers();
+
     // 音量 0.0 ~ 1.0
     void setVolume(float volume) noexcept;
 
@@ -32,6 +39,9 @@ public:
 
     // 最多缓存 2 秒音频，避免解码过快占用内存
     static constexpr int64_t kMaxQueuedFrames = 96000;
+
+    // 排队缓冲区个数上限，留给 64 的硬限制一段余量（提交失败会整段声音丢失）
+    static constexpr size_t kMaxQueuedBuffers = 48;
 
 private:
     AudioOutput();

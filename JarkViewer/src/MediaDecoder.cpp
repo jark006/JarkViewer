@@ -209,7 +209,7 @@ MediaDecoder::MediaDecoder() : impl_(std::make_unique<Impl>()) {}
 
 MediaDecoder::~MediaDecoder() = default;
 
-std::unique_ptr<MediaDecoder> MediaDecoder::open(std::span<const uint8_t> data) {
+std::unique_ptr<MediaDecoder> MediaDecoder::open(std::span<const uint8_t> data, StreamFilter filter) {
     if (data.empty() || data.size() > static_cast<size_t>((std::numeric_limits<int64_t>::max)()))
         return nullptr;
 
@@ -254,6 +254,13 @@ std::unique_ptr<MediaDecoder> MediaDecoder::open(std::span<const uint8_t> data) 
 
     impl.videoStreamIndex = av_find_best_stream(impl.formatContext.get(), AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     impl.audioStreamIndex = av_find_best_stream(impl.formatContext.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+
+    // 按过滤条件把不要的那一路当作"没有"：不打开它的解码器，readNext 里也就不会
+    // 把它的包送去解码（解复用仍要按文件顺序读过去，只是不花钱解码）
+    if (filter == StreamFilter::VideoOnly)
+        impl.audioStreamIndex = -1;
+    else if (filter == StreamFilter::AudioOnly)
+        impl.videoStreamIndex = -1;
 
     const auto openCodec = [&](int streamIndex) -> CodecContextPtr {
         if (streamIndex < 0)

@@ -71,6 +71,7 @@ struct AudioOutput::Impl {
     int channels = 2;
     std::atomic<int64_t> submittedFrames{ 0 };
     bool started = false;
+    bool submitFailureLogged = false;
 
     // 回收已完成（或已冲掉）的缓冲区，只能由提交线程调用
     void reclaimBuffers(bool reclaimAll) {
@@ -169,7 +170,11 @@ bool AudioOutput::submit(std::span<const int16_t> samples) {
 
     const HRESULT hr = impl_->sourceVoice->SubmitSourceBuffer(&audioBuffer);
     if (FAILED(hr)) {
-        JARK_LOG("SubmitSourceBuffer failed: {}", hresultToText(hr));
+        // 调用方会重试，日志只留第一次，免得刷屏
+        if (!impl_->submitFailureLogged) {
+            impl_->submitFailureLogged = true;
+            JARK_LOG("SubmitSourceBuffer failed: {}", hresultToText(hr));
+        }
         std::lock_guard<std::mutex> lock(impl_->pendingMutex);
         impl_->pendingBuffers.erase(buffer.get());
         return false;
@@ -198,6 +203,14 @@ int64_t AudioOutput::playedFrames() const noexcept {
 int64_t AudioOutput::queuedFrames() const noexcept {
     const int64_t queued = impl_->submittedFrames.load() - playedFrames();
     return queued > 0 ? queued : 0;
+}
+
+size_t AudioOutput::queuedBuffers() {
+    // 先把已经播完的记号清掉，剩下的才是真正还挂在 XAudio2 队列里的
+    impl_->reclaimBuffers(false);
+
+    std::lock_guard<std::mutex> lock(impl_->pendingMutex);
+    return impl_->pendingBuffers.size();
 }
 
 void AudioOutput::setVolume(float volume) noexcept {
