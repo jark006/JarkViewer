@@ -16,9 +16,12 @@
 #include "VectorImage.h"
 
 #include <intrin.h>
+#include <algorithm>
+#include <cstring>
 #include <cwctype>
 #include <limits>
 #include <memory>
+#include <string_view>
 #pragma intrinsic(_BitScanForward)
 
 class ScopedComApartment {
@@ -2724,7 +2727,7 @@ cv::Mat ImageDatabase::loadBLP(std::wstring_view path, std::span<const uint8_t> 
     return {};
 }
 
-static std::tuple<std::vector<uint8_t>, std::vector<uint8_t>, std::string> unzipLivp(std::span<const uint8_t> livpFileBuff) {
+static std::tuple<std::vector<uint8_t>, std::vector<uint8_t>, std::string, std::string> unzipLivp(std::span<const uint8_t> livpFileBuff) {
     zlib_filefunc_def memory_filefunc;
     memset(&memory_filefunc, 0, sizeof(zlib_filefunc_def));
 
@@ -2805,6 +2808,7 @@ static std::tuple<std::vector<uint8_t>, std::vector<uint8_t>, std::string> unzip
     std::vector<uint8_t> image_data;
     std::vector<uint8_t> video_data;
     std::string imgExt;
+    std::string videoExt;
 
     do {
         unz_file_info file_info;
@@ -2854,12 +2858,15 @@ static std::tuple<std::vector<uint8_t>, std::vector<uint8_t>, std::string> unzip
             if (bytes_read <= 0 || static_cast<uLong>(bytes_read) != file_info.uncompressed_size) {
                 video_data.clear();
             }
+            else {
+                videoExt = file_name.ends_with("mov") ? "mov" : "mp4";
+            }
         }
     } while (unzGoToNextFile(zipfile) == UNZ_OK);
 
     unzClose(zipfile);
 
-    return { image_data, video_data, imgExt };
+    return { image_data, video_data, imgExt, videoExt };
 }
 
 
@@ -2896,7 +2903,7 @@ void ImageDatabase::handleExifOrientation(int orientation, cv::Mat& img) {
 
 // 苹果实况照片
 ImageAsset ImageDatabase::loadLivp(wstring_view path, std::span<const uint8_t> fileBuf) {
-    auto [imageFileData, videoFileData, imageExt] = unzipLivp(fileBuf);
+    auto [imageFileData, videoFileData, imageExt, videoExt] = unzipLivp(fileBuf);
     if (imageFileData.empty()) {
         auto exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
         return { ImageFormat::None, {}, {}, {}, exifInfo };
@@ -2929,6 +2936,7 @@ ImageAsset ImageDatabase::loadLivp(wstring_view path, std::span<const uint8_t> f
     imageAsset.orientation = imageOrientation;
     auto videoSource = std::make_shared<jark::VideoSource>();
     videoSource->data = std::move(videoFileData);
+    videoSource->extension = jarkUtils::utf8ToWstring(videoExt); // zip 里的条目名，导出时保持原样
     imageAsset.videoSource = std::move(videoSource);
 
     if (GlobalVar::settingParameter.enableColorManagement) {
@@ -2996,16 +3004,26 @@ static std::vector<std::wstring> getVideoCandidatePaths(std::wstring_view imageP
     };
 }
 
+// 同目录同名侧车视频（苹果/VIVO 等）
+struct SidecarVideo {
+    std::vector<uint8_t> data;
+    std::wstring extension;
+};
+
 // 苹果/VIVO 等把视频放在同目录同名文件里：读取其字节交给播放器
-static std::vector<uint8_t> readMotionPhotoSidecarVideoBytes(wstring_view path) {
+static SidecarVideo readMotionPhotoSidecarVideo(wstring_view path) {
     for (const auto& videoPath : getVideoCandidatePaths(path)) {
         auto fileReader = MappedFileReader(videoPath);
         if (fileReader.isEmpty())
             continue;
 
         const auto videoBuf = fileReader.view();
-        if (videoBuf.size() >= MIN_VIDEO_BUFF_SIZE)
-            return std::vector<uint8_t>(videoBuf.begin(), videoBuf.end());
+        if (videoBuf.size() >= MIN_VIDEO_BUFF_SIZE) {
+            SidecarVideo sidecar;
+            sidecar.data.assign(videoBuf.begin(), videoBuf.end());
+            sidecar.extension = videoPath.substr(videoPath.find_last_of(L'.') + 1);
+            return sidecar;
+        }
     }
 
     return {};
@@ -3014,23 +3032,116 @@ static std::vector<uint8_t> readMotionPhotoSidecarVideoBytes(wstring_view path) 
 // 少数厂商导出（如 DJI）会在视频数据之后附加一小段尾部数据，视频因而不恰好结束于文件末尾：
 // 按「文件大小 - videoSize」反推会把起点挪进视频内部，MP4 里的采样偏移随之整体错位，
 // 表现为能识别出视频轨但解码全是乱码（Invalid NAL unit size）。
-// 在期望起点附近搜索合法的 MP4 首个 ftyp 盒（长度字段 8~4096 且不越界）定位真实起点，
+// MP4 起始盒判定：'ftyp' + 长度字段合理（8~4096）且不越界
+static bool isFtypBoxAt(std::span<const uint8_t> fileBuf, size_t pos) {
+    if (pos + 8 > fileBuf.size())
+        return false;
+    const uint8_t* p = fileBuf.data() + pos;
+    if (p[4] != 'f' || p[5] != 't' || p[6] != 'y' || p[7] != 'p')
+        return false;
+    const uint32_t boxSize =
+        (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+    return boxSize >= 8 && boxSize <= 4096 && pos + boxSize <= fileBuf.size();
+}
+
+// 在 [begin, end) 里找一段字节串，找不到返回 nullptr
+static const uint8_t* findBytes(const uint8_t* begin, const uint8_t* end, std::string_view needle) {
+    if (needle.empty() || static_cast<size_t>(end - begin) < needle.size())
+        return nullptr;
+
+    const uint8_t first = static_cast<uint8_t>(needle.front());
+    for (const uint8_t* pos = begin; static_cast<size_t>(end - pos) >= needle.size();) {
+        const uint8_t* hit = static_cast<const uint8_t*>(
+            memchr(pos, first, static_cast<size_t>(end - pos)));
+        if (!hit || static_cast<size_t>(end - hit) < needle.size())
+            return nullptr;
+        if (memcmp(hit, needle.data(), needle.size()) == 0)
+            return hit;
+        pos = hit + 1;
+    }
+    return nullptr;
+}
+
+// 正文里有没有实况照片标记。没有标记的文件不该走"尾部找视频"这条兜底路
+// （普通 HEIC 的盒结构本身就长得像 MP4，误判会把图像数据当成视频切出去）。
+static bool hasMotionPhotoMarker(std::span<const uint8_t> fileBuf) {
+    const uint8_t* begin = fileBuf.data();
+    const uint8_t* end = begin + fileBuf.size();
+    return findBytes(begin, end, "MotionPhoto_Data") != nullptr ||         // Samsung SEFT 尾部标记
+        findBytes(begin, end, "Item:Semantic=\"MotionPhoto\"") != nullptr || // Android/Samsung XMP
+        findBytes(begin, end, "GCamera:MotionPhoto=\"1\"") != nullptr;     // Android/Samsung XMP
+}
+
+// 尾部那段 MP4 是否真的成立：从候选起点按盒长一路走到（接近）文件尾，途中必须见到 moov
+// （索引不在就等于放不了），主体长度要够，末尾允许留一小段厂商尾块（如 Samsung SEFT）。
+static bool isTrailerMp4At(std::span<const uint8_t> fileBuf, size_t pos) {
+    const uint8_t* data = fileBuf.data();
+    const size_t fileSize = fileBuf.size();
+
+    const auto be32At = [&](size_t at) -> uint64_t {
+        return (uint64_t(data[at]) << 24) | (uint64_t(data[at + 1]) << 16) |
+            (uint64_t(data[at + 2]) << 8) | uint64_t(data[at + 3]);
+        };
+
+    size_t walk = pos;
+    bool hasMoov = false;
+    while (walk + 8 <= fileSize) {
+        uint64_t boxSize = be32At(walk);
+        if (boxSize == 0) { // 最后一个盒一直延伸到文件尾
+            walk = fileSize;
+            break;
+        }
+        if (boxSize == 1) { // 64 位长度
+            if (walk + 16 > fileSize)
+                break;
+            boxSize = (be32At(walk + 8) << 32) | be32At(walk + 12);
+        }
+        if (boxSize < 8 || boxSize > fileSize - walk)
+            break; // 盒越界：当成 MP4 到此结束，后面的厂商尾块不算
+        if (memcmp(data + walk + 4, "moov", 4) == 0)
+            hasMoov = true;
+        walk += static_cast<size_t>(boxSize);
+    }
+
+    constexpr size_t trailerSlack = 4096; // 允许的厂商尾块大小
+    return hasMoov && walk >= pos + MIN_VIDEO_BUFF_SIZE && fileSize - walk <= trailerSlack;
+}
+
+// XMP 里的视频长度缺失或明显不当（实测 Samsung "mpv2 trailer" 型写成 68）时，改用"从尾部找 MP4"：
+// 扫描合法的 ftyp 盒，挑一个后面带 moov、主体走到文件尾的。找不到返回 0。
+static size_t locateTrailerMp4Start(std::span<const uint8_t> fileBuf) {
+    if (fileBuf.size() < MIN_VIDEO_BUFF_SIZE || !hasMotionPhotoMarker(fileBuf))
+        return 0;
+
+    for (size_t pos = 0; pos + 8 <= fileBuf.size(); ++pos) {
+        if (fileBuf.size() - pos < MIN_VIDEO_BUFF_SIZE)
+            break; // 剩余空间已不够装视频，往后更不够
+
+        if (!isFtypBoxAt(fileBuf, pos) || pos + 12 > fileBuf.size())
+            continue;
+
+        // HEIF/AVIF 自己的 ftyp 盒也满足上面的形状，按品牌排除掉
+        static constexpr std::string_view heifBrands[] = {
+            "heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1", "avif", "avis" };
+        const std::string_view brand(reinterpret_cast<const char*>(fileBuf.data() + pos + 8), 4);
+        if (std::ranges::find(heifBrands, brand) != std::end(heifBrands))
+            continue;
+
+        if (!isTrailerMp4At(fileBuf, pos))
+            continue;
+
+        JARK_LOG("MotionPhoto: trailer MP4 located at {} (size {})", pos, fileBuf.size() - pos);
+        return pos;
+    }
+    return 0;
+}
+
+// 在期望起点附近搜索合法的 MP4 首个 ftyp 盒定位真实起点，
 // 多个候选取离期望起点最近者；找不到时保持原起点（常规 Android 实况照片本就对齐）。
 static size_t locateMotionPhotoVideoStart(std::span<const uint8_t> fileBuf, size_t videoSize) {
     const size_t expectedStart = fileBuf.size() - videoSize;
 
-    const auto isFtypBoxAt = [&fileBuf](size_t pos) -> bool {
-        if (pos + 8 > fileBuf.size())
-            return false;
-        const uint8_t* p = fileBuf.data() + pos;
-        if (p[4] != 'f' || p[5] != 't' || p[6] != 'y' || p[7] != 'p')
-            return false;
-        const uint32_t boxSize =
-            (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
-        return boxSize >= 8 && boxSize <= 4096 && pos + boxSize <= fileBuf.size();
-    };
-
-    if (isFtypBoxAt(expectedStart))
+    if (isFtypBoxAt(fileBuf, expectedStart))
         return expectedStart;
 
     constexpr size_t searchRange = 8192;
@@ -3040,7 +3151,7 @@ static size_t locateMotionPhotoVideoStart(std::span<const uint8_t> fileBuf, size
     size_t bestStart = std::numeric_limits<size_t>::max();
     size_t bestDistance = std::numeric_limits<size_t>::max();
     for (size_t pos = searchBegin; pos <= searchEnd; pos++) {
-        if (!isFtypBoxAt(pos))
+        if (!isFtypBoxAt(fileBuf, pos))
             continue;
         const size_t distance = pos > expectedStart ? pos - expectedStart : expectedStart - pos;
         if (distance < bestDistance) {
@@ -3088,9 +3199,17 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
         const size_t videoStart = locateMotionPhotoVideoStart(fileBuf, videoSize);
         const size_t videoLength = (std::min)(videoSize, fileBuf.size() - videoStart);
         videoSource->data.assign(fileBuf.data() + videoStart, fileBuf.data() + videoStart + videoLength);
+        videoSource->extension = L"mp4";
     }
-    else if (auto sidecar = readMotionPhotoSidecarVideoBytes(path); !sidecar.empty()) {
-        videoSource->data = std::move(sidecar);
+    else if (auto sidecar = readMotionPhotoSidecarVideo(path); !sidecar.data.empty()) {
+        videoSource->data = std::move(sidecar.data);
+        videoSource->extension = std::move(sidecar.extension);
+    }
+    else if (const size_t trailerStart = locateTrailerMp4Start(fileBuf); trailerStart != 0) {
+        // 长度字段缺失或明显不当（Samsung "versionless / mpv2 trailer" 型）：
+        // 视频明明挂在文件尾部却整段用不上，实况照片会退化成静态图。
+        videoSource->data.assign(fileBuf.data() + trailerStart, fileBuf.data() + fileBuf.size());
+        videoSource->extension = L"mp4";
     }
 
     if (!videoSource->data.empty())
@@ -3179,6 +3298,7 @@ ImageAsset ImageDatabase::decodeByFormat(jark::FileFormat format, const wstring&
                     ImageAsset imageAsset{ ImageFormat::Still, std::move(firstFrame) };
                     auto videoSource = std::make_shared<jark::VideoSource>();
                     videoSource->data.assign(buf.begin(), buf.end());
+                    videoSource->extension = lowerExtension(path); // 导出时保持原扩展名
                     imageAsset.videoSource = std::move(videoSource);
                     applyExifInfo(imageAsset, path, buf, ExifPolicy::SimpleOnly);
                     return imageAsset;

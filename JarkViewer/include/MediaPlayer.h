@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string>
 
 #include <opencv2/opencv.hpp>
 
@@ -17,6 +18,9 @@ struct MediaInfo;
 // 单独定义便于 ImageAsset 只持有 shared_ptr 而不依赖 ffmpeg 头文件。
 struct VideoSource {
     std::vector<uint8_t> data;
+    // 原始容器扩展名（mp4/mov…），只用于「导出视频」时的默认落盘格式；
+    // 数据本身与它无关，播放器一律当内存字节流解复用。
+    std::wstring extension;
 };
 
 class MediaPlayer {

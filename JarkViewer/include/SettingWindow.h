@@ -147,6 +147,7 @@ private:
         // 勾选项排成 2 列（偶数下标在左列）。ImGui 没有等宽列：第二列起点取第一列
         // （偶数下标项）中最长文本的宽度，再补上勾选框本身（框宽 + 框与文本间距）和一个列间距。
         bool showNavigator = !parameter.hideNavigator;
+        bool smoothZoom = !parameter.disableZoomSmoothing;
         struct CheckItem {
             const char* label;
             bool* value;
@@ -161,6 +162,7 @@ private:
             { getUIString(171), &parameter.livePhotoAutoPlaySound }, // 实况自动播放声音（默认静音）
             { getUIString(kStrStopAtLast), &parameter.stopAtListEnd },          // 到最后一张停住
             { getUIString(kStrBlackFullscreen), &parameter.blackFullscreenBackground }, // 全屏纯黑背景
+            { getUIString(kStrSmoothZoom), &smoothZoom }, // 界面上是"平滑"，存储取反
         };
         float secondColumn = 0.0f;
         for (int index = 0; index < IM_ARRAYSIZE(checkItems); index += 2)
@@ -174,6 +176,7 @@ private:
             ImGui::Checkbox(checkItems[index].label, checkItems[index].value);
         }
         parameter.hideNavigator = !showNavigator; // 循环后同步回存储（✕ 收起鸟瞰也是写这个字段）
+        parameter.disableZoomSmoothing = !smoothZoom;
 
         ImGui::Spacing();
         drawRadioRow(20, { getUIString(21), getUIString(22), getUIString(23) }, &parameter.switchImageAnimationMode, 0);
@@ -518,6 +521,7 @@ private:
     static constexpr uint32_t kStrSortSize = 186;
     static constexpr uint32_t kStrStopAtLast = 187;
     static constexpr uint32_t kStrBlackFullscreen = 188;
+    static constexpr uint32_t kStrSmoothZoom = 189; // 缩放平滑插值（存储字段取反：disableZoomSmoothing）
     static constexpr uint32_t kStrNetdiskHint = 166;
     static constexpr uint32_t kStrAboutLinks = 167;
     static constexpr uint32_t kStrAboutIntro = 168;

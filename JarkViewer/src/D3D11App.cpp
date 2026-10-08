@@ -663,6 +663,12 @@ HMENU D3D11App::CreateContextMenu(HWND hwnd) {
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::copyImageInfo, getUIStringW(25));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::copyImagePath, getUIStringW(26));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::copyImageData, getUIStringW(27));
+
+    // 导出视频：实况照片/视频文件才有内嵌视频，其余情况置灰（不弹"没有视频"的框）。
+    // 菜单文案走**宽表**的 60（两张表的 ID 各自独立，别拿窄表的编号来查）。
+    const auto* app = reinterpret_cast<const D3D11App*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    const UINT exportFlags = MF_STRING | ((app && app->hasExportableVideo()) ? 0u : MF_GRAYED);
+    AppendMenuW(hMenu, exportFlags, (UINT_PTR)ContextMenu::exportVideo, getUIStringW(60));
     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
 
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::toggleExifDisplay, getUIStringW(28));

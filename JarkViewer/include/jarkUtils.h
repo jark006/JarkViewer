@@ -174,6 +174,10 @@ struct SettingParameter {
     uint32_t sortMode = 0;                  // 文件列表排序 0:名称(自然序) 1:修改时间(新→旧) 2:文件大小(大→小)
     bool stopAtListEnd = false;             // 浏览到最后/第一张时停住，不首尾循环（幻灯片同理）
     bool blackFullscreenBackground = false; // 全屏时画布用纯黑背景（默认为当前主题背景色）
+    // 关掉"画面静止后按显示分辨率平滑重采样"（放大 Lanczos / 缩小面积平均）。
+    // 取反命名：旧设置文件里这一字节是 0，默认就是开启平滑；勾选框显示 !disableZoomSmoothing。
+    // 占的是 blackFullscreenBackground 之后、reserve 对齐填充里的字节，结构体布局不变。
+    bool disableZoomSmoothing = false;
 
     uint32_t reserve[521]; // 原 800，依次划给 monitorDevice(64) + livePhotoAutoPlaySound(4) + 两个路径(2×520) + 排序与浏览开关(8)
 
@@ -266,6 +270,7 @@ static_assert(offsetof(SettingParameter, externalEditor) == 682);
 static_assert(offsetof(SettingParameter, sortMode) == 1204);
 static_assert(offsetof(SettingParameter, stopAtListEnd) == 1208);
 static_assert(offsetof(SettingParameter, blackFullscreenBackground) == 1209);
+static_assert(offsetof(SettingParameter, disableZoomSmoothing) == 1210); // 占原对齐填充，reserve 位置不变
 static_assert(offsetof(SettingParameter, reserve) == 1212);
 static_assert(offsetof(SettingParameter, extCheckedListStr) == 3296);
 
@@ -415,8 +420,12 @@ enum class ShowExtraUI :int {
 enum class ContextMenu :int {
     openNewImage = 1000, copyImageInfo, copyImagePath, copyImageData, toggleExifDisplay, openContainerFloder, deleteImage,
     openFileProperties, printImage, toggleFullScreen, openSetting, openHelp, aboutSoftware, exitSoftware, batchProcess,
-    editImage, slideshow, renameImage, copyToTarget, moveToTarget, chooseTargetDir, openWithEditor, chooseEditor
+    editImage, slideshow, renameImage, copyToTarget, moveToTarget, chooseTargetDir, openWithEditor, chooseEditor,
+    exportVideo
 };
+
+// Action 里"这个动作没有附带坐标"的哨兵值（键盘缩放不锚鼠标，保持当前视野中心）
+inline constexpr int kActionPointNone = INT32_MIN;
 
 struct Action {
     ActionENUM action = ActionENUM::none;
@@ -642,6 +651,11 @@ public:
 
     // 图像另存为 选取文件路径
     static std::pair<std::wstring, bool> saveImageDialogW(wstring_view title);
+
+    // 视频另存为：defaultExtension 决定默认扩展名（mp4/mov…）与过滤器；
+    // defaultFileName 是预填的文件名（不含路径）。返回空串表示用户取消。
+    static std::wstring saveVideoDialogW(wstring_view title, wstring_view defaultFileName,
+        wstring_view defaultExtension);
 
     static void openUrl(const wchar_t* url);
 

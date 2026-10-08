@@ -29,6 +29,10 @@ public:
     virtual void OnDropFiles(WPARAM wParam) = 0;
     virtual void OnContextMenuCommand(WPARAM wParam) = 0;
 
+    // 右键菜单「导出视频」是否可点：当前资源里得有内嵌/侧车视频（实况照片、视频文件）。
+    // 菜单是静态构建的，靠它按当前状态置灰——不可点时也就不用弹"没有视频"的提示框。
+    virtual bool hasExportableVideo() const { return false; }
+
     virtual void OnResize(UINT width, UINT height) = 0;
     virtual void OnDpiChanged() { (void)0; } // 默认只需刷新缩放；子类可顺带重建按 DPI 缩放的资源
     virtual void OnRequestExitOtherWindows() = 0;
@@ -58,8 +62,9 @@ protected:
     // 画布内容没有变化时只重画界面
     void PresentUiOnly();
 
-    // 交换链重建/收到 WM_PAINT 后需要重新呈现一次（否则空闲时会停在空白后缓冲上）
-    void markPresentRequested() { m_presentRequested = true; }
+    // 交换链重建/收到 WM_PAINT 后需要重新呈现一次（否则空闲时会停在空白后缓冲上）。
+    // const：绘制路径里的"这一帧先不画，下一帧再补一次"也需要它（如延迟重采样）
+    void markPresentRequested() const { m_presentRequested = true; }
 
     bool consumePresentRequest() {
         const bool requested = m_presentRequested;
@@ -103,7 +108,7 @@ protected:
     UINT m_stagingHeight = 0;
     // 后缓冲渲染目标（ImGui 需要绑定 RTV 才能绘制）
     ID3D11RenderTargetView* m_pBackBufferRTV = nullptr;
-    bool m_presentRequested = true;
+    mutable bool m_presentRequested = true;
     bool m_processingMouseRelease = false; // 区分 backend 正常释放捕获与异常失捕获
     // 所创设备特性等级
     D3D_FEATURE_LEVEL m_featureLevel;

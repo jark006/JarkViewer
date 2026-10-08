@@ -9,6 +9,7 @@
 #include "Localization.h"
 #include "BatchProcessor.h"
 #include "CanvasRenderer.h"
+#include "ImageResampler.h"
 #include "InfoScreen.h"
 #include "NavigationOverlay.h"
 #include "ThumbnailService.h"
@@ -934,6 +935,210 @@ namespace {
         return report;
     }
 
+    // 缩放平滑插值自检（ImageResampler + CanvasRenderer 的配合）：
+    // 重采样块是"已按 rotation 预旋转的名义空间位图 + 一块归一化区域"，采样端按块尺寸算采样密度。
+    // 旋转方向、区域原点取整、源/位图尺寸换算这几处错了都不会崩，只是画面整体镜像/偏移，
+    // 必须拿合成图跟"逐帧路径"逐像素对拍。
+    std::string runResampleTest() {
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+
+        // 有方向性的合成底图：R 随 x、G 随 y（镜像/转错方向立刻对不上），
+        // B 铺 16 像素棋盘（错位超过半格也会对不上）
+        const auto makeSource = [](int channels) {
+            cv::Mat image(200, 320, CV_MAKETYPE(CV_8U, channels));
+            for (int y = 0; y < image.rows; ++y) {
+                for (int x = 0; x < image.cols; ++x) {
+                    const uint8_t r = static_cast<uint8_t>(x * 255 / (image.cols - 1));
+                    const uint8_t g = static_cast<uint8_t>(y * 255 / (image.rows - 1));
+                    const uint8_t b = ((x / 16 + y / 16) & 1) ? 230 : 40;
+                    if (channels == 1)
+                        image.at<uint8_t>(y, x) = r;
+                    else if (channels == 3)
+                        image.at<cv::Vec3b>(y, x) = cv::Vec3b(b, g, r);
+                    else
+                        image.at<cv::Vec4b>(y, x) = cv::Vec4b(b, g, r, 255);
+                }
+            }
+            return image;
+        };
+
+        const cv::Size canvasSize(420, 320);
+
+        // 图像区域（非背景）的包围盒：两者一致才说明几何/朝向对上了。
+        // 背景是打包的主题色（BWRA 一个 uint32），要按整像素比较——拿单通道去比打包值
+        // 会永远不相等，包围盒会退化成整块画布，检查就成了摆设。
+        const auto imageBounds = [&](const cv::Mat& canvas) {
+            const uint32_t background = GlobalVar::currentTheme.BG;
+            cv::Rect bounds{};
+            for (int y = 0; y < canvas.rows; ++y) {
+                const uint32_t* row = reinterpret_cast<const uint32_t*>(canvas.ptr(y));
+                for (int x = 0; x < canvas.cols; ++x) {
+                    if (row[x] != background) {
+                        bounds = bounds.area() == 0 ? cv::Rect(x, y, 1, 1)
+                            : bounds | cv::Rect(x, y, 1, 1);
+                    }
+                }
+            }
+            return bounds;
+        };
+
+        const auto meanDiff = [&](const cv::Mat& a, const cv::Mat& b, cv::Rect area) {
+            double sum = 0.0;
+            int64_t count = 0;
+            for (int y = area.y; y < area.y + area.height; ++y) {
+                for (int x = area.x; x < area.x + area.width; ++x) {
+                    const cv::Vec4b& pa = a.at<cv::Vec4b>(y, x);
+                    const cv::Vec4b& pb = b.at<cv::Vec4b>(y, x);
+                    sum += std::abs(pa[0] - pb[0]) + std::abs(pa[1] - pb[1]) + std::abs(pa[2] - pb[2]);
+                    count += 3;
+                }
+            }
+            return count == 0 ? 1e9 : sum / static_cast<double>(count);
+        };
+
+        struct Case { int rotation; double scale; };
+        for (const int channels : { 3, 4 }) {
+            const cv::Mat source = makeSource(channels);
+            for (const Case testCase : { Case{0, 2.0}, Case{0, 3.5}, Case{0, 0.5}, Case{1, 2.0},
+                                          Case{2, 2.0}, Case{3, 2.0}, Case{1, 0.5} }) {
+                jark::ViewState view;
+                view.imageWidth = source.cols;
+                view.imageHeight = source.rows;
+                view.zoomBase = 1 << 16;
+                view.zoom = static_cast<int64_t>(std::llround(view.zoomBase * testCase.scale));
+                view.rotation = testCase.rotation;
+
+                const std::string tag = std::format("{}ch rot={} {:.2f}x", channels, testCase.rotation,
+                    testCase.scale);
+
+                cv::Mat reference(canvasSize, CV_8UC4);
+                jark::drawImageToCanvas(source, reference, view);
+
+                const auto block = jark::resampleVisibleRegion(source, view, canvasSize);
+                if (!block.valid) {
+                    check(false, std::format("{}：重采样块生成", tag));
+                    continue;
+                }
+
+                jark::ViewState blockView = view;
+                blockView.sourcePreRotated = true;
+                blockView.sourceLeft = block.left;
+                blockView.sourceTop = block.top;
+                blockView.sourceWidth = block.width;
+                blockView.sourceHeight = block.height;
+
+                cv::Mat rendered(canvasSize, CV_8UC4);
+                jark::drawImageToCanvas(block.image, rendered, blockView);
+
+                const cv::Rect referenceBounds = imageBounds(reference);
+                const cv::Rect renderedBounds = imageBounds(rendered);
+                const bool geometryOk = std::abs(referenceBounds.x - renderedBounds.x) <= 1 &&
+                    std::abs(referenceBounds.y - renderedBounds.y) <= 1 &&
+                    std::abs(referenceBounds.width - renderedBounds.width) <= 2 &&
+                    std::abs(referenceBounds.height - renderedBounds.height) <= 2;
+                check(geometryOk, std::format("{}：图像矩形一致（{} vs {}）", tag,
+                    referenceBounds.width, renderedBounds.width));
+
+                const cv::Rect overlap = referenceBounds & renderedBounds;
+                const double diff = meanDiff(reference, rendered, overlap);
+                // 平滑重采样与最近邻本就不同（这正是目的），但同一朝向/同一位置时平均差很小；
+                // 镜像或转错方向会差到几十
+                check(diff < 12.0, std::format("{}：与逐帧路径逐像素接近（平均差 {:.2f}）", tag, diff));
+            }
+        }
+
+        // 缩小 0.5x：面积平均必须比逐帧路径的 2×2 近似更平（细密棋盘不再出现摩尔纹）
+        {
+            cv::Mat checker(200, 320, CV_8UC3);
+            for (int y = 0; y < checker.rows; ++y)
+                for (int x = 0; x < checker.cols; ++x)
+                    checker.at<cv::Vec3b>(y, x) = cv::Vec3b(((x + y) & 1) ? 235 : 20,
+                        ((x + y) & 1) ? 235 : 20, ((x + y) & 1) ? 235 : 20);
+
+            jark::ViewState view;
+            view.imageWidth = checker.cols;
+            view.imageHeight = checker.rows;
+            view.zoomBase = 1 << 16;
+            view.zoom = view.zoomBase / 2;
+
+            cv::Mat reference(canvasSize, CV_8UC4);
+            jark::drawImageToCanvas(checker, reference, view);
+
+            const auto block = jark::resampleVisibleRegion(checker, view, canvasSize);
+            check(block.valid, "1×1 棋盘 0.5x：重采样块生成");
+
+            if (block.valid) {
+                jark::ViewState blockView = view;
+                blockView.sourcePreRotated = true;
+                blockView.sourceLeft = block.left;
+                blockView.sourceTop = block.top;
+                blockView.sourceWidth = block.width;
+                blockView.sourceHeight = block.height;
+                cv::Mat rendered(canvasSize, CV_8UC4);
+                jark::drawImageToCanvas(block.image, rendered, blockView);
+
+                const cv::Rect area = imageBounds(reference) & imageBounds(rendered);
+                cv::Scalar mean, stddev;
+                cv::meanStdDev(cv::Mat(reference, area), mean, stddev);
+                cv::Scalar renderedMean, renderedStddev;
+                cv::meanStdDev(cv::Mat(rendered, area), renderedMean, renderedStddev);
+                check(renderedStddev[0] < stddev[0] * 0.6,
+                    std::format("1×1 棋盘 0.5x：面积平均后更平（标准差 {:.1f} -> {:.1f}）",
+                        stddev[0], renderedStddev[0]));
+                check(std::abs(renderedMean[0] - mean[0]) < 25.0,
+                    std::format("1×1 棋盘 0.5x：平均亮度不变（{:.1f} -> {:.1f}）",
+                        mean[0], renderedMean[0]));
+            }
+        }
+
+        // 1:1 时不做重采样（最近邻就是精确值）
+        {
+            jark::ViewState view;
+            view.imageWidth = 320;
+            view.imageHeight = 200;
+            view.zoomBase = 1 << 16;
+            view.zoom = view.zoomBase;
+            check(!jark::shouldResample(view), "1:1 缩放不做重采样");
+            view.zoom = view.zoomBase + 1;
+            check(jark::shouldResample(view), "非 1:1 缩放做重采样");
+        }
+
+        // 余量：可视区域挪一点还能复用同一块，挪出去就得重算
+        {
+            jark::ViewState view;
+            view.imageWidth = 320;
+            view.imageHeight = 200;
+            view.zoomBase = 1 << 16;
+            view.zoom = view.zoomBase * 2;
+            const cv::Mat source = makeSource(3);
+            const auto block = jark::resampleVisibleRegion(source, view, canvasSize);
+            check(block.valid, "余量用例：重采样块生成");
+
+            if (block.valid) {
+                const auto geometry = jark::imageGeometry(view, canvasSize, source.size());
+                check(block.covers(geometry), "原视图落在块内");
+
+                jark::ViewState moved = view;
+                moved.slideX += static_cast<int>(geometry.visible.width * geometry.renderedSize.width * 0.1);
+                check(block.covers(jark::imageGeometry(moved, canvasSize, source.size())),
+                    "视图挪一小段仍在块内（余量生效）");
+
+                jark::ViewState far_ = view;
+                far_.slideX += static_cast<int>(geometry.renderedSize.width);
+                check(!block.covers(jark::imageGeometry(far_, canvasSize, source.size())),
+                    "视图挪出块外不复用");
+            }
+        }
+
+        report = std::format("---- 缩放平滑插值自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
+        return report;
+    }
+
     // 色彩管理自检：源与目标同为 sRGB 时变换是恒等的（跳过可省几百毫秒），大图按行并行——
     // 这两类改动出错不会崩也不会报错，只是颜色悄悄变了，必须用像素断言钉住。
     std::string runColorTest() {
@@ -1268,6 +1473,44 @@ namespace {
                         : std::string("<switch>：本机没有可注册的系统字体，跳过文字像素断言"));
         }
 
+        // lunasvg 的能力边界（换渲染库或升级时这几条会先报到）：
+        // ① SVG filter（feGaussianBlur/feDropShadow…）不支持——**图元必须照常画出来**，
+        //    只是没有滤镜效果；真要哪天整块图元被丢掉（比"没模糊"严重得多），这条会失败。
+        {
+            const std::string filterSvg = R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">)svg"
+                R"svg(<defs><filter id="blur"><feGaussianBlur stdDeviation="6"/></filter></defs>)svg"
+                R"svg(<rect x="20" y="20" width="60" height="60" fill="#ff0000" filter="url(#blur)"/></svg>)svg";
+            const cv::Mat filtered = rasterize(filterSvg, 100, 100);
+            check(!filtered.empty(), "filter 用例光栅化成功");
+            if (!filtered.empty()) {
+                const cv::Vec4b center = filtered.at<cv::Vec4b>(50, 50);
+                check(center[3] >= 250 && center[2] >= 250 && center[1] <= 5 && center[0] <= 5,
+                    std::format("filter 不支持但图元仍绘制（中心 (B,G,R,A)=({},{},{},{})，滤镜被忽略而非丢图元）",
+                        center[0], center[1], center[2], center[3]));
+            }
+        }
+        // ② textPath 不支持（整段不画）——记录下来，真补上支持时这条断言会失败，提醒改文档
+        {
+            const std::string textPathSvg = R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">)svg"
+                R"svg(<rect width="200" height="100" fill="#ffffff"/>)svg"
+                R"svg(<defs><path id="curve" d="M10,80 Q100,10 190,80"/></defs>)svg"
+                R"svg(<text font-size="20" fill="#000000"><textPath href="#curve">JarkViewer</textPath></text></svg>)svg";
+            jark::ensureVectorFonts();
+            const cv::Mat alongPath = rasterize(textPathSvg, 200, 100);
+            check(!alongPath.empty(), "textPath 用例光栅化成功");
+            if (!alongPath.empty()) {
+                int darkPixels = 0;
+                for (int y = 0; y < alongPath.rows; ++y)
+                    for (int x = 0; x < alongPath.cols; ++x) {
+                        const cv::Vec4b px = alongPath.at<cv::Vec4b>(y, x);
+                        if (px[3] > 128 && px[0] < 96 && px[1] < 96 && px[2] < 96)
+                            ++darkPixels;
+                    }
+                check(darkPixels == 0,
+                    std::format("textPath 已知缺失：不渲染任何文字（暗像素 {}；支持后此条会失败，改文档即可）", darkPixels));
+            }
+        }
+
         report = std::format("---- SVG 自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
         return report;
     }
@@ -1491,6 +1734,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool annotateTest = false;
     bool navigationTest = false;
     bool colorTest = false;
+    bool resampleTest = false;
     bool thumbnailTest = false;
     bool shellThumbnailTest = false;
     bool vectorTest = false;
@@ -1530,6 +1774,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--color-test") {
             colorTest = true;
+            continue;
+        }
+        if (argv[i] == L"--resample-test") {
+            resampleTest = true;
             continue;
         }
         if (argv[i] == L"--svg-test") {
@@ -1661,7 +1909,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && thumbnailWriter < 0) {
+    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -1680,6 +1928,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (colorTest) {
         const auto text = runColorTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (resampleTest) {
+        const auto text = runResampleTest();
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

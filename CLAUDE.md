@@ -37,7 +37,12 @@ python tools/gen_testdata.py <输出目录>
 # 以及 Display P3 → sRGB 的已知落点：超色域原色被剪裁回自身、次级饱和红也剪成同一个红）
 ./x64/Release/JarkViewer.exe --probe --color-test
 
-# SVG 自检（light-dark()/var() 折叠、半透明区域反预乘为直通 alpha、按可视区域光栅化的区域/旋转语义）
+# 缩放平滑插值自检（重采样块与逐帧路径在四种旋转/两种通道下逐像素对齐、缩小时面积平均更平、
+# 1:1 不做重采样、余量复用边界）
+./x64/Release/JarkViewer.exe --probe --resample-test
+
+# SVG 自检（light-dark()/var() 折叠、半透明区域反预乘为直通 alpha、按可视区域光栅化的区域/旋转语义，
+# 以及 lunasvg 的能力边界：filter 被忽略但图元仍绘制、textPath 不渲染）
 ./x64/Release/JarkViewer.exe --probe --svg-test
 
 # 文件列表排序自检（名称自然序 / 修改时间 / 文件大小，以及当前图片下标跟随重排）
@@ -125,7 +130,10 @@ pwsh tools/verify_source_invariant_checks.ps1
   选择目标文件夹：目标记在 `SettingParameter::copyTargetDir`（单目标，首次使用弹
   `jarkUtils::SelectFolder`），目标不存在自动创建（含多层）、重名按资源管理器习惯让到
   `名 (2).ext` 绝不覆盖、跨盘移动退化为复制+删除；移动成功与删除同样从列表摘掉当前项。
-  加菜单项注意加速键不要与既有项重复（`&C` 已被「复制图像数据」占用）。
+  加菜单项注意加速键不要与既有项重复（`&C` 已被「复制图像数据」占用，「导出视频」用 `&V`），
+  并且**宽表的 ID 与窄表是两套**：菜单文案走 `getUIStringW`，新加的行插在宽表表尾、按宽表当前
+  行数编号（往窄表末尾加一行、却拿窄表编号去查宽表，会得到一个空字符串——菜单项在界面上变成
+  一行看不出字的空白，不报错也不崩）。
   紧随其后是 用外部编辑器打开 / 选择外部编辑器：程序路径记在 `SettingParameter::externalEditor`，
   图片路径**整体加引号**交给 ShellExecute（带空格的路径是常态），失败按返回值提示。
   **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
@@ -168,7 +176,8 @@ pwsh tools/verify_source_invariant_checks.ps1
   悬停面板不会展开预览带、也不会把面板顶上去；展开/换图时当前图片严格位于控件水平正中，
   两侧图片不足就留空且留空位置不可点；滚轮/左右按钮翻页，点击排队 `jumpToImage` 直接换图；
   带体与文件名浮签是半透明底——`ImGuiCol_PopupBg` × 0.82，悬停展开时透出后面的图像，
-  鸟瞰面板保持不透明）。它**不加入
+  **鸟瞰面板同款半透明**（`background` 与 `stripBackground` 是同一个值；面板内边距会透出后面的
+  图像，白图后面量到 (66,67,71)、黑图后面 (24,25,29)）。它**不加入
   `anyWindowVisible()`**，而是自己画在 `GetForegroundDrawList()` 上、自己做客户区命中
   （`OnMouseDown/Move/Wheel` 顶部优先处理，命中即拦截旧边缘按钮/画布拖动逻辑，二级窗口打开或
   图片切换时 `cancel()`）。动作走 `OperateQueue` 新增的 `jumpToImage`/`navigateImage` 在
@@ -253,9 +262,27 @@ pwsh tools/verify_source_invariant_checks.ps1
   **视频尺寸分两种，别用错**：`MediaInfo::width/height` 是**编码尺寸**（容器/码流里的原始尺寸，未旋转），`displayWidth()/displayHeight()` 是**帧实际交出去时的尺寸**（按 `rotationDegrees` 换过轴）。解码器会按 display matrix 把帧旋转（手机竖拍视频的编码尺寸是横的），所以**给播放端的尺寸必须用 display\***——`MediaPlayer::getVideoSize()` 就是栽在这里：它原先返回编码尺寸，实况照片播放时主窗口拿它当名义尺寸（`applyViewForSize`），竖帧被塞进横框里拉伸。另外帧的长边超过 `kMaxVideoEdge` 时会**降采样**（4K 实况视频只出 1920×1080 的帧），所以"帧尺寸 == 名义尺寸"**不是**不变式，**宽高比一致**才是；`--probe --full` 对每个视频/实况照片都会打印 `显示 WxH (编码 WxH) rot=R` 与 `首帧 WxH … 宽高比一致`，不一致时会显式报 `!! 宽高比不一致`。实况照片（livp / MotionPhoto）与视频文件都走这条路：静态图/首帧作 `ImageAsset::primaryFrame`，视频字节放在 `ImageAsset::videoSource`，由主窗口自动播放一次后回到静态图（不再预解码成帧序列，避免上百 MB 内存）。空格键在实况照片上是播放开关：播放中切回静态图（并把 `playedAsset` 标记为已播放，防自动续播）、静态图时从头播放（主动操作，出声）。
 - `JarkViewer/include/CanvasRenderer.h` 与 `JarkViewer/src/CanvasRenderer.cpp` 是从 `JarkViewerApp` 抽出的画布绘制模块：按 `ViewState`（名义尺寸 / 定点缩放 / 平移 / 旋转）把图像绘制到 BGRA 画布，含透明区域棋盘格与图像边框。`JarkViewerApp::drawCanvas()` 只是把 `curPar` 转成 `ViewState` 后调用它。`imageGeometry()` 是主画布与鸟瞰**共用**的纯几何（旋转后名义尺寸、显示矩形、归一化可见区域——`slide + round((canvas-rendered)/2)` 的定位公式只有这一处），`navigationSlide()` 把归一化图像点换算成目标 slide（某轴完整可见时保持居中、不改动原有“允许留白”的拖图夹取）；`--probe --navigation-test` 用合成断言覆盖旋转/平移/端点夹取与浮层输入归属。`ViewState::border=false` 表示不画图像边框（主页/解码失败是界面画面，不是照片）。
 - 主页与解码失败画面由 `JarkViewer/include|src/InfoScreen.{h,cpp}` **按当前语言、主题、DPI 实时绘制**（旧的 `home.png`/`tips.png`、`getHomeMat()/getErrorTipsMat()` 和 ColorManager 里"识别内置提示图"的像素启发式都已删除）：`ImageAsset::placeholder`（`PlaceholderKind`：Home/UnsupportedFormat/DecodeFailed/FileMissing）与 `placeholderDetail` 由 `myLoader` 在失败时填写——文件头与扩展名都识别不出→UnsupportedFormat，能识别但解码失败→DecodeFailed，打不开/不存在→FileMissing（各解码器的失败分支保持"空帧 + format=None"交给 myLoader 继续路由，不再往 primaryFrame 塞提示图）。**失败时 primaryFrame 保持为空**：`--probe` 据此判定失败并输出 `placeholder=<原因>`，批量处理也会如实报"无法解码"（以前提示图会被当成解码成功的图参与批处理）。界面层用 `JarkViewerApp::updatePlaceholderImage()` 按 `jark::infoScreenStamp(尺寸, DPI缩放, 语言, 主题, 按钮交互)` 决定重绘（结果写进 `placeholderStamp`；返回 0/1/2 = 无变化/仅内容变/尺寸也变，只有尺寸变才 `curPar.Init()`，悬停反馈不会重置缩放）：`initOpenFile`/`switchToFile`/重载/删除都在 `curPar.Init()` 前调用一次，`DrawScene()` 开头再兜一次，窗口缩放/换主题/换语言自动重绘。支持格式清单直接读 `ImageDatabase::supportExt/supportRaw/videoExt`，永远与实际解码能力一致。主页是图标 + 名称/版本 + **「打开图片」按钮**（`homeButtonRect` 与绘制共用同一布局；主窗口把客户区坐标按缩放/平移/旋转逆变换回画布像素做命中，悬停/按下有底色反馈，点击等同 Ctrl+O）。文案是窄表 156~165。
+- **画面静止后的平滑重采样**：`JarkViewer/include|src/ImageResampler.{h,cpp}` + `main.cpp` 的
+  `activeSmoothBlock()`/`SmoothBlock` 缓存。逐帧采样路径（`CanvasRenderer`）为速度只用最近邻
+  （缩小时 2×2 近似），放大看文字有锯齿、缩小看细密纹理有摩尔纹；视图**停稳**后
+  （`zoomCur == zoomTarget && slideCur == slideTarget`）把可视区域+25% 余量重采样成一块位图
+  （放大 `warpAffine` + `INTER_LANCZOS4`、缩小裁出源矩形后 `INTER_AREA`，再按 rotation 转成
+  预旋转块），交给 `CanvasRenderer` 采样——块原点与区域按 `llround(regionX*scale)` 回填，
+  采样密度算出来恰好 1:1（`srcScale == 缩放系数`），与矢量图的高清块走同一条 `sourceLeft/
+  Top/Width/Height + sourcePreRotated` 通道。约定与坑：
+  - **旋转方向必须与采样端一致**：`rotation 1 = 逆时针 90°`（`Q` 键那档），名义空间归一化点
+    映到源位图是 `rot0: (nx,ny) / rot1: (1-ny,nx) / rot2: (1-nx,1-ny) / rot3: (ny,1-nx)`；
+    方向写反不会崩，只是画面整体镜像/转向，`--probe --resample-test` 用有方向性的合成图对拍钉着。
+  - 只在**静止**、且不是动图/实况播放/矢量图（矢量自己按可视区域出块）时启用；键里带源位图
+    指针+尺寸+类型、画布尺寸、zoom/slide/rotation，任一变化就重算。一次重算约 12~20ms（2K 画面），
+    只发生在停稳那一下。
+  - 设置页常规页「缩放平滑插值」（`SettingParameter::disableZoomSmoothing`，**取反命名**：
+    旧设置该字节为 0 即默认开启；占 `blackFullscreenBackground` 之后的原对齐填充字节，
+    不改变 4096 布局）关掉即退回全最近邻。
 - `JarkViewer/include/VectorImage.h` 与 `JarkViewer/src/VectorImage.cpp` 负责矢量图（SVG）的按需光栅化：`ImageAsset::vectorSource` 持有 lunasvg 文档与文档尺寸（intrinsic），位图分辨率随缩放变化（`vectorTargetEdge()` + `refreshVectorRaster()`，滞后阈值 1.25 避免缩放动画中反复渲染，长边上限 4096）。主窗口在画面稳定后（`DrawScene` 空闲分支）调用 `refreshVectorRasterIfNeeded()` 升级分辨率。lunasvg 的位图是 **ARGB32 预乘**（内存 B,G,R,A），`renderVectorImage()` 一律**手工反预乘**成直通 alpha（直接调 `convertToRGBA()` 会换成 R,G,B,A 字节序，画布按 B 读第一个字节会红蓝互换）。`<text>` 要先 `jark::ensureVectorFonts()` 注册系统字体（lunasvg 没有内置字体，不注册就什么都画不出来）。
   `JarkViewer/include/SVGPreprocessor.h`（还在 `JarkThumbnailProvider` 里有一份同源的）在解码前做三件 lunasvg 做不到的事，顺序不能换：① `<switch>` 选择——`foreignObject` 与 `requiredFeatures` 里的 Extensibility 一律判为**不支持**，否则 draw.io 导出的画布会选中画不出来的 foreignObject、同时把后面等价的 `<text>` 兜底删掉（表现是方框连线都在、文字一个字都没有，见 issue #33/#51）；② 收集 `--x: value`（`:root` 规则表与内联 style 都覆盖）；③ 把 `var(--x[, fallback])` / `light-dark(a, b)` 折叠成字面量——lunasvg 不认识 CSS Color 5 的这些函数，颜色值判为无效时会把**整个图元丢掉不画**（draw.io 图整幅空白）。`light-dark` 取**亮色分支**：位图会进 LRU 缓存，随主题变化的颜色没有意义，亮色分支在深浅主题下都保持可读。
   **放大超过 4096 上限后按可视区域出高清块**（`VECTOR_DETAIL_MAX_EDGE` / `VectorImage::detailFrame`）：全幅位图（鸟瞰、缩略图、打印/批处理仍用它）已经榨不出细节，这时用 `renderVectorImageRegion()` 只光栅化当前可视区域+25% 余量（`VectorImage.cpp` 把"文档→旋转后名义空间"的仿射系数写进 `Document::render(bitmap, matrix)` 的矩阵里一次完成，所以位图直接就是旋转后的名义空间，取样不必再套旋转）。`CanvasRenderer` 侧只多了 `ViewState::sourceLeft/Top/Width/Height`（归一化区域）与 `sourcePreRotated`：采样原点按区域左上角平移、采样密度按"位图像素 / 该区域的名义像素"算，元素级循环一行没改。**复用判断只看可视区域（不含余量）**，否则余量会被逐帧的微小移动吃掉、每帧重光栅化；可视区域跑出旧块外的那一帧退回全幅位图（糊但不缺块），稳定后自动重出。切图时释放上一张的高清块（`lastDetailVector_`），避免 LRU 里每张 SVG 各攒几十 MB。
+  **lunasvg 的能力边界**（判断"要不要换渲染库"先看这几条，实测语料 `car.svg`/`13.svg`/`AA_5.svg`/draw.io 图都能出图）：支持 `mask(含渐变遮罩)/pattern/marker/clipPath/嵌套 svg/各类渐变/<text>`；**不支持 SVG filter**（`feGaussianBlur`/`feDropShadow` 等一律忽略——图元照画、只是没有滤镜效果）与 **`textPath`**（整段不渲染）。`--probe --svg-test` 里两条断言盯着这个边界：filter 用例断言"图元仍被绘制"（比"没模糊"严重得多的是整块消失），textPath 断言"不渲染任何文字"（真补上支持时这条会失败，提醒改文档）。换库（resvg/ThorVG）需要新做一套 MSVC x64 静态库、且静态库包还没发布，除非出现"整幅画不出来"的真实报告，否则维持现状 + 定向补 `SVGPreprocessor`。
 - `JarkViewer/include/ColorManager.h` 与 `src/ColorManager.cpp` 是色彩管理（lcms2）：把解码出的像素从**图像内嵌 profile** 转到**目标 profile**。有两条路，目标不同**不能混**：
   - 查看器/编辑/打印走 `ImageDatabase::loader()` → `applyToImageAsset()`：目标取**当前显示器 ICC**（`GetICMProfileW`，进程内缓存），显示器没设 profile 就退回 sRGB（内置）。
   - 批量转换走 `BatchProcessor::loadImage()`：目标固定 **sRGB**——落盘的文件带不上 profile（OpenCV 写不了 ICC），只留 P3/AdobeRGB 的原始数值却去掉标签，等于把颜色悄悄改了（这条以前压根没做色彩管理，P3 图转出来在别的软件里会偏色）。**不能**取显示器 profile：结果是要给别人看的文件，跟转换时这台机器接什么显示器无关。
@@ -295,6 +322,10 @@ pwsh tools/verify_source_invariant_checks.ps1
 - 不要提交 `.vcxproj.user`、`.vs/` 或机器相关的本地库路径。
 - **渐进加载**：当前图的解码不阻塞主循环——`requestCurrentImage()` 用 `LRU::tryGetPtr` 非阻塞查缓存，未命中就挂起，主循环每帧 `updatePendingLoad()` 轮询，就绪后 `adoptCurrentImage()` 收尾。等待期间：启动/主页场景用主页画面垫底（`allowPreviewSwap_`），缩略图（ThumbnailService，持久缓存命中时毫秒级）先到就先顶上当模糊预览；切图场景保留旧图停留（相邻图通常已被预取，点翻页零等待）。客户区左上角画「加载中 X.Xs」浮标（逐帧跳秒——画面稳定分支要按 `pendingLoad_` 持续出帧），超过 60 秒退回一次阻塞等待兜底。**新增"载入当前图"路径时一律用 `requestCurrentImage()`**，不要再直接调 `getSafePtr`（会退回"翻页等解码"）。
 - **动图播放计时**（`DrawScene` 的动画块）：帧推进的剩余时间 `delayRemain` 按**微秒**累计并跨帧保留（欠帧时 `while (delayRemain <= 0)` 循环推进、推进后把超出的部分留给下一帧），不要退回"整毫秒截断"或"每帧重置余量"——主循环每帧 10~16ms，零头被截掉/丢弃会逐帧累积成慢放（100ms 的帧实测会播成 103~109ms）；起播、暂停恢复、切图后要经 `animClockArmed` 重新对齐计时起点，否则加载或暂停的耗时会被算进第一帧（首帧长时间不动）。
-- **实况照片的尾部视频**不一定紧贴文件末尾（部分厂商导出在视频数据后还有尾块）：按「文件大小 - Item:Length/MicroVideoOffset」推出起点后，要在期望起点附近按 MP4 首个 `ftyp` 盒校正真实起点（`locateMotionPhotoVideoStart()`，找不到则保持原行为），否则起点偏移几十字节会让 MP4 采样偏移整体错位，表现为"能识别出视频轨但解码全是乱码"。
+- **实况照片的视频有三种拿法，缺一不可**（`ImageDatabase::loadMotionPhoto` / `loadLivp`，顺序即优先级）：
+  1. 按「文件大小 - `Item:Length`/`MicroVideoOffset`」反推起点，再在期望起点附近用 MP4 首个 `ftyp` 盒校正真实起点（`locateMotionPhotoVideoStart()`）——尾部视频不一定紧贴文件末尾（DJI 等导出带尾块），起点偏几十字节会让采样偏移整体错位，表现为"能识别出视频轨但解码全是乱码"。
+  2. 同目录同名侧车视频（苹果/VIVO 的 `.mov`/`.mp4`）。
+  3. **尾部找 MP4**（`locateTrailerMp4Start()`）：XMP 的长度字段缺失或明显不当的 Samsung "versionless / mpv2 trailer" 型（实测 `Item:Length` 写成 `68`，而尾部实挂 2.4MB 可解码 MP4；另一型只有 `MotionPhoto_Data` 标记 + `ftyp mp42`，文件以 `SEFT` 收尾）。规则：正文里必须**有实况照片标记**（`MotionPhoto_Data` / `Item:Semantic="MotionPhoto"` / `GCamera:MotionPhoto="1"`，否则普通 HEIC 的盒结构本身就长得像 MP4，会把图像数据当视频切出去）、候选 `ftyp` 盒的品牌不能是 HEIF/AVIF 系、且从它按盒长走链必须**见过 `moov`**、主体走到文件尾（容许末尾 ≤4KB 厂商尾块）。**没有这条兜底时这两类实况照片会静默退化成静态图**（`--probe --playback-test` 报"跳过：没有可播放的媒体流"，看上去像"这张本来就没视频"）。
+- **导出实况视频**（右键菜单「导出视频」，`JarkViewerApp::exportCurrentVideo()`）：`VideoSource::data` 本来就是完整容器（livp 解包的 `.mov`、Android 尾部切片、Samsung 尾部 MP4、或整个视频文件），落盘即用，不做转码；`VideoSource::extension` 记着原扩展名（livp 的 zip 条目名、视频文件的扩展名），另存对话框按它给默认名与过滤器。菜单项由 `D3D11App::hasExportableVideo()` 决定是否置灰（基类返回 false，主窗口按当前资源里有没有视频覆盖）。语料实测：8 个 livp/实况文件导出后 ffprobe + 全解码无一报错。
 - 主窗口渲染路径以 OpenCV `cv::Mat` 作为 CPU 画布，再交给 Direct3D 显示；避免在高频绘制路径中引入阻塞 I/O 或昂贵同步操作。
 - Debug 构建会分配控制台并启用 `JARK_LOG`；Release 下日志宏为空。

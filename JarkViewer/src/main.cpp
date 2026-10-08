@@ -4,6 +4,7 @@
 #include "UiHost.h"
 #include "EditorWindow.h"
 #include "CanvasRenderer.h"
+#include "ImageResampler.h"
 #include "InfoScreen.h"
 #include "NavigationOverlay.h"
 #include "ThumbnailService.h"
@@ -23,14 +24,6 @@
 #include <ppl.h>
 #include <concrt.h>
 
-/* TODO
-1. 在鼠标光标位置缩放
-1. 给系统提供缩略图缓存支持
-1. 缩放策略加个线性插值
-1. LunaSVG库支持度较差，考虑更换
-1. 考虑加个按时间日期排序
-1. 导出实况的视频
-*/
 
 std::wstring_view appName = L"JarkViewer";
 std::wstring_view appVersion = L"v2.0";
@@ -962,10 +955,15 @@ public:
             return;
         }
 
+        // 滚轮自带坐标，直接当成最新鼠标位置：锚在光标下那一点缩放，也免去"窗口刚移动/
+        // 刚聚焦、还没收到 WM_MOUSEMOVE 时用旧坐标"的问题
+        mousePos = { clientPoint.x, clientPoint.y };
+
         switch (cursorPos)
         {
         case CursorPos::centerArea:
-            operateQueue.push({ zDelta < 0 ? ActionENUM::zoomOut : ActionENUM::zoomIn });
+            operateQueue.push({ zDelta < 0 ? ActionENUM::zoomOut : ActionENUM::zoomIn,
+                clientPoint.x, clientPoint.y });
             break;
 
         case CursorPos::leftEdge:
@@ -1160,16 +1158,17 @@ public:
             }break;
 
             case VK_UP: {
-                operateQueue.push({ ActionENUM::zoomIn });
+                // 键盘缩放不带锚点坐标：保持当前视野中心（滚轮才锚光标）
+                operateQueue.push({ ActionENUM::zoomIn, kActionPointNone, kActionPointNone });
             }break;
 
             case VK_DOWN: {
-                operateQueue.push({ ActionENUM::zoomOut });
+                operateQueue.push({ ActionENUM::zoomOut, kActionPointNone, kActionPointNone });
             }break;
 
             case '5':
             case VK_NUMPAD5: {
-                operateQueue.push({ ActionENUM::zoomFix });
+                operateQueue.push({ ActionENUM::zoomFix, kActionPointNone, kActionPointNone });
             }break;
 
             case VK_PRIOR:
@@ -1314,6 +1313,10 @@ public:
         case ContextMenu::copyImageData: {
             cv::Mat srcImg = currentSourceImage();
             jarkUtils::copyImageToClipboard(srcImg, imgFileList[curFileIdx]);
+        }break;
+
+        case ContextMenu::exportVideo: {
+            exportCurrentVideo();
         }break;
 
         case ContextMenu::toggleExifDisplay: {
@@ -1464,7 +1467,108 @@ public:
             jark::drawImageToCanvas(detail->detailFrame, canvas, view);
             return;
         }
+        // 画面静止时用平滑重采样块（放大 Lanczos / 缩小面积平均）
+        if (const jark::ResampledView* block = activeSmoothBlock(srcImg, canvas.size())) {
+            view.sourcePreRotated = true;
+            view.sourceLeft = block->left;
+            view.sourceTop = block->top;
+            view.sourceWidth = block->width;
+            view.sourceHeight = block->height;
+            jark::drawImageToCanvas(block->image, canvas, view);
+            return;
+        }
         jark::drawImageToCanvas(srcImg, canvas, view);
+    }
+
+    // 静止视图的平滑重采样块。键里带上源位图与视图参数：任何一个变了就重算，
+    // 动画中（zoomCur != zoomTarget 等）一律不用，避免每帧重采样。
+    struct SmoothBlock {
+        jark::ResampledView view;
+        // 视图指纹：源位图 + 画布尺寸 + 缩放/平移/旋转，任一变化就作废重算
+        struct Key {
+            const uint8_t* sourceData = nullptr;
+            cv::Size sourceSize{};
+            int sourceType = -1;
+            cv::Size canvasSize{};
+            int64_t zoom = 0;
+            int slideX = 0;
+            int slideY = 0;
+            int rotation = 0;
+
+            bool operator==(const Key& other) const {
+                return sourceData == other.sourceData && sourceSize == other.sourceSize &&
+                    sourceType == other.sourceType && canvasSize == other.canvasSize &&
+                    zoom == other.zoom && slideX == other.slideX && slideY == other.slideY &&
+                    rotation == other.rotation;
+            }
+        };
+        Key key;
+        Key pending;           // 已经"预约"过重算的键（见下面的延迟一帧）
+        bool hasPending = false;
+        std::chrono::steady_clock::time_point lastBuild{};
+    };
+    mutable SmoothBlock smoothBlock_;
+    // 平滑重采样预约了"下一帧再算"：稳定分支（只重画界面层那条路）要据此补一次完整绘制，
+    // 否则永远轮不到重采样
+    mutable bool smoothBlockWakeup_ = false;
+
+    const jark::ResampledView* activeSmoothBlock(const cv::Mat& srcImg, cv::Size canvasSize) const {
+        if (GlobalVar::settingParameter.disableZoomSmoothing)
+            return nullptr;
+        if (srcImg.empty() || srcImg.depth() != CV_8U || srcImg.channels() == 2)
+            return nullptr;
+        // 动图/实况视频每帧都在变，播放中不做重采样（停下来回到静态图自然就有了）
+        if (!playbackFrame.empty() ||
+            (curPar.imageAssetPtr && curPar.imageAssetPtr->format == ImageFormat::Animated))
+            return nullptr;
+        // 矢量图自己按可视区域出过高清块了，不再叠一层
+        if (curPar.imageAssetPtr && curPar.imageAssetPtr->vectorSource)
+            return nullptr;
+        // 视图没停稳（缩放/平移动画中）先用逐帧路径
+        if (curPar.zoomCur != curPar.zoomTarget || curPar.slideCur != curPar.slideTarget)
+            return nullptr;
+
+        const jark::ViewState view = viewState();
+        if (!jark::shouldResample(view))
+            return nullptr;
+
+        SmoothBlock& block = smoothBlock_;
+        const SmoothBlock::Key key{
+            srcImg.data, srcImg.size(), srcImg.type(), canvasSize,
+            view.zoom, view.slideX, view.slideY, view.rotation };
+
+        // 拖动窗口边框时画布尺寸每帧都在变：这一路先不重采样（否则每帧十几毫秒会拖慢缩放），
+        // 等尺寸稳定下来再一次性算出来
+        if (block.key.canvasSize != canvasSize && block.lastBuild != std::chrono::steady_clock::time_point{} &&
+            std::chrono::steady_clock::now() - block.lastBuild < std::chrono::milliseconds(200))
+            return nullptr;
+
+        if (block.key == key)
+            return block.view.valid ? &block.view : nullptr; // 算过就算过，失败也不再反复试
+
+        // 重算要十几到几十毫秒（2K 画面）。停稳的那一帧先只"预约"，下一帧才真算：
+        // 连续按方向键缩放时，每一步刚停稳就被下一步打断，预约随之作废、这段开销就省下了；
+        // 真停下来时由稳定分支补一次完整绘制走到这里（稳定分支平时只重画界面层）
+        if (!block.hasPending || !(block.pending == key)) {
+            block.pending = key;
+            block.hasPending = true;
+            smoothBlockWakeup_ = true;
+            markPresentRequested();
+            return nullptr;
+        }
+
+        const auto begin = std::chrono::steady_clock::now();
+        block.view = jark::resampleVisibleRegion(srcImg, view, canvasSize);
+        const auto costMs = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - begin).count() / 1000.0;
+        block.key = key;
+        block.hasPending = false;
+        block.lastBuild = std::chrono::steady_clock::now();
+        JARK_LOG("smooth zoom: {} ({}x{} at {:.2f}x, {:.1f}ms)", block.view.valid ? "resampled" : "skipped",
+            block.view.image.cols, block.view.image.rows,
+            static_cast<double>(view.zoom) / static_cast<double>(view.zoomBase), costMs);
+
+        return block.view.valid ? &block.view : nullptr;
     }
 
     // 能用的高清块：旋转一致，且当前可视区域完全落在它覆盖的范围内；
@@ -1960,6 +2064,7 @@ public:
         }
 
         stopMediaPlayback(); // 本次绘制就必须丢弃旧视频帧，不能等下一个主循环
+        smoothBlock_ = {};   // 平滑重采样块只服务当前这张图，切走即释放（十几 MB）
         ++navigationImageVersion;
         curFileIdx = newIndex;
 
@@ -2198,6 +2303,57 @@ public:
     // 复制/移动当前图片到目标文件夹（首次使用时选择并记住）：目标不存在自动创建，
     // 重名按资源管理器习惯让到 "名 (2).ext"，绝不覆盖已有文件；移动成功后与删除一样
     // 从列表摘掉当前项并显示下一张。
+    // 当前资源里内嵌的视频（实况照片的尾部视频 / 侧车视频 / 直接打开的视频文件）
+    const jark::VideoSource* currentVideoSource() const {
+        const ImageAsset* asset = curPar.imageAssetPtr.get();
+        if (!asset || !asset->videoSource || asset->videoSource->data.empty())
+            return nullptr;
+        return asset->videoSource.get();
+    }
+
+    bool hasExportableVideo() const override {
+        return currentVideoSource() != nullptr;
+    }
+
+    // 导出实况照片/视频文件里的视频：数据本来就是完整容器（livp 解包的 .mov、
+    // Android 尾部切片、Samsung 尾部 MP4、或整个视频文件），原样落盘即可。
+    void exportCurrentVideo() {
+        const jark::VideoSource* source = currentVideoSource();
+        if (!source)
+            return;
+
+        const std::wstring extension = source->extension.empty() ? L"mp4" : source->extension;
+        std::wstring defaultName;
+        if (curFileIdx >= 0 && curFileIdx < (int)imgFileList.size())
+            defaultName = std::filesystem::path(imgFileList[curFileIdx]).stem().wstring();
+        if (defaultName.empty())
+            defaultName = L"video";
+        defaultName += L"." + extension;
+
+        const std::wstring target = jarkUtils::saveVideoDialogW(
+            getUIStringW(60).str(), defaultName, extension);
+        if (target.empty())
+            return; // 用户取消
+
+        std::ofstream file(target, std::ios::binary | std::ios::trunc);
+        bool ok = file.is_open();
+        if (ok) {
+            file.write(reinterpret_cast<const char*>(source->data.data()),
+                static_cast<std::streamsize>(source->data.size()));
+            ok = file.good();
+            file.close();
+        }
+
+        if (!ok) {
+            auto errMsg = std::format(L"{} 0x{:08X}", getUIStringW(61).c_str(),
+                static_cast<unsigned>(GetLastError()));
+            MessageBoxW(m_hWnd, errMsg.c_str(), getUIStringW(1), MB_OK | MB_ICONERROR);
+            return;
+        }
+
+        JARK_LOG("export video: {} ({} bytes)", jarkUtils::wstringToUtf8(target), source->data.size());
+    }
+
     void copyOrMoveCurrentImage(bool move) {
         if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size() ||
             imgFileList[curFileIdx] == m_wndCaption)
@@ -2913,6 +3069,12 @@ public:
             if (refreshVectorRasterIfNeeded())
                 return;
 
+            // 平滑重采样预约过"下一帧再算"：这一帧补一次完整绘制（下面只重画界面层，走不到画布）
+            if (smoothBlockWakeup_) {
+                smoothBlockWakeup_ = false;
+                operateQueue.push({ ActionENUM::refresh });
+            }
+
             // 有界面在显示、或系统要求重绘时要继续出帧（不能停在空白后缓冲上）。
             // 窗口的可见性要单独看：刚被打开的窗口还没经过一帧，uiVisible() 还是旧值，
             // 少了这一项就要等鼠标动了才会画出来。
@@ -2976,7 +3138,9 @@ public:
             return slide;
         };
 
-        auto computeZoomSlide = [&](int64_t zoomNext) {
+        // 缩放锚点：滚轮带鼠标坐标（锚在光标下那一点），键盘缩放不带坐标——
+        // 保持当前视野中心不动（锚在"鼠标最后停的位置"会很意外）。两种都不越界。
+        auto computeZoomSlide = [&](int64_t zoomNext, int anchorX, int anchorY) {
             const int srcW = (curPar.rotation == 0 || curPar.rotation == 2) ? curPar.width : curPar.height;
             const int srcH = (curPar.rotation == 0 || curPar.rotation == 2) ? curPar.height : curPar.width;
             const double halfDiffW_old = (winWidth - (double)srcW * curPar.zoomCur / curPar.ZOOM_BASE) / 2.0;
@@ -2988,13 +3152,14 @@ public:
             const int imgBottom = (int)std::round(imgTop + (double)srcH * curPar.zoomCur / curPar.ZOOM_BASE);
 
             Cood slideNext = curPar.slideCur;
-            if (mousePos.x >= imgLeft && mousePos.x < imgRight && mousePos.y >= imgTop && mousePos.y < imgBottom) {
+            if (anchorX != kActionPointNone && anchorY != kActionPointNone &&
+                anchorX >= imgLeft && anchorX < imgRight && anchorY >= imgTop && anchorY < imgBottom) {
                 const double halfDiffW_new = (winWidth - (double)srcW * zoomNext / curPar.ZOOM_BASE) / 2.0;
                 const double halfDiffH_new = (winHeight - (double)srcH * zoomNext / curPar.ZOOM_BASE) / 2.0;
-                const double srcX = ((double)mousePos.x - curPar.slideCur.x - halfDiffW_old) * curPar.ZOOM_BASE / curPar.zoomCur;
-                const double srcY = ((double)mousePos.y - curPar.slideCur.y - halfDiffH_old) * curPar.ZOOM_BASE / curPar.zoomCur;
-                slideNext.x = (int)std::round(mousePos.x - halfDiffW_new - srcX * zoomNext / curPar.ZOOM_BASE);
-                slideNext.y = (int)std::round(mousePos.y - halfDiffH_new - srcY * zoomNext / curPar.ZOOM_BASE);
+                const double srcX = ((double)anchorX - curPar.slideCur.x - halfDiffW_old) * curPar.ZOOM_BASE / curPar.zoomCur;
+                const double srcY = ((double)anchorY - curPar.slideCur.y - halfDiffH_old) * curPar.ZOOM_BASE / curPar.zoomCur;
+                slideNext.x = (int)std::round(anchorX - halfDiffW_new - srcX * zoomNext / curPar.ZOOM_BASE);
+                slideNext.y = (int)std::round(anchorY - halfDiffH_new - srcY * zoomNext / curPar.ZOOM_BASE);
             }
             curPar.slideTarget = clampSlideForZoom(slideNext, zoomNext);
         };
@@ -3070,7 +3235,7 @@ public:
 
                 auto zoomNext = curPar.zoomList[curPar.zoomIndex];
                 if (curPar.zoomTarget && zoomNext != curPar.zoomTarget) {
-                    computeZoomSlide(zoomNext);
+                    computeZoomSlide(zoomNext, operateAction.x, operateAction.y);
                 }
                 curPar.zoomTarget = zoomNext;
                 smoothShift = true;
@@ -3087,7 +3252,7 @@ public:
 
                 auto zoomNext = curPar.zoomList[curPar.zoomIndex];
                 if (curPar.zoomTarget && zoomNext != curPar.zoomTarget) {
-                    computeZoomSlide(zoomNext);
+                    computeZoomSlide(zoomNext, operateAction.x, operateAction.y);
                 }
                 curPar.zoomTarget = zoomNext;
                 smoothShift = true;
@@ -3102,7 +3267,7 @@ public:
 
             auto zoomNext = curPar.zoomList[curPar.zoomIndex];
             if (curPar.zoomTarget && zoomNext != curPar.zoomTarget) {
-                computeZoomSlide(zoomNext);
+                computeZoomSlide(zoomNext, operateAction.x, operateAction.y);
             }
             curPar.zoomTarget = zoomNext;
             smoothShift = true;

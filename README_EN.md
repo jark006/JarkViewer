@@ -59,12 +59,14 @@ You can also select color modes: `Color`, `Gray`, `Document`, `Dithering`.
 2.  ✅ Automatically remembers last window position/size
 3.  ♟️ Chessboard background for image transparent areas
 4.  📖 Supports reading prompt parameter information from open-source AI-generated images. Images output by StableDiffusion WebUI and ComfyUI typically contain embedded prompt parameters or workflow JSON. However. ⚠ if the images are re-encoded through circulation on various online platforms, this information may be removed.
+5.  🖼️ Explorer thumbnails: the bundled `JarkThumbnailProvider.dll` provides thumbnails for `JXL / AVIF / HEIC` and more in File Explorer (registered together with the formats you tick on the File Association settings page; skipped automatically when the DLL is not next to the executable)
+6.  📹 Export live photo video: the "Export video" context menu item saves the embedded video as-is (`.mov` from `livp`, the trailing `MP4` of Android Motion Photos; opening a video file directly works too)
 
 ## 📂 Format Support
 
 -   **Static**: `apng avif avifs blp bmp dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr livp pbm pfm pgm pic png pnm ppm psd pxm qoi ras sr svg tga tif tiff webp wp2`
 -   **Animated**: `gif webp png apng jxl avif`
--   **Live**: `livp (IOS LivePhoto) jpg/heic/heif (Android MicroVideo/MotionPhoto)` *⚠️ Audio not supported yet*
+-   **Live**: `livp (IOS LivePhoto) jpg/heic/heif (Android MicroVideo/MotionPhoto)`
 -   **RAW**: `3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
 
 ## 👋 Quick Start

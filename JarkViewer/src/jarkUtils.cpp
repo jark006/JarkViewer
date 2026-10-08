@@ -723,6 +723,52 @@ std::pair<std::wstring, bool> jarkUtils::saveImageDialogW(wstring_view title) {
     return { filePath, isJPG };
 }
 
+// 视频另存为 选取文件路径
+std::wstring jarkUtils::saveVideoDialogW(wstring_view title, wstring_view defaultFileName,
+    wstring_view defaultExtension) {
+    OPENFILENAMEW ofn{};
+    wchar_t szFile[520] = {};
+
+    if (!defaultFileName.empty()) {
+        const size_t length = (std::min)(defaultFileName.size(), static_cast<size_t>(ARRAYSIZE(szFile) - 1));
+        wcsncpy_s(szFile, defaultFileName.data(), length);
+    }
+
+    // 过滤器按扩展名给出（默认项与 defaultExtension 一致），用户改选另一项时按所选补扩展名
+    static constexpr wchar_t mp4Filter[] = L"MP4\0*.mp4\0QuickTime\0*.mov\0All\0*.*\0";
+    static constexpr wchar_t movFilter[] = L"QuickTime\0*.mov\0MP4\0*.mp4\0All\0*.*\0";
+    const bool preferMov = (defaultExtension == L"mov");
+    const std::wstring extension = defaultExtension.empty() ? L"mp4" : std::wstring(defaultExtension);
+
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = NULL;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = ARRAYSIZE(szFile);
+    ofn.lpstrFilter = preferMov ? movFilter : mp4Filter;
+    ofn.nFilterIndex = 1;
+    ofn.lpstrDefExt = extension.c_str();
+    ofn.lpstrTitle = title.data();
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+
+    if (!GetSaveFileNameW(&ofn))
+        return {};
+
+    std::wstring filePath = szFile;
+    // 用户手动输入的名字没带扩展名时，按所选过滤器补一个
+    const auto extensionOf = [](const std::wstring& path) {
+        const size_t dot = path.find_last_of(L'.');
+        const size_t slash = path.find_last_of(L"\\/");
+        if (dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash))
+            return std::wstring();
+        return path.substr(dot + 1);
+        };
+
+    if (extensionOf(filePath).empty())
+        filePath += L"." + (ofn.nFilterIndex == 1 ? extension : (preferMov ? L"mp4" : L"mov"));
+
+    return filePath;
+}
+
 void jarkUtils::openUrl(const wchar_t* url) {
     SHELLEXECUTEINFOW sei = {
         .cbSize = sizeof(sei),

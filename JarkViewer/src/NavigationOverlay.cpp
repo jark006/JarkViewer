@@ -308,10 +308,10 @@ void NavigationOverlay::draw(const cv::Mat& source, ImVec2 screenOrigin) {
     const auto pos = [&](float x, float y) { return ImVec2(screenOrigin.x + x, screenOrigin.y + y); };
     const auto topLeft = [&](const cv::Rect2f& rect) { return pos(rect.x, rect.y); };
     const auto bottomRight = [&](const cv::Rect2f& rect) { return pos(rect.x + rect.width, rect.y + rect.height); };
-    const ImU32 background = ImGui::GetColorU32(ImGuiCol_PopupBg);
-    // 底部预览带（及其文件名浮签）改用半透明底：悬停时能透出后面的图像，
-    // 与「加载中」「实况」浮标同一档透明度；鸟瞰面板保持不透明
-    const ImU32 stripBackground = ImGui::GetColorU32(ImGuiCol_PopupBg, 0.82f);
+    // 鸟瞰面板、底部预览带与文件名浮签统一半透明底：悬停时能透出后面的图像，
+    // 与「加载中」「实况」浮标同一档透明度
+    const ImU32 background = ImGui::GetColorU32(ImGuiCol_PopupBg, 0.82f);
+    const ImU32 stripBackground = background;
     const ImU32 border = ImGui::GetColorU32(ImGuiCol_Border);
     const ImU32 accent = ImGui::GetColorU32(ImGuiCol_CheckMark);
     const ImU32 text = ImGui::GetColorU32(ImGuiCol_TextDisabled);

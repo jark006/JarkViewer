@@ -161,6 +161,7 @@
     <ClInclude Include="include\AudioOutput.h" />
     <ClInclude Include="include\BatchProcessor.h" />
     <ClInclude Include="include\CanvasRenderer.h" />
+    <ClInclude Include="include\ImageResampler.h" />
     <ClInclude Include="include\InfoScreen.h" />
     <ClInclude Include="include\NavigationOverlay.h" />
     <ClInclude Include="include\ThumbnailService.h" />
@@ -200,6 +201,7 @@
     <ClCompile Include="src\AudioOutput.cpp" />
     <ClCompile Include="src\BatchProcessor.cpp" />
     <ClCompile Include="src\CanvasRenderer.cpp" />
+    <ClCompile Include="src\ImageResampler.cpp" />
     <ClCompile Include="src\InfoScreen.cpp" />
     <ClCompile Include="src\NavigationOverlay.cpp" />
     <ClCompile Include="src\ThumbnailService.cpp" />
