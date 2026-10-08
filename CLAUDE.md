@@ -48,6 +48,12 @@ pwsh tools/test_navigation.ps1 -Exe x64/Release/JarkViewer.exe -Image <图片> -
 
 # 列出某进程的可见窗口（自动化测试定位窗口用）
 pwsh tools/list_windows.ps1 -ProcessId <pid>
+
+# 源码不变量检查（字符串表 // N 编号、格式清单与 README 交叉核对、PSD 顺序、LRU 析构、
+# 菜单加速键、版本号一致；只读源码、秒级出结果，提交前可单独跑）
+pwsh tools/check_source_invariants.ps1
+# 反向验证上面这套检查：逐项制造错误确认真能抓到，跑完按原字节还原（新增检查项要同步加破坏）
+pwsh tools/verify_source_invariant_checks.ps1
 ```
 
 每次修改后至少保证 `buildRelease.ps1` 能干净编译通过；解码相关改动应先用 `--probe` 跑一遍 `tools/gen_testdata.py` 生成的语料（包含错扩展名、无扩展名、损坏文件、EXIF 方向、动图、视频等），再做人工冒烟（静态图加载、动图播放、EXIF 显示、打印预览和导出流程）。
@@ -243,6 +249,7 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
 - `buildRelease.ps1` 必须保持 ASCII-only，且不能用 `ProcessStartInfo.ArgumentList`（Windows PowerShell 5.1 不支持，会静默丢掉全部参数并退化成默认 Debug 构建）。
 - `JarkViewerApp::drawCanvas()` 有两条必须同时成立的规则：**几何尺寸用名义尺寸**（`curPar.width/height`，矢量图 100% 时屏幕上应有的尺寸），**采样密度用位图分辨率**（`srcScaleX/srcScaleY = 位图尺寸 / 名义尺寸`）。矢量图的位图分辨率会随缩放变化，任何"用 `srcImg.cols/rows` 当几何尺寸"或"用 `zoomInvert` 直接换算位图坐标"的写法都会让画面尺寸/位置错乱。
 - Release 构建默认不打印日志，排障时用 `--log` 或 `JARKVIEWER_LOG=1`（写入 `%TEMP%\JarkViewer.log`）；新增诊断日志直接写 `JARK_LOG(...)` 即可，`isLogEnabled()` 为假时不会计算参数。
+- 查"启动/打开一张图为什么慢"用 `JARKVIEWER_STARTUP_TRACE=<文件路径>` 环境变量（`jarkUtils::startupTraceMark()`）：记录 begin / 窗口就绪并派发解码 / 设备与 UI 就绪 / 首帧就绪 / 首帧绘制各阶段相对起点的毫秒数；没设环境变量时零开销。新增关键阶段时在对应位置补一个 `startupTraceMark()`。
 - UI 文本来自 `stringRes`：**两张表同名不同文案**——`UIStringTable[stringID][语言]` 供 ImGui/画布，`UIStringTableWide[stringID][语言]` 供 Win32（窗口标题、菜单、消息框），写 `getUIStringW(id)` 时一定要核对**宽表**里那个 ID 是什么（历史上出过把消息框正文写成"关于 (&A)"菜单项的事故）。`getUIStringW` 返回 `UIStringWide`（自带缓冲区、可隐式转 `const wchar_t*`）：旧实现共用同一个 thread_local 缓冲，`MessageBoxW(h, getUIStringW(a), getUIStringW(b))` 后一次转换会冲掉前一次的指针内容（标题乱码）。需要指针活过当前语句时（如 `BROWSEINFO.lpszTitle`）用 `.str()` 存一份 `std::wstring`；丢给 `std::format`/`wstring_view` 参数时要显式 `.c_str()`。**新增文案追加到对应表尾**，并在使用处写成具名常量（各窗口文件里已有 `kStr*` 常量块）。改动后再跑一次 `--probe --lang-test`，它会打印窄表与宽表各若干条文案用于确认 ID 没有错位。
 - README 记录的 OpenCV 预编译库带有源码改动：移除 `imgcodecs` 分辨率限制，并将 HighGUI Win32 窗口光标从 `IDC_CROSS` 改为 `IDC_ARROW`；替换或重建 OpenCV 时要保留这些行为。
 - 不要提交 `.vcxproj.user`、`.vs/` 或机器相关的本地库路径。

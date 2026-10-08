@@ -354,6 +354,7 @@ public:
                 imgFileList[static_cast<size_t>(curFileIdx + 1) % imgFileList.size()] });
         }
         startupFilePrepared_ = true;
+        jarkUtils::startupTraceMark("window ready, decode dispatched");
         JARK_LOG("startup: decode dispatched at {} ms (before device creation)", startupMs());
     }
 
@@ -369,6 +370,7 @@ public:
             std::filesystem::path(GlobalVar::settingPath).parent_path() / L"JarkViewer.thumbnail");
 
         updateTextDrawerScale();
+        jarkUtils::startupTraceMark("device and UI ready");
 
         return S_OK;
     }
@@ -537,6 +539,7 @@ public:
             // 这里不能再跑前半段——imgDB.clear() 会把在途解码作废——直接等结果收尾。
             startupFilePrepared_ = false;
             finishOpenFile();
+            jarkUtils::startupTraceMark("first frame ready");
             JARK_LOG("startup: first frame ready at {} ms", startupMs());
             return;
         }
@@ -1758,6 +1761,7 @@ public:
     // 标题栏文件大小缓存：路径没变就不重复查磁盘
     std::wstring captionPathCache_;
     uintmax_t captionBytes_ = 0;
+    bool firstSceneDrawn_ = false; // 启动分段计时：首帧绘制时刻只记一次
 
     // 文件大小的短文本（B/KB/MB/GB），0 表示取不到、不显示
     static std::wstring formatFileSize(uintmax_t bytes) {
@@ -2546,6 +2550,11 @@ public:
     }
 
     void DrawScene() {
+        if (!firstSceneDrawn_) {
+            firstSceneDrawn_ = true;
+            jarkUtils::startupTraceMark("first scene drawn");
+        }
+
         updateMediaPlayback(); // 实时播放推进（含音频时钟驱动的帧切换）
         updateSlideshow();     // 幻灯片按间隔自动切换
 
@@ -2964,6 +2973,8 @@ int WINAPI wWinMain(
     _In_ LPWSTR lpCmdLine,
     _In_ int nCmdShow)
 {
+    jarkUtils::startupTraceMark("begin"); // 分段计时的起点（JARKVIEWER_STARTUP_TRACE=<文件> 时启用）
+
 #ifndef NDEBUG
     AllocConsole();
     FILE* stream;

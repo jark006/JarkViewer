@@ -62,9 +62,10 @@
 
 ## 📂 格式支持
 
-- **静态**：`apng avif avifs blp bmp dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr livp pbm pfm pgm pic png pnm ppm psd pxm qoi ras sr svg tga tif tiff webp wp2`
+- **静态**：`apng avif avifs blp bmp dds dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr lep livp pbm pcx pfm pgm pic png pnm ppm psd psdt pxm qoi ras sr svg tga tif tiff webm webp wp2`
 - **动态**：`gif webp png apng jxl avif`
-- **实况**：`livp(IOS LivePhoto) jpg/heic/heif(Android MicroVideo/MotionPhoto)` *⚠️ 暂不支持播放声音*
+- **实况**：`livp(IOS LivePhoto) jpg/heic/heif(Android MicroVideo/MotionPhoto)`
+- **视频**（直接打开时按动态照片处理，不出现在同目录的翻页列表里）：`3gp avi evo flv m2ts m4v mkv mov mp4 mts mxf ts vob wmv`
 - **RAW**：`3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
 
 ## 👋 快速上手

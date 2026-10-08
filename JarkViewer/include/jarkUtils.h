@@ -613,6 +613,10 @@ public:
     static std::wstring SelectFile(HWND hWnd);
     static std::wstring SelectFolder(HWND hWnd); // 选文件夹（复制/移动目标、外部编辑器场景）
 
+    // 启动/加载分段计时：设 JARKVIEWER_STARTUP_TRACE=<文件路径> 时把各阶段"相对首次调用的
+    // 毫秒数"追加写入该文件（没设环境变量时零开销）。用于回答"打开一张图为什么慢"。
+    static void startupTraceMark(const char* stage);
+
     // 图像另存为 选取文件路径
     static std::pair<std::wstring, bool> saveImageDialogW(wstring_view title);
 

@@ -577,6 +577,40 @@ std::wstring jarkUtils::SelectFile(HWND hWnd) {
     }
 }
 
+namespace {
+    struct StartupTraceState {
+        bool initialized = false;
+        bool enabled = false;
+        std::wstring path;
+        std::chrono::steady_clock::time_point start;
+    };
+}
+
+void jarkUtils::startupTraceMark(const char* stage) {
+    static StartupTraceState state;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (!state.initialized) {
+        state.initialized = true;
+        state.start = now;
+        wchar_t buffer[1024] = {};
+        const DWORD length = ::GetEnvironmentVariableW(L"JARKVIEWER_STARTUP_TRACE", buffer, 1024);
+        if (length > 0 && length < 1024) {
+            state.enabled = true;
+            state.path = buffer;
+        }
+    }
+    if (!state.enabled)
+        return;
+
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - state.start).count();
+    std::ofstream file(std::filesystem::path(state.path), std::ios::app);
+    if (file) {
+        file << std::format("{} +{} ms\n", stage, elapsed);
+        file.flush();
+    }
+}
+
 std::wstring jarkUtils::SelectFolder(HWND hWnd) {
     // lpszTitle 要活到 SHBrowseForFolder 返回：getUIStringW 按值返回，先存一份 wstring
     const std::wstring title = getUIStringW(181).str();
