@@ -307,6 +307,12 @@ public:
 
     ImageDatabase() = default;
 
+    ~ImageDatabase() override {
+        // 先停预读线程再析构本类成员：线程跑的是本类 loader()、用本类成员（colorManager 等），
+        // 等基类 ~LRU() 才停线程时这些成员已销毁，在途的那次解码会访问已释放的内存。
+        stopPreloadWorker();
+    }
+
     void setColorManagementWindow(HWND hwnd) {
         colorManager.setWindow(hwnd);
     }

@@ -103,6 +103,13 @@ public:
     }
 
     virtual ~LRU() {
+        stopPreloadWorker();
+    }
+
+    // 停止预读线程（幂等）。派生类必须在自己的析构函数里先调用一次：
+    // 预读线程跑的是派生类的 loader()、用的是派生类成员，等 ~LRU() 才停线程时
+    // 派生部分（含其成员）已经销毁，在途的那次解码会访问已释放的内存。
+    void stopPreloadWorker() {
         stop_preload = true;
         preload_cv.notify_all();
         if (preload_thread.joinable()) {
