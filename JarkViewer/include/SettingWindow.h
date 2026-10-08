@@ -423,11 +423,17 @@ private:
             ImGui::TextDisabled("%s %s UTC+8", getUIString(19), std::string(jarkUtils::COMPILE_DATE_TIME).c_str());
         }
 
+        // 软件简介（正文色，超宽自动换行）
+        ImGui::TextWrapped("%s", getUIString(kStrAboutIntro));
+
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
         const float buttonWidth = 200.0f * scale;
+
+        // 作者
+        ImGui::TextDisabled("%s", getUIString(kStrAboutAuthor));
         if (ImGui::Button("Jark006", { buttonWidth, 0 }))
             jarkUtils::openUrl(jarkLink.data());
         ImGui::SameLine();
@@ -445,6 +451,17 @@ private:
         ImGui::SameLine();
         if (ImGui::Button("蓝奏云", { buttonWidth, 0 }))
             jarkUtils::openUrl(LanzouLink.data());
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 开源许可与三方组件
+        ImGui::TextDisabled("%s: GPL-3.0", getUIString(kStrAboutLicense));
+        ImGui::TextDisabled("%s", getUIString(kStrAboutComponents));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", std::string(kAboutComponents).c_str());
+        ImGui::PopStyleColor();
     }
 
     // 关于页的图标纹理：第一次用到时才解码上传
@@ -471,6 +488,15 @@ private:
     static constexpr uint32_t kStrClearCacheFailed = 154;
     static constexpr uint32_t kStrMemoryCacheOnly = 155;
     static constexpr uint32_t kStrNetdiskHint = 166;
+    static constexpr uint32_t kStrAboutAuthor = 167;
+    static constexpr uint32_t kStrAboutIntro = 168;
+    static constexpr uint32_t kStrAboutLicense = 169;
+    static constexpr uint32_t kStrAboutComponents = 170;
+
+    // 关于页的三方开源组件清单（库名不翻译）
+    static constexpr std::string_view kAboutComponents =
+        "OpenCV · FFmpeg · libjxl · libheif · libavif · LibRaw · Exiv2 · LunaSVG · "
+        "psd_sdk · Dear ImGui · stb · QOI · libwebp2 · DirectXTex · minizip · Lepton";
 
     // 帮助页文案（窄表新增条目）
     static constexpr uint32_t kStrHelpTitle = 127;
