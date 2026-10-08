@@ -432,8 +432,8 @@ private:
 
         const float buttonWidth = 200.0f * scale;
 
-        // 作者
-        ImGui::TextDisabled("%s", getUIString(kStrAboutAuthor));
+        // 相关链接（个人主页与项目仓库）
+        ImGui::TextDisabled("%s", getUIString(kStrAboutLinks));
         if (ImGui::Button("Jark006", { buttonWidth, 0 }))
             jarkUtils::openUrl(jarkLink.data());
         ImGui::SameLine();
@@ -488,7 +488,7 @@ private:
     static constexpr uint32_t kStrClearCacheFailed = 154;
     static constexpr uint32_t kStrMemoryCacheOnly = 155;
     static constexpr uint32_t kStrNetdiskHint = 166;
-    static constexpr uint32_t kStrAboutAuthor = 167;
+    static constexpr uint32_t kStrAboutLinks = 167;
     static constexpr uint32_t kStrAboutIntro = 168;
     static constexpr uint32_t kStrAboutLicense = 169;
     static constexpr uint32_t kStrAboutComponents = 170;

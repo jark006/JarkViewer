@@ -225,7 +225,7 @@ std::string_view UIStringTable[STRING_MAX_NUM][jark::kLanguageCount] = {
     {"视频", "影片", "Video", "動画", "동영상", "Видео"}, // 164
     {"打开图片", "開啟圖片", "Open Image", "画像を開く", "이미지 열기", "Открыть изображение"}, // 165
     {"网盘分发（提取码均为 6666）", "網盤分發（提取碼均為 6666）", "Netdisk distribution (extraction code: 6666)", "ネットディスク配布（抽出コードはすべて 6666）", "클라우드 배포(추출 코드 모두 6666)", "Облачные диски (код извлечения: 6666)"}, // 166
-    {"作者", "作者", "Author", "作者", "제작자", "Автор"}, // 167
+    {"相关链接", "相關連結", "Links", "リンク", "링크", "Ссылки"}, // 167
     {"Windows 轻量原生看图工具：支持大量静态图、动图、RAW 与实况照片，具备 EXIF 信息、打印、编辑标注、批量处理与文件关联。",
      "Windows 輕量原生看圖工具：支援大量靜態圖、動圖、RAW 與實況照片，具備 EXIF 資訊、列印、編輯標註、批次處理與檔案關聯。",
      "A lightweight native image viewer for Windows: supports a wide range of still images, animations, RAW and Live Photos, with EXIF details, printing, editing & annotation, batch processing and file associations.",
