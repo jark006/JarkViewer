@@ -85,7 +85,7 @@ namespace {
     // 读取图像：走工程内解码器，因此 HEIC / AVIF / JXL / RAW 等也能参与批量处理
     cv::Mat loadImage(const std::wstring& path, std::wstring& error) {
         auto imageAsset = batchDecoder().myLoader(path);
-        const cv::Mat* source = nullptr;
+        cv::Mat* source = nullptr;
         if (!imageAsset.primaryFrame.empty())
             source = &imageAsset.primaryFrame;
         else if (!imageAsset.frames.empty())
@@ -94,6 +94,17 @@ namespace {
         if (!source || source->empty()) {
             error = L"无法解码";
             return {};
+        }
+
+        // 色彩管理：**落盘的文件带不上 profile**（OpenCV 写不了 ICC），所以统一转到 sRGB——
+        // 否则 P3/AdobeRGB 的原始数值被去掉标签后会被当成 sRGB 读，颜色悄悄变了。
+        // 这里的目标固定 sRGB，不是显示器 profile：结果是要给别人看的文件，
+        // 跟转换时这台机器接的是什么显示器无关（查看器那条路才按显示器 profile 转）。
+        // myLoader 只在部分格式里填了 iccProfile，其余格式在这里补读。
+        if (GlobalVar::settingParameter.enableColorManagement) {
+            if (imageAsset.iccProfile.empty())
+                imageAsset.iccProfile = ImageDatabase::readIccProfile(path);
+            ColorManager::applyToMat(*source, imageAsset.iccProfile, {});
         }
 
         cv::Mat bgr = toBgrImage(*source);

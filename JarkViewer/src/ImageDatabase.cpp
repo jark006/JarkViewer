@@ -3512,17 +3512,22 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
 }
 
 
+std::vector<uint8_t> ImageDatabase::readIccProfile(const std::wstring& path) {
+    auto fileReader = MappedFileReader(path);
+    if (fileReader.isEmpty())
+        return {};
+
+    return ColorManager::readEmbeddedIccProfile(path, fileReader.view());
+}
+
 ImageAsset ImageDatabase::loader(const wstring& path) {
     auto imageAsset = myLoader(path);
     JARK_LOG("{}", parseImageAssetInfo(path, imageAsset));
     convertImageAssetToCV_8U(imageAsset);
 
     if (GlobalVar::settingParameter.enableColorManagement) {
-        if (imageAsset.iccProfile.empty()) {
-            auto fileReader = MappedFileReader(path);
-            if (!fileReader.isEmpty())
-                imageAsset.iccProfile = ColorManager::readEmbeddedIccProfile(path, fileReader.view());
-        }
+        if (imageAsset.iccProfile.empty())
+            imageAsset.iccProfile = readIccProfile(path);
         colorManager.applyToImageAsset(imageAsset);
     }
 

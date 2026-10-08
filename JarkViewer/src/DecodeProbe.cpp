@@ -1051,6 +1051,61 @@ namespace {
                 "大图按行并行与逐行串行结果逐字节一致");
         }
 
+        // 6) Display P3 → sRGB：变换方向、通道顺序与色域剪裁。
+        // 这一组钉的是"看起来像 bug 的正确行为"：P3 的两个超饱和红（255,0,0 与 242,0,0）
+        // 转成 sRGB 后都是 (255,0,0)——两者都在 sRGB 色域之外，被剪裁到同一个边界值，
+        // 图案因此消失。用户拿到的 P3 测试图（如 Webkit-logo-P3.jxl：整幅只有这两种红）
+        // 在 sRGB 显示器上"只剩纯红"是**正确**渲染，不是色彩管理坏了；关掉色彩管理看到的
+        // 是把 P3 数值直接当 sRGB 用的未管理画面，那个"隐约的图案"才是假的。
+        // 数值可与 lcms2 参考实现（PIL/ImageCms 同参数）逐字节对上。
+        {
+            const auto makeP3Profile = []() -> std::vector<uint8_t> {
+                // Display P3：与 sRGB 同一白点(D65)、同一 TRC（sRGB 曲线），只有原色不同
+                const cmsFloat64Number srgbCurve[5] = { 2.4, 1.0 / 1.055, 0.055 / 1.055, 1.0 / 12.92, 0.04045 };
+                cmsToneCurve* curve = cmsBuildParametricToneCurve(nullptr, 4, srgbCurve);
+                cmsCIExyY white{ 0.3127, 0.3290, 1.0 };
+                cmsCIExyYTRIPLE primaries{
+                    { 0.6800, 0.3200, 1.0 },
+                    { 0.2650, 0.6900, 1.0 },
+                    { 0.1500, 0.0600, 1.0 } };
+                cmsToneCurve* curves[3] = { curve, curve, curve };
+                cmsHPROFILE profile = cmsCreateRGBProfile(&white, &primaries, curves);
+                cmsFreeToneCurve(curve);
+
+                std::vector<uint8_t> bytes;
+                cmsUInt32Number size = 0;
+                if (profile && cmsSaveProfileToMem(profile, nullptr, &size) && size > 0) {
+                    bytes.resize(size);
+                    cmsSaveProfileToMem(profile, bytes.data(), &size);
+                    bytes.resize(size);
+                }
+                if (profile)
+                    cmsCloseProfile(profile);
+                return bytes;
+            };
+
+            const auto p3Profile = makeP3Profile();
+            check(!p3Profile.empty(), "Display P3 自检 profile 构造成功");
+
+            // 一行 4 个色块（BGRA：Mat 是 8UC4，红在 [2]）：纯红 / 次级饱和红 / 中灰 / 纯绿
+            cv::Mat patches(1, 4, CV_8UC4);
+            patches.at<cv::Vec4b>(0, 0) = cv::Vec4b(0, 0, 255, 255);
+            patches.at<cv::Vec4b>(0, 1) = cv::Vec4b(0, 0, 242, 255);
+            patches.at<cv::Vec4b>(0, 2) = cv::Vec4b(128, 128, 128, 255);
+            patches.at<cv::Vec4b>(0, 3) = cv::Vec4b(0, 255, 0, 255);
+
+            const bool transformed = ColorManager::applyToMat(patches, p3Profile, {});
+            check(transformed, "P3 → sRGB：变换执行");
+            check(patches.at<cv::Vec4b>(0, 0) == cv::Vec4b(0, 0, 255, 255),
+                "P3 纯红 → sRGB 仍是纯红（超色域原色剪裁回自身）");
+            check(patches.at<cv::Vec4b>(0, 1) == cv::Vec4b(0, 0, 255, 255),
+                "P3 (242,0,0) → sRGB (255,0,0)：次级饱和红也被剪裁到同一个红（图案消失的机制）");
+            check(patches.at<cv::Vec4b>(0, 2) == cv::Vec4b(128, 128, 128, 255),
+                "P3 中灰 → sRGB 中灰不变（同白点同 TRC）");
+            check(patches.at<cv::Vec4b>(0, 3) == cv::Vec4b(0, 255, 0, 255),
+                "P3 纯绿 → sRGB 仍是纯绿（通道顺序没反）");
+        }
+
         report = std::format("---- 色彩管理自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
         return report;
     }

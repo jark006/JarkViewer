@@ -33,7 +33,8 @@ python tools/gen_testdata.py <输出目录>
 # 标注逻辑自检（合成底图 + 像素断言，不需要人眼）
 ./x64/Release/JarkViewer.exe --probe --annotate [--annotate-out 输出目录] [图片]
 
-# 色彩管理自检（源/目标同为 sRGB 时恒等跳过、变换生效、四通道 alpha 不动、大图并行与串行逐字节一致）
+# 色彩管理自检（源/目标同为 sRGB 时恒等跳过、变换生效、四通道 alpha 不动、大图并行与串行逐字节一致，
+# 以及 Display P3 → sRGB 的已知落点：超色域原色被剪裁回自身、次级饱和红也剪成同一个红）
 ./x64/Release/JarkViewer.exe --probe --color-test
 
 # SVG 自检（light-dark()/var() 折叠、半透明区域反预乘为直通 alpha、按可视区域光栅化的区域/旋转语义）
@@ -241,6 +242,13 @@ pwsh tools/verify_source_invariant_checks.ps1
 - `JarkViewer/include/VectorImage.h` 与 `JarkViewer/src/VectorImage.cpp` 负责矢量图（SVG）的按需光栅化：`ImageAsset::vectorSource` 持有 lunasvg 文档与文档尺寸（intrinsic），位图分辨率随缩放变化（`vectorTargetEdge()` + `refreshVectorRaster()`，滞后阈值 1.25 避免缩放动画中反复渲染，长边上限 4096）。主窗口在画面稳定后（`DrawScene` 空闲分支）调用 `refreshVectorRasterIfNeeded()` 升级分辨率。lunasvg 的位图是 **ARGB32 预乘**（内存 B,G,R,A），`renderVectorImage()` 一律**手工反预乘**成直通 alpha（直接调 `convertToRGBA()` 会换成 R,G,B,A 字节序，画布按 B 读第一个字节会红蓝互换）。`<text>` 要先 `jark::ensureVectorFonts()` 注册系统字体（lunasvg 没有内置字体，不注册就什么都画不出来）。
   `JarkViewer/include/SVGPreprocessor.h`（还在 `JarkThumbnailProvider` 里有一份同源的）在解码前做三件 lunasvg 做不到的事，顺序不能换：① `<switch>` 选择——`foreignObject` 与 `requiredFeatures` 里的 Extensibility 一律判为**不支持**，否则 draw.io 导出的画布会选中画不出来的 foreignObject、同时把后面等价的 `<text>` 兜底删掉（表现是方框连线都在、文字一个字都没有，见 issue #33/#51）；② 收集 `--x: value`（`:root` 规则表与内联 style 都覆盖）；③ 把 `var(--x[, fallback])` / `light-dark(a, b)` 折叠成字面量——lunasvg 不认识 CSS Color 5 的这些函数，颜色值判为无效时会把**整个图元丢掉不画**（draw.io 图整幅空白）。`light-dark` 取**亮色分支**：位图会进 LRU 缓存，随主题变化的颜色没有意义，亮色分支在深浅主题下都保持可读。
   **放大超过 4096 上限后按可视区域出高清块**（`VECTOR_DETAIL_MAX_EDGE` / `VectorImage::detailFrame`）：全幅位图（鸟瞰、缩略图、打印/批处理仍用它）已经榨不出细节，这时用 `renderVectorImageRegion()` 只光栅化当前可视区域+25% 余量（`VectorImage.cpp` 把"文档→旋转后名义空间"的仿射系数写进 `Document::render(bitmap, matrix)` 的矩阵里一次完成，所以位图直接就是旋转后的名义空间，取样不必再套旋转）。`CanvasRenderer` 侧只多了 `ViewState::sourceLeft/Top/Width/Height`（归一化区域）与 `sourcePreRotated`：采样原点按区域左上角平移、采样密度按"位图像素 / 该区域的名义像素"算，元素级循环一行没改。**复用判断只看可视区域（不含余量）**，否则余量会被逐帧的微小移动吃掉、每帧重光栅化；可视区域跑出旧块外的那一帧退回全幅位图（糊但不缺块），稳定后自动重出。切图时释放上一张的高清块（`lastDetailVector_`），避免 LRU 里每张 SVG 各攒几十 MB。
+- `JarkViewer/include/ColorManager.h` 与 `src/ColorManager.cpp` 是色彩管理（lcms2）：把解码出的像素从**图像内嵌 profile** 转到**目标 profile**。有两条路，目标不同**不能混**：
+  - 查看器/编辑/打印走 `ImageDatabase::loader()` → `applyToImageAsset()`：目标取**当前显示器 ICC**（`GetICMProfileW`，进程内缓存），显示器没设 profile 就退回 sRGB（内置）。
+  - 批量转换走 `BatchProcessor::loadImage()`：目标固定 **sRGB**——落盘的文件带不上 profile（OpenCV 写不了 ICC），只留 P3/AdobeRGB 的原始数值却去掉标签，等于把颜色悄悄改了（这条以前压根没做色彩管理，P3 图转出来在别的软件里会偏色）。**不能**取显示器 profile：结果是要给别人看的文件，跟转换时这台机器接什么显示器无关。
+  内嵌 profile 的来源按格式分：JXL/HEIF/实况在 `myLoader` 各自的分支里填 `iccProfile`，其余格式（JPEG/PNG/WebP/TIFF…）由 `ImageDatabase::readIccProfile()` 用 Exiv2 从文件补读，两条路都调它。
+  两个 profile 都缺或逐字节相同时变换是恒等的，直接**跳过**（一亿像素白跑一趟要两三百毫秒，这步紧跟在解码之后、顶在出图时间上）；`applyToMat` 就地变换、`cmsFLAGS_COPY_ALPHA` 保证 alpha 不动，大图按行并行（与串行逐字节一致，`--probe --color-test` 钉着）；开日志会打一行 `色彩管理: 源 → 目标 (WxH Nch)`，"颜色不对"的报告先看这一行。
+  **超色域颜色转窄色域会被剪裁，看着像串色但不是 bug**：`D:\Downloads\test\P3\Webkit-logo-P3.jxl` 整幅只有 Display P3 的两种超饱和红（255,0,0 与 242,0,0），转 sRGB 后都被剪到 (255,0,0) —— 图案消失、只剩纯红；这时关掉色彩管理看到的"隐约图案"才是假的（那是把 P3 数值直接当 sRGB 读的未管理画面）。`--color-test` 里有这组已知值断言（P3 三原色/中灰/次级饱和红 → sRGB 落点，与 lcms2 参考实现一致），改色彩链路后跑它。
+  缩略图那条路（`ThumbnailService` 的本地解码兜底）**目前不做色彩管理**：解码线程按约定不读显示器状态，而按固定 sRGB 转又会在宽色域显示器上与画面不一致；要改的话得把目标 profile 由界面线程传进来，并且让持久缩略图缓存把色彩管理状态算进缓存键（否则切换开关会留旧图）。
 - `JarkViewer/include/jarkUtils.h` 与 `JarkViewer/src/jarkUtils.cpp` 集中放置 Win32/OpenCV 工具、主题/设置全局状态、剪贴板、全屏、资源读取、文件操作和日志。
 - `JarkViewer/src/TextRenderer.cpp`、`stringRes.cpp`、`exifParse.cpp`、`videoDecoder.cpp`、`blpDecoder.cpp` 分别支撑图像文字渲染、多语言字符串、元数据解析、视频帧解码和 BLP 解码。EXIF 数值的**摄影写法**（曝光时间 `1/60 s`、光圈 `f/2.8`、焦距 `89.9 mm`、曝光补偿 `+1/3 EV`、ISO、方向翻词）由 `exifParse.cpp` 的 `formatExifValue()` 负责：按**标签号**判定（不依赖落在哪个 IFD）、只翻认得的标签，认不得的返回空串退回通用显示（厂商私有标签照规范翻会翻出错的词）；曝光时间的分母按值重算，不能照搬 EXIF 里存的分母（尼康把 1/60 存成 10/600）。
   **Exif UserComment 的编码不能靠猜固定端序**：AI 生图工具（A1111/ComfyUI/Fooocus…）把提示词、参数甚至整份 ComfyUI 工作流 JSON 塞进这个标签，正文是 8 字节字符集码（`UNICODE\0` / `ASCII\0\0\0` / `JIS\0\0\0\0\0` / 8 个 0 = 未指定）之后跟正文，**UNICODE 的 UTF-16 不强制带 BOM**，大小端都有；而且 Exiv2 回吐的字节序不一定等于文件 TIFF 头（实测 `II` 文件也可能拿到小端）。早先按 `bigEndian` 硬解，ASCII 提示词会被整段解成"低字节恒为 0"的汉字（`hyperdetailed` → `栀礀瀀攀爀`）。现在 `utf16ToUtf8()` 先认 BOM，没有 BOM 就两种端序都解、用 `textPlausibility()` 打分（可打印 ASCII 加分，控制字符与 `(c & 0xFF) == 0` 的高位字符扣分）挑更像话的那个，难分伯仲时才用调用者给的文件字节序；无前缀正文若中段出现 0x00（按单字节读明显坏掉）再按 UTF-16 补解，首尾的 0 一律去掉。文件字节序经 `getExifDetail` → `exifDataToString(path, exifData, image->byteOrder())` 传进来。`--probe --exif-test` 用现造的最小 JPEG（SOI+APP1+EOI）覆盖各种编码组合。

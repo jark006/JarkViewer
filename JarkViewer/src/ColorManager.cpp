@@ -52,6 +52,18 @@ private:
     cmsHTRANSFORM transform = nullptr;
 };
 
+// profile 的自述名（"Display P3"、"sRGB IEC61966-2.1"…），只能拿句柄问
+std::string profileName(cmsHPROFILE profile) {
+    if (!profile)
+        return "?";
+
+    char buffer[256] = {};
+    if (cmsGetProfileInfoASCII(profile, cmsInfoDescription, "en", "US", buffer, sizeof(buffer)) > 0)
+        return buffer;
+
+    return "?";
+}
+
 std::vector<uint8_t> readFileBytes(const std::wstring& path) {
     std::ifstream file(std::filesystem::path(path), std::ios::binary);
     if (!file)
@@ -211,6 +223,13 @@ bool ColorManager::applyToMat(cv::Mat& mat, const std::vector<uint8_t>& sourceIc
         mat.channels() == 4 ? cmsFLAGS_COPY_ALPHA : 0));
     if (!transform)
         return false;
+
+    // 换了哪两套色彩空间、转的是什么尺寸的图——"颜色不对"的报告全靠这一行判断是
+    // 色彩管理在按配置文件干活（超色域的颜色转窄色域会被剪裁，看起来像串色），
+    // 还是根本没生效。没开日志时实参不会求值。
+    JARK_LOG("色彩管理: {} → {} ({}x{} {}ch)",
+        profileName(sourceProfile), profileName(outputProfile),
+        mat.cols, mat.rows, mat.channels());
 
     // 大图按行分块并行：lcms2 的 transform 句柄可被多线程共用（只读），各线程处理
     // 互不重叠的行，结果与单线程逐行调用逐字节相同。小图不分线程（调度开销更大）。

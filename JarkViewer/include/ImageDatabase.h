@@ -307,6 +307,10 @@ public:
         L"srw", // Samsung
     };
 
+    // 从文件里取内嵌 ICC。`myLoader` 只在部分格式（JXL/HEIF/实况）里填 iccProfile，
+    // 其余格式（JPEG/PNG/WebP/TIFF…）用这个补读。
+    static std::vector<uint8_t> readIccProfile(const std::wstring& path);
+
     ImageDatabase() = default;
 
     ~ImageDatabase() override {
