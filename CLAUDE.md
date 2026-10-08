@@ -103,6 +103,8 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   `jarkUtils::SelectFolder`），目标不存在自动创建（含多层）、重名按资源管理器习惯让到
   `名 (2).ext` 绝不覆盖、跨盘移动退化为复制+删除；移动成功与删除同样从列表摘掉当前项。
   加菜单项注意加速键不要与既有项重复（`&C` 已被「复制图像数据」占用）。
+  紧随其后是 用外部编辑器打开 / 选择外部编辑器：程序路径记在 `SettingParameter::externalEditor`，
+  图片路径**整体加引号**交给 ShellExecute（带空格的路径是常态），失败按返回值提示。
   **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
   宽 = 1.5 倍高、悬停/按下铺系统红底 `#C42B1C` 与白色 ✕），改动在 `imgui.cpp` 的
   `RenderWindowTitleBarContents()`、`imgui_widgets.cpp` 的 `CloseButton()`（多一个 `size` 参数，

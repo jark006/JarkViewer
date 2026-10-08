@@ -1318,6 +1318,16 @@ public:
                 wcscpy_s(GlobalVar::settingParameter.copyTargetDir, chosen.c_str());
         }break;
 
+        case ContextMenu::openWithEditor: {
+            openWithExternalEditor();
+        }break;
+
+        case ContextMenu::chooseEditor: {
+            const std::wstring chosen = jarkUtils::SelectFile(m_hWnd);
+            if (!chosen.empty())
+                wcscpy_s(GlobalVar::settingParameter.externalEditor, chosen.c_str());
+        }break;
+
         case ContextMenu::deleteImage: {
             operateQueue.push({ ActionENUM::deleteImg });
         }break;
@@ -2108,6 +2118,30 @@ public:
             curPar.Init(winWidth, winHeight);
             updateNavigationDirectory();
             operateQueue.push({ ActionENUM::refresh });
+        }
+    }
+
+    // 用外部编辑器打开当前图片；未设置过编辑器时先选择并记住。图片路径整体加引号
+    // 传给编辑器（带空格的路径是常态），编辑器路径不经过命令行拆分。
+    void openWithExternalEditor() {
+        if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size() ||
+            imgFileList[curFileIdx] == m_wndCaption)
+            return;
+
+        if (GlobalVar::settingParameter.externalEditor[0] == 0) {
+            const std::wstring chosen = jarkUtils::SelectFile(m_hWnd);
+            if (chosen.empty())
+                return;
+            wcscpy_s(GlobalVar::settingParameter.externalEditor, chosen.c_str());
+        }
+
+        const std::wstring editor = GlobalVar::settingParameter.externalEditor;
+        const std::wstring file = imgFileList[curFileIdx];
+        const INT_PTR result = reinterpret_cast<INT_PTR>(ShellExecuteW(m_hWnd, L"open",
+            editor.c_str(), (L"\"" + file + L"\"").c_str(), nullptr, SW_SHOWNORMAL));
+        if (result <= 32) {
+            auto errMsg = std::format(L"{} {}", getUIStringW(59).c_str(), result);
+            MessageBoxW(m_hWnd, errMsg.c_str(), getUIStringW(1), MB_OK | MB_ICONERROR);
         }
     }
 

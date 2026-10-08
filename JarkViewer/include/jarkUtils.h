@@ -402,7 +402,7 @@ enum class ShowExtraUI :int {
 enum class ContextMenu :int {
     openNewImage = 1000, copyImageInfo, copyImagePath, copyImageData, toggleExifDisplay, openContainerFloder, deleteImage,
     openFileProperties, printImage, toggleFullScreen, openSetting, openHelp, aboutSoftware, exitSoftware, batchProcess,
-    editImage, slideshow, renameImage, copyToTarget, moveToTarget, chooseTargetDir
+    editImage, slideshow, renameImage, copyToTarget, moveToTarget, chooseTargetDir, openWithEditor, chooseEditor
 };
 
 struct Action {

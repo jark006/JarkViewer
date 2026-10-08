@@ -671,6 +671,8 @@ HMENU D3D11App::CreateContextMenu(HWND hwnd) {
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::copyToTarget, getUIStringW(52));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::moveToTarget, getUIStringW(53));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::chooseTargetDir, getUIStringW(54));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openWithEditor, getUIStringW(57));
+    AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::chooseEditor, getUIStringW(58));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::deleteImage, getUIStringW(30));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::openFileProperties, getUIStringW(36));
     AppendMenuW(hMenu, MF_STRING, (UINT_PTR)ContextMenu::printImage, getUIStringW(31));
