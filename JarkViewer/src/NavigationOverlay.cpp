@@ -309,6 +309,9 @@ void NavigationOverlay::draw(const cv::Mat& source, ImVec2 screenOrigin) {
     const auto topLeft = [&](const cv::Rect2f& rect) { return pos(rect.x, rect.y); };
     const auto bottomRight = [&](const cv::Rect2f& rect) { return pos(rect.x + rect.width, rect.y + rect.height); };
     const ImU32 background = ImGui::GetColorU32(ImGuiCol_PopupBg);
+    // 底部预览带（及其文件名浮签）改用半透明底：悬停时能透出后面的图像，
+    // 与「加载中」「实况」浮标同一档透明度；鸟瞰面板保持不透明
+    const ImU32 stripBackground = ImGui::GetColorU32(ImGuiCol_PopupBg, 0.82f);
     const ImU32 border = ImGui::GetColorU32(ImGuiCol_Border);
     const ImU32 accent = ImGui::GetColorU32(ImGuiCol_CheckMark);
     const ImU32 text = ImGui::GetColorU32(ImGuiCol_TextDisabled);
@@ -358,7 +361,7 @@ void NavigationOverlay::draw(const cv::Mat& source, ImVec2 screenOrigin) {
     }
     if (!stripVisible_)
         return;
-    draw->AddRectFilled(topLeft(strip_), bottomRight(strip_), background, radius);
+    draw->AddRectFilled(topLeft(strip_), bottomRight(strip_), stripBackground, radius);
     draw->AddRect(topLeft(strip_), bottomRight(strip_), border, radius);
     const auto arrow = [&](const cv::Rect2f& rect, const char* glyph, bool available) {
         if (available && contains(rect, mouse_))
@@ -421,7 +424,7 @@ void NavigationOverlay::draw(const cv::Mat& source, ImVec2 screenOrigin) {
         const float width = (std::min)(size.x + 16 * scale_, strip_.width);
         const float x = std::clamp(static_cast<float>(mouse_.x) - width / 2, strip_.x, strip_.x + strip_.width - width);
         const cv::Rect2f tooltip(x, strip_.y - size.y - 12 * scale_, width, size.y + 8 * scale_);
-        draw->AddRectFilled(topLeft(tooltip), bottomRight(tooltip), background, radius);
+        draw->AddRectFilled(topLeft(tooltip), bottomRight(tooltip), stripBackground, radius);
         draw->PushClipRect(topLeft(tooltip), bottomRight(tooltip), true);
         draw->AddText(pos(x + 8 * scale_, tooltip.y + 4 * scale_), ImGui::GetColorU32(ImGuiCol_Text), name.c_str());
         draw->PopClipRect();

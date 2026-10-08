@@ -149,7 +149,9 @@ pwsh tools/verify_source_invariant_checks.ps1
   目标值——小图从当前已加载的 `currentSourceImage()` 缩小，绝不读文件）+ 底部**悬停缩略图带**
   （鼠标进入**整块预览带区域**即展开——触发区就是展开后的面板矩形，**但鸟瞰面板区域豁免**：
   悬停面板不会展开预览带、也不会把面板顶上去；展开/换图时当前图片严格位于控件水平正中，
-  两侧图片不足就留空且留空位置不可点；滚轮/左右按钮翻页，点击排队 `jumpToImage` 直接换图）。它**不加入
+  两侧图片不足就留空且留空位置不可点；滚轮/左右按钮翻页，点击排队 `jumpToImage` 直接换图；
+  带体与文件名浮签是半透明底——`ImGuiCol_PopupBg` × 0.82，悬停展开时透出后面的图像，
+  鸟瞰面板保持不透明）。它**不加入
   `anyWindowVisible()`**，而是自己画在 `GetForegroundDrawList()` 上、自己做客户区命中
   （`OnMouseDown/Move/Wheel` 顶部优先处理，命中即拦截旧边缘按钮/画布拖动逻辑，二级窗口打开或
   图片切换时 `cancel()`）。动作走 `OperateQueue` 新增的 `jumpToImage`/`navigateImage` 在
