@@ -44,6 +44,13 @@ namespace {
 
     constexpr int BG_GRID_WIDTH = 16; // 透明区域棋盘格边长
 
+    // 画布底色：全屏时可选纯黑（设置项，默认关闭），否则跟随当前主题
+    uint32_t canvasBackgroundColor() {
+        if (GlobalVar::settingParameter.blackFullscreenBackground && jarkUtils::IsFullScreen())
+            return 0xFF000000;
+        return GlobalVar::currentTheme.BG;
+    }
+
     uint32_t getSrcPx1(const cv::Mat& srcImg, int srcX, int srcY, bool isLowZoom) {
         uchar srcPx = srcImg.at<uchar>(srcY, srcX);
         if (isLowZoom && srcY > 0 && srcX > 0) { // 简单临近像素平均
@@ -144,7 +151,7 @@ namespace {
 
         uint32_t* ptrStart = (uint32_t*)canvas.ptr();
         uint32_t* ptrEnd = ptrStart + canvasH * canvasW;
-        std::fill(ptrStart, ptrEnd, GlobalVar::currentTheme.BG);
+        std::fill(ptrStart, ptrEnd, canvasBackgroundColor());
 
         if (view.border) { // 普通图像  画边框（主页/解码失败的界面画面不画）
             const uint32_t lineColor = 0xFF808080;

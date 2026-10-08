@@ -888,6 +888,78 @@ namespace {
         return report;
     }
 
+    // 文件列表排序自检：造三个文件，使名称序、修改时间序、大小序互不相同，
+    // 逐个排序方式断言顺序，并验证"当前图片"的下标能跟着重排走。
+    std::string runSortTest() {
+        namespace fs = std::filesystem;
+
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+
+        const fs::path dir = fs::temp_directory_path() / L"JarkViewer-sort-tests";
+        std::error_code ec;
+        fs::remove_all(dir, ec);
+        fs::create_directories(dir, ec);
+        if (ec) {
+            report += std::format("无法创建测试目录 {}\n", jarkUtils::wstringToUtf8(dir.wstring()));
+            return std::format("---- 排序自检：0 通过, 1 失败 ----\n{}", report);
+        }
+
+        // 名称自然序：img1 < img2 < img10；大小降序：img10 > img1 > img2；时间降序：img2 > img10 > img1
+        const auto writeFile = [&](const wchar_t* name, size_t bytes, int minutesAgo) {
+            const fs::path path = dir / name;
+            std::ofstream(path, std::ios::binary).write(std::string(bytes, 'x').data(),
+                static_cast<std::streamsize>(bytes));
+            fs::last_write_time(path, fs::file_time_type::clock::now() -
+                std::chrono::minutes(minutesAgo), ec);
+            return path.wstring();
+        };
+
+        const std::wstring file1 = writeFile(L"img1.png", 200, 30);
+        const std::wstring file2 = writeFile(L"img2.png", 100, 10);
+        const std::wstring file10 = writeFile(L"img10.png", 300, 20);
+
+        const auto byName = [](const std::wstring& path) {
+            return fs::path(path).filename().wstring();
+        };
+        // files 顺序与目录枚举无关，这里按固定的初始顺序摆放
+        const std::vector<std::wstring> seed{ file1, file2, file10 };
+
+        const auto orderedBy = [&](uint32_t mode, int currentIndex) {
+            std::vector<std::wstring> files = seed;
+            int index = currentIndex;
+            jarkUtils::sortImageFileList(files, mode, index);
+            std::wstring order;
+            for (const auto& path : files)
+                order += byName(path) + L" ";
+            return std::pair<std::wstring, int>{ order, index };
+        };
+
+        {
+            const auto [order, index] = orderedBy(0, 1); // 当前图片 = img2（初始下标 1）
+            check(order == L"img1.png img2.png img10.png ", "名称：数字感知自然序");
+            check(index == 1, "名称：当前图片下标跟随重排");
+        }
+        {
+            const auto [order, index] = orderedBy(1, 1);
+            check(order == L"img2.png img10.png img1.png ", "修改时间：新的在前");
+            check(index == 0, "修改时间：当前图片下标跟随重排");
+        }
+        {
+            const auto [order, index] = orderedBy(2, 1);
+            check(order == L"img10.png img1.png img2.png ", "文件大小：大的在前");
+            check(index == 2, "文件大小：当前图片下标跟随重排");
+        }
+
+        fs::remove_all(dir, ec);
+        report = std::format("---- 排序自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
+        return report;
+    }
+
 } // namespace
 
 int runDecodeProbe(const std::vector<std::wstring>& argv) {
@@ -911,6 +983,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool thumbnailTest = false;
     bool shellThumbnailTest = false;
     bool vectorTest = false;
+    bool sortTest = false;
     int thumbnailWriter = -1;
     std::wstring annotateOutDir;
     jark::BatchOptions batchOptions;
@@ -945,6 +1018,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--svg-test") {
             vectorTest = true;
+            continue;
+        }
+        if (argv[i] == L"--sort-test") {
+            sortTest = true;
             continue;
         }
         if (argv[i] == L"--thumbnail-writer" && i + 1 < argv.size()) {
@@ -1064,7 +1141,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !thumbnailTest && !vectorTest && thumbnailWriter < 0) {
+    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !thumbnailTest && !vectorTest && !sortTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -1088,6 +1165,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (vectorTest) {
         const auto text = runVectorTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (sortTest) {
+        const auto text = runSortTest();
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

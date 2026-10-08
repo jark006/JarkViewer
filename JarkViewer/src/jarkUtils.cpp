@@ -2,6 +2,10 @@
 
 #include "jarkUtils.h"
 
+#include <shlwapi.h>
+#pragma comment(lib, "shlwapi.lib")
+
+#include <cstdint>
 #include <fstream>
 #include <mutex>
 
@@ -861,4 +865,81 @@ bool jarkUtils::getSystemDarkMode() {
         RegCloseKey(hKey);
     }
     return isDark;
+}
+
+// 图片文件列表排序：名称（自然序升序）/ 修改时间（新→旧）/ 文件大小（大→小）
+void jarkUtils::sortImageFileList(std::vector<std::wstring>& files, uint32_t sortMode, int& currentIndex) {
+    const std::wstring current = (currentIndex >= 0 && currentIndex < (int)files.size())
+        ? files[currentIndex] : std::wstring();
+
+    const auto fileName = [](const std::wstring& path) {
+        return std::filesystem::path(path).filename().wstring();
+    };
+
+    switch (std::clamp<uint32_t>(sortMode, 0, 2)) {
+    case 1: { // 修改时间：新的在前；取不到时间的排在最后，同刻按自然名称序
+        const auto stamp = [](const std::wstring& path) -> int64_t {
+            std::error_code ec;
+            const auto time = std::filesystem::last_write_time(path, ec);
+            if (ec)
+                return INT64_MIN;
+            return time.time_since_epoch().count();
+        };
+        std::vector<int64_t> stamps;
+        stamps.reserve(files.size());
+        for (const auto& path : files)
+            stamps.push_back(stamp(path));
+
+        std::vector<size_t> order(files.size());
+        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            if (stamps[a] != stamps[b])
+                return stamps[a] > stamps[b];
+            return StrCmpLogicalW(fileName(files[a]).c_str(), fileName(files[b]).c_str()) < 0;
+        });
+        std::vector<std::wstring> sorted;
+        sorted.reserve(files.size());
+        for (const size_t index : order) sorted.emplace_back(std::move(files[index]));
+        files = std::move(sorted);
+    } break;
+
+    case 2: { // 文件大小：大的在前；取不到大小的排在最后
+        const auto bytes = [](const std::wstring& path) -> int64_t {
+            std::error_code ec;
+            const auto size = std::filesystem::file_size(path, ec);
+            return ec ? -1 : static_cast<int64_t>(size);
+        };
+        std::vector<int64_t> sizes;
+        sizes.reserve(files.size());
+        for (const auto& path : files)
+            sizes.push_back(bytes(path));
+
+        std::vector<size_t> order(files.size());
+        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            if (sizes[a] != sizes[b])
+                return sizes[a] > sizes[b];
+            return StrCmpLogicalW(fileName(files[a]).c_str(), fileName(files[b]).c_str()) < 0;
+        });
+        std::vector<std::wstring> sorted;
+        sorted.reserve(files.size());
+        for (const size_t index : order) sorted.emplace_back(std::move(files[index]));
+        files = std::move(sorted);
+    } break;
+
+    default: // 名称：数字感知的自然排序（资源管理器习惯）
+        std::sort(files.begin(), files.end(), [&](const std::wstring& a, const std::wstring& b) {
+            return StrCmpLogicalW(fileName(a).c_str(), fileName(b).c_str()) < 0;
+        });
+        break;
+    }
+
+    if (!current.empty()) {
+        for (size_t i = 0; i < files.size(); ++i) {
+            if (files[i] == current) {
+                currentIndex = static_cast<int>(i);
+                break;
+            }
+        }
+    }
 }

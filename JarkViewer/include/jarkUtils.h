@@ -169,7 +169,11 @@ struct SettingParameter {
     wchar_t copyTargetDir[260] = {};        // 复制/移动图片的目标文件夹（空=未设置，首次使用时选择）
     wchar_t externalEditor[260] = {};       // 外部编辑器程序路径（空=未设置，首次使用时选择）
 
-    uint32_t reserve[523]; // 原 800，依次划给 monitorDevice(64) + livePhotoAutoPlaySound(4) + 两个路径(2×520)
+    uint32_t sortMode = 0;                  // 文件列表排序 0:名称(自然序) 1:修改时间(新→旧) 2:文件大小(大→小)
+    bool stopAtListEnd = false;             // 浏览到最后/第一张时停住，不首尾循环（幻灯片同理）
+    bool blackFullscreenBackground = false; // 全屏时画布用纯黑背景（默认为当前主题背景色）
+
+    uint32_t reserve[521]; // 原 800，依次划给 monitorDevice(64) + livePhotoAutoPlaySound(4) + 两个路径(2×520) + 排序与浏览开关(8)
 
     char extCheckedListStr[800];
 
@@ -242,6 +246,9 @@ struct SettingParameter {
         // 右键点击行为检查 (0~1)
         if (rightClickAction > 1) rightClickAction = 0;
 
+        // 文件列表排序检查 (0~2)
+        if (sortMode > 2) sortMode = 0;
+
         // 确保扩展名列表字符串以空字符结尾
         extCheckedListStr[sizeof(extCheckedListStr) - 1] = 0;
     }
@@ -254,6 +261,10 @@ static_assert(offsetof(SettingParameter, monitorDevice) == 96);
 static_assert(offsetof(SettingParameter, livePhotoAutoPlaySound) == 160);
 static_assert(offsetof(SettingParameter, copyTargetDir) == 162);   // bool 后按 wchar_t 的对齐(2)排
 static_assert(offsetof(SettingParameter, externalEditor) == 682);
+static_assert(offsetof(SettingParameter, sortMode) == 1204);
+static_assert(offsetof(SettingParameter, stopAtListEnd) == 1208);
+static_assert(offsetof(SettingParameter, blackFullscreenBackground) == 1209);
+static_assert(offsetof(SettingParameter, reserve) == 1212);
 static_assert(offsetof(SettingParameter, extCheckedListStr) == 3296);
 
 struct rcFileInfo {
@@ -502,6 +513,7 @@ struct MatPack {
 struct GlobalVar {
     static inline bool isNeedUpdateTheme = false;
     static inline bool isNeedReloadImageCache = false;
+    static inline bool isNeedSortFileList = false;  // 排序设置变化：主窗口重排文件列表
 
     static inline bool isSystemDarkMode = false;    // 系统界面主题：深色/浅色
     static inline bool isCurrentUIDarkMode = false; // 应用实时界面主题：深色/浅色
@@ -608,6 +620,12 @@ public:
     static bool IsFullScreen();
     // 只在状态不同时切换（幻灯片播放要求“确保全屏”，不能无脑 toggle）
     static void SetFullScreen(HWND hwnd, bool fullScreen);
+
+    // 按设置里的排序方式重排图片文件列表（整路径）；
+    // currentIndex（可为 -1）指出当前图片，重排后原地更新为它在新顺序中的下标。
+    // 名称用 StrCmpLogicalW 自然序升序；修改时间/文件大小按降序（新的、大的在前，
+    // 与资源管理器默认的日期列排序一致）。取不到时间/大小的条目排在最后，不丢失。
+    static void sortImageFileList(std::vector<std::wstring>& files, uint32_t sortMode, int& currentIndex);
 
     // 选取文件
     static std::wstring SelectFile(HWND hWnd);

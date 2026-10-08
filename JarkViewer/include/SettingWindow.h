@@ -41,6 +41,7 @@ public:
         focusRequested_ = true;
         lastColorManagement_ = GlobalVar::settingParameter.enableColorManagement;
         lastUiMode_ = GlobalVar::settingParameter.UI_Mode;
+        lastSortMode_ = GlobalVar::settingParameter.sortMode;
     }
 
     void close() {
@@ -118,6 +119,11 @@ private:
     void applySideEffects() {
         auto& parameter = GlobalVar::settingParameter;
 
+        if (parameter.sortMode != lastSortMode_) {
+            lastSortMode_ = parameter.sortMode;
+            GlobalVar::isNeedSortFileList = true; // 主窗口下一帧重排文件列表（当前图片跟着走）
+        }
+
         if (parameter.enableColorManagement != lastColorManagement_) {
             lastColorManagement_ = parameter.enableColorManagement;
             GlobalVar::isNeedReloadImageCache = true;
@@ -171,6 +177,12 @@ private:
         drawRadioRow(20, { getUIString(21), getUIString(22), getUIString(23) }, &parameter.switchImageAnimationMode, 0);
 
         ImGui::Spacing();
+        drawRadioRow(kStrSortMode, { getUIString(kStrSortName), getUIString(kStrSortTime),
+            getUIString(kStrSortSize) }, &parameter.sortMode, 0);
+        ImGui::Spacing();
+        ImGui::Checkbox(getUIString(kStrStopAtLast), &parameter.stopAtListEnd);
+
+        ImGui::Spacing();
         drawRadioRow(17, { getUIString(121), getUIString(122), getUIString(123) }, &parameter.pptOrder, 0);
         ImGui::SameLine();
         ImGui::SetNextItemWidth(160.0f * scale);
@@ -191,6 +203,9 @@ private:
               std::string(jark::languageDisplayName(jark::Language::Korean)),
               std::string(jark::languageDisplayName(jark::Language::Russian)) },
             &parameter.UI_LANG, 0);
+
+        ImGui::Spacing();
+        ImGui::Checkbox(getUIString(kStrBlackFullscreen), &parameter.blackFullscreenBackground);
 
         ImGui::Spacing();
         drawRadioRow(36, { getUIString(37), getUIString(38) }, &parameter.rightClickAction, 0);
@@ -503,6 +518,12 @@ private:
     static constexpr uint32_t kStrCacheCleared = 153;
     static constexpr uint32_t kStrClearCacheFailed = 154;
     static constexpr uint32_t kStrMemoryCacheOnly = 155;
+    static constexpr uint32_t kStrSortMode = 183;
+    static constexpr uint32_t kStrSortName = 184;
+    static constexpr uint32_t kStrSortTime = 185;
+    static constexpr uint32_t kStrSortSize = 186;
+    static constexpr uint32_t kStrStopAtLast = 187;
+    static constexpr uint32_t kStrBlackFullscreen = 188;
     static constexpr uint32_t kStrNetdiskHint = 166;
     static constexpr uint32_t kStrAboutLinks = 167;
     static constexpr uint32_t kStrAboutIntro = 168;
@@ -529,6 +550,7 @@ private:
 
     bool lastColorManagement_ = false;
     uint32_t lastUiMode_ = 0;
+    uint32_t lastSortMode_ = 0;
 
     std::vector<std::string> allSupportExt_;
     std::set<std::string> checkedExt_;

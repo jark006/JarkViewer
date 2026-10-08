@@ -474,7 +474,7 @@ public:
 
         auto workDir = fullPath.parent_path();
         if (fs::exists(workDir)) {
-            std::vector<std::wstring> fileNameList;
+            std::vector<std::wstring> filePaths;
             for (const auto& entry : fs::directory_iterator(workDir)) {
                 if (!entry.is_regular_file())continue;
 
@@ -485,21 +485,24 @@ public:
                 std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
 
                 if (ImageDatabase::supportExt.contains(ext) || ImageDatabase::supportRaw.contains(ext)) {
-                    fileNameList.emplace_back(entry.path().filename().wstring());
+                    filePaths.emplace_back(entry.path().wstring());
                 }
             }
 
-            // 自然排序 数字感知排序
-            std::sort(fileNameList.begin(), fileNameList.end(), [](std::wstring_view a, std::wstring_view b) -> bool {
-                return StrCmpLogicalW(a.data(), b.data()) < 0; });
-
-            for (auto& fileName : fileNameList) {
-                auto fullpath = (workDir / fileName).wstring();
-                imgFileList.emplace_back(std::move(fullpath));
-                if (curFileIdx == -1 && openFileName == fileName) {
-                    curFileIdx = (int)imgFileList.size() - 1;
+            // 排序方式由设置决定（名称自然序 / 修改时间 / 文件大小）；先把打开的这张定位出来，
+            // 排序时把它的下标一起带过去
+            int index = -1;
+            for (size_t i = 0; i < filePaths.size(); ++i) {
+                if (fs::path(filePaths[i]).filename() == openFileName) {
+                    index = static_cast<int>(i);
+                    break;
                 }
             }
+            jarkUtils::sortImageFileList(filePaths, GlobalVar::settingParameter.sortMode, index);
+            curFileIdx = index;
+
+            for (auto& filePath : filePaths)
+                imgFileList.emplace_back(std::move(filePath));
         }
         else {
             curFileIdx = -1;
@@ -1861,8 +1864,16 @@ public:
         switch (std::clamp<uint32_t>(GlobalVar::settingParameter.pptOrder, 0, 2)) {
         case 1: // 逆序
             direction = -1;
-            if (--curFileIdx < 0)
+            if (curFileIdx <= 0) {
+                if (GlobalVar::settingParameter.stopAtListEnd) {
+                    stopSlideshow(); // 已放完第一张：结束播放，不绕到末尾
+                    return;
+                }
                 curFileIdx = (int)imgFileList.size() - 1;
+            }
+            else {
+                --curFileIdx;
+            }
             break;
 
         case 2: { // 随机（不重复当前）
@@ -1875,8 +1886,16 @@ public:
         } break;
 
         default: // 顺序
-            if (++curFileIdx >= (int)imgFileList.size())
+            if (curFileIdx >= (int)imgFileList.size() - 1) {
+                if (GlobalVar::settingParameter.stopAtListEnd) {
+                    stopSlideshow(); // 已放完最后一张：结束播放，不绕回开头
+                    return;
+                }
                 curFileIdx = 0;
+            }
+            else {
+                ++curFileIdx;
+            }
             break;
         }
 
@@ -2121,15 +2140,8 @@ public:
         jark::ThumbnailService::instance().invalidate(oldPath);
         imgFileList[curFileIdx] = newPath;
 
-        // 文件名变了，按自然排序把当前图挪到新位置（与 initOpenFile 同一排序规则）
-        std::sort(imgFileList.begin(), imgFileList.end(), [](std::wstring_view a, std::wstring_view b) -> bool {
-            return StrCmpLogicalW(a.data(), b.data()) < 0; });
-        for (size_t i = 0; i < imgFileList.size(); ++i) {
-            if (imgFileList[i] == newPath) {
-                curFileIdx = static_cast<int>(i);
-                break;
-            }
-        }
+        // 文件名变了，按当前排序设置把这张挪到新位置（与 initOpenFile 同一套规则）
+        jarkUtils::sortImageFileList(imgFileList, GlobalVar::settingParameter.sortMode, curFileIdx);
 
         imgDB.clear();            // 旧路径的缓存（连同相邻预读）一起作废，重新装载
         ++navigationImageVersion; // 导航里按旧坐标的换图请求作废
@@ -2729,6 +2741,16 @@ public:
             }
         }
 
+        if (GlobalVar::isNeedSortFileList) {
+            GlobalVar::isNeedSortFileList = false;
+            if (imgFileList.size() > 1) {
+                // 只换顺序、不换图：缓存按路径索引，无需作废；当前图片的下标跟着走
+                jarkUtils::sortImageFileList(imgFileList, GlobalVar::settingParameter.sortMode, curFileIdx);
+                updateNavigationDirectory();
+                operateQueue.push({ ActionENUM::refresh });
+            }
+        }
+
         auto operateAction = operateQueue.get();
         if (operateAction.action == ActionENUM::none &&
             curPar.zoomCur == curPar.zoomTarget &&
@@ -2841,14 +2863,26 @@ public:
         } break;
 
         case ActionENUM::preImg: {
-            if (--curFileIdx < 0)
+            if (curFileIdx <= 0) {
+                if (GlobalVar::settingParameter.stopAtListEnd)
+                    break; // 已在第一张：停住，不绕到末尾
                 curFileIdx = (int)imgFileList.size() - 1;
+            }
+            else {
+                --curFileIdx;
+            }
             switchToFile(curFileIdx, -1);
         } break;
 
         case ActionENUM::nextImg: {
-            if (++curFileIdx >= (int)imgFileList.size())
+            if (curFileIdx >= (int)imgFileList.size() - 1) {
+                if (GlobalVar::settingParameter.stopAtListEnd)
+                    break; // 已在最后一张：停住，不绕回开头
                 curFileIdx = 0;
+            }
+            else {
+                ++curFileIdx;
+            }
             switchToFile(curFileIdx, +1);
         } break;
 
