@@ -35,7 +35,9 @@
 #pragma comment(lib, "webp2.lib")
 #pragma comment(lib, "imageio.lib")
 
-// heif v1.20.1#1  https://github.com/strukturag/libheif
+// heif v1.23.5（libde265 v1.1.3）  https://github.com/strukturag/libheif
+// 1.20.1/1.0.15 受 CVE-2026-32741（libheif 掩码图 memcpy 堆溢出）与 CVE-2026-33165
+// （libde265 SPS 变更后越界写）影响，务必用 ≥1.22.0 / ≥1.0.17 重建静态库（见 README）
 #include "libheif/heif.h"
 #pragma comment(lib, "heif.lib")
 #pragma comment(lib, "libde265.lib")

@@ -115,6 +115,8 @@ git clone git@github.com:jark006/JarkViewer.git --depth=50
 
 另外，`libopencv/zlib.lib` 已替换为 **zlib-ng** 的 compat 构建（大 PNG 解压约快 25%），`include` 下的 zlib 头文件与之配套。自行准备静态库时，运行一次 `pwsh tools/build-zlib-ng.ps1 -Install` 即可完成替换（compat 模式不改符号名，无需重建 OpenCV）。
 
+⚠️ **libheif / libde265 必须用修复版本**：`lib/heif.lib` 与 `lib/libde265.lib` 需来自 **libheif ≥ 1.22.0**、**libde265 ≥ 1.0.17**（本项目当前使用 1.23.5 / 1.1.3）。旧版本存在 **CVE-2026-32741**（libheif 掩码图解码时以 `iloc` 长度直接 `memcpy` 到按图像尺寸分配的缓冲区，堆溢出，7.1 高危）与 **CVE-2026-33165**（libde265 在 SPS 变更后越界写 2 字节），只需一个恶意文件即可触发。注意**只改头文件没有意义**：有漏洞的代码在预编译的 `.lib` 里，且会造成头/库版本不一致。
+
 若不要以上静态库，可在项目属性页开启`vcpkg`支持，然后手动安装第三方库 (后续若有新增，此列表可能更新不及时，需开发者自行根据编译缺失信息补充安装)
 
 ```sh

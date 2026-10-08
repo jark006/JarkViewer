@@ -31,10 +31,29 @@ extern "C" {
 #include <stdint.h>
 
 
-enum heif_chroma
+// The heif_chroma enum describes pixel layout (planar vs interleaved, and any
+// YUV chroma subsampling). It does NOT describe pixel semantics; the semantic
+// interpretation of the planes comes from heif_colorspace.
+//
+// heif_chroma_planar covers "one or more planar components, no subsampling".
+// It is used for:
+//   - heif_colorspace_monochrome (single luma plane)
+//   - heif_colorspace_filter_array (single CFA mosaic plane)
+//   - heif_colorspace_custom (any number of planar components)
+// For heif_colorspace_RGB the historical name heif_chroma_444 is the
+// canonical form for planar RGB. heif_chroma_planar is accepted as a
+// synonym at the C API boundary and is internally canonicalized to
+// heif_chroma_444 so existing callers and internal code paths keep seeing
+// heif_chroma_444 on read-back. Callers should also accept a returned
+// heif_chroma_planar as a synonym. We might switch to this as the
+// canonical name in the future.
+//
+// The YUV subsampling names (heif_chroma_420 / _422 / _444) are kept for
+// heif_colorspace_YCbCr.
+typedef enum heif_chroma
 {
   heif_chroma_undefined = 99,
-  heif_chroma_monochrome = 0,
+  heif_chroma_planar = 0,
   heif_chroma_420 = 1,
   heif_chroma_422 = 2,
   heif_chroma_444 = 3,
@@ -44,14 +63,19 @@ enum heif_chroma
   heif_chroma_interleaved_RRGGBBAA_BE = 13, // HDR, big endian.
   heif_chroma_interleaved_RRGGBB_LE = 14,   // HDR, little endian.
   heif_chroma_interleaved_RRGGBBAA_LE = 15  // HDR, little endian.
-};
+} heif_chroma;
 
 // DEPRECATED ENUM NAMES
 #define heif_chroma_interleaved_24bit  heif_chroma_interleaved_RGB
 #define heif_chroma_interleaved_32bit  heif_chroma_interleaved_RGBA
 
+// Legacy alias for heif_chroma_planar. The name "monochrome" was misleading
+// for non-grayscale planar layouts (filter_array, custom); use
+// heif_chroma_planar in new code.
+#define heif_chroma_monochrome heif_chroma_planar
 
-enum heif_colorspace
+
+typedef enum heif_colorspace
 {
   heif_colorspace_undefined = 99,
 
@@ -63,6 +87,8 @@ enum heif_colorspace
 
   // heif_colorspace_RGB should be used with one of these heif_chroma values:
   // * heif_chroma_444 (for planar RGB)
+  // * heif_chroma_planar is accepted as a synonym and is internally canonicalized to heif_chroma_444.
+  //                      It is the preferred, future-proof value.
   // * heif_chroma_interleaved_RGB
   // * heif_chroma_interleaved_RGBA
   // * heif_chroma_interleaved_RRGGBB_BE
@@ -71,14 +97,22 @@ enum heif_colorspace
   // * heif_chroma_interleaved_RRGGBBAA_LE
   heif_colorspace_RGB = 1,
 
-  // heif_colorspace_monochrome should only be used with heif_chroma = heif_chroma_monochrome
+  // heif_colorspace_monochrome should only be used with heif_chroma = heif_chroma_planar.
   heif_colorspace_monochrome = 2,
 
-  // Indicates that this image has no visual channels.
-  heif_colorspace_nonvisual = 3
-};
+  // Indicates that this image has a special, custom arrangement of components.
+  // For example, it can have several monochrome channels or just a depth component with no color image.
+  // Images of this type are always planar and use heif_chroma_planar.
+  heif_colorspace_custom = 3,
 
-enum heif_channel
+  // Images of this type are filter-array (CFA / Bayer) mosaics. The single
+  // mosaicked plane is described as heif_chroma_planar.
+  heif_colorspace_filter_array = 4
+} heif_colorspace;
+
+#define heif_colorspace_nonvisual heif_colorspace_custom
+
+typedef enum heif_channel
 {
   heif_channel_Y = 0,
   heif_channel_Cb = 1,
@@ -90,9 +124,9 @@ enum heif_channel
   heif_channel_interleaved = 10,
   heif_channel_filter_array = 11,
   heif_channel_depth = 12,
-  heif_channel_disparity = 13
-};
-
+  heif_channel_disparity = 13,
+  heif_channel_unknown = 65535
+} heif_channel;
 
 // An heif_image contains a decoded pixel image in various colorspaces, chroma formats,
 // and bit depths.
@@ -102,6 +136,9 @@ enum heif_channel
 // containing the interleaved R,G,B values.
 
 // Planar RGB images are specified as heif_colorspace_RGB / heif_chroma_444.
+// heif_chroma_planar is accepted as a synonym and is internally canonicalized
+// to heif_chroma_444 so heif_image_get_chroma_format() always returns
+// heif_chroma_444 for planar RGB.
 
 typedef struct heif_image heif_image;
 typedef struct heif_image_handle heif_image_handle;
@@ -110,11 +147,11 @@ typedef struct heif_security_limits heif_security_limits;
 
 // Get the colorspace format of the image.
 LIBHEIF_API
-enum heif_colorspace heif_image_get_colorspace(const heif_image*);
+heif_colorspace heif_image_get_colorspace(const heif_image*);
 
 // Get the chroma format of the image.
 LIBHEIF_API
-enum heif_chroma heif_image_get_chroma_format(const heif_image*);
+heif_chroma heif_image_get_chroma_format(const heif_image*);
 
 /**
  * Get the width of a specified image channel.
@@ -124,7 +161,7 @@ enum heif_chroma heif_image_get_chroma_format(const heif_image*);
  * @return the width of the channel in pixels, or -1 the channel does not exist in the image
  */
 LIBHEIF_API
-int heif_image_get_width(const heif_image* img, enum heif_channel channel);
+int heif_image_get_width(const heif_image* img, heif_channel channel);
 
 /**
  * Get the height of a specified image channel.
@@ -134,12 +171,13 @@ int heif_image_get_width(const heif_image* img, enum heif_channel channel);
  * @return the height of the channel in pixels, or -1 the channel does not exist in the image
  */
 LIBHEIF_API
-int heif_image_get_height(const heif_image* img, enum heif_channel channel);
+int heif_image_get_height(const heif_image* img, heif_channel channel);
 
 /**
- * Get the width of the main channel.
+ * Get the logical width of the image.
  *
- * This is the Y channel in YCbCr or mono, or any in RGB.
+ * For well-formed images this equals the size of the main channel (the Y channel
+ * in YCbCr or mono, or the RGB channels). Subsampled chroma channels may be smaller.
  *
  * @param img the image to get the primary width for
  * @return the width in pixels
@@ -148,9 +186,10 @@ LIBHEIF_API
 int heif_image_get_primary_width(const heif_image* img);
 
 /**
- * Get the height of the main channel.
+ * Get the logical height of the image.
  *
- * This is the Y channel in YCbCr or mono, or any in RGB.
+ * For well-formed images this equals the size of the main channel (the Y channel
+ * in YCbCr or mono, or the RGB channels). Subsampled chroma channels may be smaller.
  *
  * @param img the image to get the primary height for
  * @return the height in pixels
@@ -158,6 +197,27 @@ int heif_image_get_primary_width(const heif_image* img);
 LIBHEIF_API
 int heif_image_get_primary_height(const heif_image* img);
 
+/**
+ * Crop the image in place by removing margins from each edge.
+ *
+ * The four parameters specify the number of pixels to remove from each side,
+ * not absolute pixel coordinates. For example, to crop a 100x100 image down
+ * to its central 80x80 region, pass `left=10, right=10, top=10, bottom=10`.
+ * Passing all zeros leaves the image unchanged.
+ *
+ * The resulting image has dimensions `(w - left - right) x (h - top - bottom)`,
+ * which must be at least 1x1. All four values must be non-negative and the
+ * sums `left + right` and `top + bottom` must each be strictly less than the
+ * corresponding image dimension; otherwise `heif_error_Usage_error` /
+ * `heif_suberror_Invalid_parameter_value` is returned and the image is left
+ * unchanged.
+ *
+ * @param img    the image to crop (modified in place on success)
+ * @param left   number of pixels to remove from the left edge
+ * @param right  number of pixels to remove from the right edge
+ * @param top    number of pixels to remove from the top edge
+ * @param bottom number of pixels to remove from the bottom edge
+ */
 LIBHEIF_API
 heif_error heif_image_crop(heif_image* img,
                            int left, int right, int top, int bottom);
@@ -175,7 +235,7 @@ heif_error heif_image_extract_area(const heif_image*,
 // Especially for HDR images, this is probably not what you want. Have a look at
 // heif_image_get_bits_per_pixel_range() instead.
 LIBHEIF_API
-int heif_image_get_bits_per_pixel(const heif_image*, enum heif_channel channel);
+int heif_image_get_bits_per_pixel(const heif_image*, heif_channel channel);
 
 // Get the number of bits per pixel in the given image channel. This function returns
 // the number of bits used for representing the pixel value, which might be smaller
@@ -184,10 +244,10 @@ int heif_image_get_bits_per_pixel(const heif_image*, enum heif_channel channel);
 // are reserved for storage. For interleaved RGBA with 12 bit, this function also returns
 // '12', not '48' or '64' (heif_image_get_bits_per_pixel returns 64 in this case).
 LIBHEIF_API
-int heif_image_get_bits_per_pixel_range(const heif_image*, enum heif_channel channel);
+int heif_image_get_bits_per_pixel_range(const heif_image*, heif_channel channel);
 
 LIBHEIF_API
-int heif_image_has_channel(const heif_image*, enum heif_channel channel);
+int heif_image_has_channel(const heif_image*, heif_channel channel);
 
 // Get a pointer to the actual pixel data.
 // The 'out_stride' is returned as "bytes per line".
@@ -196,27 +256,34 @@ int heif_image_has_channel(const heif_image*, enum heif_channel channel);
 // Deprecated, use the safer version heif_image_get_plane_readonly2() instead.
 LIBHEIF_API
 const uint8_t* heif_image_get_plane_readonly(const heif_image*,
-                                             enum heif_channel channel,
+                                             heif_channel channel,
                                              int* out_stride);
 
 // Deprecated, use the safer version heif_image_get_plane2() instead.
 LIBHEIF_API
 uint8_t* heif_image_get_plane(heif_image*,
-                              enum heif_channel channel,
+                              heif_channel channel,
                               int* out_stride);
 
 // These are safer variants of the two functions above.
 // The 'stride' parameter is often multiplied by the image height in the client application.
 // For very large images, this can lead to integer overflows and, consequently, illegal memory accesses.
-// The changed 'stride' parameter types eliminates this common error.
+// The changed 'stride' parameter type eliminates this common error.
+//
+// Size any copy loop that reads or writes this plane from *this* channel's own
+// heif_image_get_width()/heif_image_get_height() and this 'out_stride' -- never from
+// heif_image_handle_get_width()/heif_image_handle_get_height() (the signalled item size, which
+// is not guaranteed to match the decoded plane) and never by assuming stride equals
+// width * bytes_per_pixel: the row may be padded, so require stride >= bytes_per_pixel * width
+// and use the returned stride for row-to-row offsets.
 LIBHEIF_API
 const uint8_t* heif_image_get_plane_readonly2(const heif_image*,
-                                              enum heif_channel channel,
+                                              heif_channel channel,
                                               size_t* out_stride);
 
 LIBHEIF_API
 uint8_t* heif_image_get_plane2(heif_image*,
-                               enum heif_channel channel,
+                               heif_channel channel,
                                size_t* out_stride);
 
 
@@ -231,6 +298,10 @@ heif_error heif_image_scale_image(const heif_image* input,
 
 // Extends the image size to match the given size by extending the right and bottom borders.
 // The border areas are filled with zero.
+// The target 'width' and 'height' must each be at least the image's current size; this
+// function only grows the image and cannot shrink it. If a smaller size is requested,
+// 'heif_error_Usage_error' / 'heif_suberror_Invalid_parameter_value' is returned and the
+// image is left unchanged.
 LIBHEIF_API
 heif_error heif_image_extend_to_size_fill_with_zero(heif_image* image,
                                                     uint32_t width, uint32_t height);
@@ -262,6 +333,8 @@ void heif_image_get_pixel_aspect_ratio(const heif_image*, uint32_t* aspect_h, ui
 LIBHEIF_API
 void heif_image_set_pixel_aspect_ratio(heif_image*, uint32_t aspect_h, uint32_t aspect_v);
 
+LIBHEIF_API
+void heif_image_handle_set_pixel_aspect_ratio(heif_image_handle*, uint32_t aspect_h, uint32_t aspect_v);
 
 // --- heif_image allocation
 
@@ -280,8 +353,8 @@ void heif_image_set_pixel_aspect_ratio(heif_image*, uint32_t aspect_h, uint32_t 
 */
 LIBHEIF_API
 heif_error heif_image_create(int width, int height,
-                             enum heif_colorspace colorspace,
-                             enum heif_chroma chroma,
+                             heif_colorspace colorspace,
+                             heif_chroma chroma,
                              heif_image** out_image);
 
 /**
@@ -297,6 +370,11 @@ heif_error heif_image_create(int width, int height,
  *
  * <p>For backward compatibility, one can also specify 24bits for RGB and 32bits for RGBA,
  * instead of the preferred 8 bits. However, this use is deprecated.
+ *
+ * <p>An image with an interleaved chroma format carries its alpha inside the interleaved
+ * plane. Adding a separate {@code heif_channel_Alpha} plane to such an image is rejected
+ * with an error. Use one of the interleaved formats with alpha
+ * (e.g. {@code heif_chroma_interleaved_RGBA}) instead.
  *
  * @param image the parent image to add the channel plane to
  * @param channel the channel of the plane to add
@@ -314,7 +392,7 @@ heif_error heif_image_create(int width, int height,
  */
 LIBHEIF_API
 heif_error heif_image_add_plane(heif_image* image,
-                                enum heif_channel channel,
+                                heif_channel channel,
                                 int width, int height, int bit_depth);
 
 /*
@@ -323,7 +401,7 @@ heif_error heif_image_add_plane(heif_image* image,
  */
 LIBHEIF_API
 heif_error heif_image_add_plane_safe(heif_image* image,
-                                     enum heif_channel channel,
+                                     heif_channel channel,
                                      int width, int height, int bit_depth,
                                      const heif_security_limits* limits);
 

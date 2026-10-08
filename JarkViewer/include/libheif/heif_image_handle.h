@@ -53,10 +53,33 @@ int heif_image_handle_is_primary_image(const heif_image_handle* handle);
 LIBHEIF_API
 heif_item_id heif_image_handle_get_item_id(const heif_image_handle* handle);
 
-// Get the resolution of an image.
+/** Get the image width.
+ *
+ * This is the *signalled* size declared for the item, available without decoding. It is not
+ * guaranteed to match the size of the image you get back from heif_decode_image(): do not use
+ * this value to allocate or bound access to a decoded pixel buffer. Once you have decoded the
+ * image, use heif_image_get_width(heif_image*, heif_channel) (or heif_image_get_primary_width())
+ * for the actual plane size, and size any copy loop from that together with the stride returned
+ * by heif_image_get_plane_readonly2() / heif_image_get_plane2() -- never from this handle value
+ * or from width * bytes_per_pixel.
+ *
+ * If 'handle' is invalid (NULL) or if the image size exceeds the range of `int`, 0 is returned.
+ */
 LIBHEIF_API
 int heif_image_handle_get_width(const heif_image_handle* handle);
 
+/** Get the image height.
+ *
+ * This is the *signalled* size declared for the item, available without decoding. It is not
+ * guaranteed to match the size of the image you get back from heif_decode_image(): do not use
+ * this value to allocate or bound access to a decoded pixel buffer. Once you have decoded the
+ * image, use heif_image_get_height(heif_image*, heif_channel) (or heif_image_get_primary_height())
+ * for the actual plane size, and size any copy loop from that together with the stride returned
+ * by heif_image_get_plane_readonly2() / heif_image_get_plane2() -- never from this handle value
+ * or from height * stride.
+ *
+ * If 'handle' is invalid (NULL) or if the image size exceeds the range of `int`, 0 is returned.
+ */
 LIBHEIF_API
 int heif_image_handle_get_height(const heif_image_handle* handle);
 
@@ -82,10 +105,19 @@ int heif_image_handle_get_chroma_bits_per_pixel(const heif_image_handle*);
 // It may also return *_undefined if the file misses relevant information to determine this without decoding.
 // These are only proposed values that avoid colorspace conversions as much as possible.
 // You can still request the output in your preferred colorspace, but this may involve an internal conversion.
+//
+// Note on matrix_coefficients=0 (H.273 identity, i.e. RGB carried in YCbCr planes):
+// for such images this function proposes RGB. However, heif_decode_image() called with
+// heif_colorspace_undefined currently returns the image still tagged as YCbCr (with
+// matrix_coefficients=0). That tagging is self-consistent. Converting it to RGB applies
+// the identity mapping and yields correct colors, so request heif_colorspace_RGB
+// explicitly if you need RGB output. This exact behavior is not specified and may change.
+// A later version may return RGB directly when decoding with an undefined colorspace.
+// See heif_decode_image().
 LIBHEIF_API
 heif_error heif_image_handle_get_preferred_decoding_colorspace(const heif_image_handle* image_handle,
-                                                               enum heif_colorspace* out_colorspace,
-                                                               enum heif_chroma* out_chroma);
+                                                               heif_colorspace* out_colorspace,
+                                                               heif_chroma* out_chroma);
 
 // Get the image width from the 'ispe' box. This is the original image size without
 // any transformations applied to it. Do not use this unless you know exactly what
@@ -112,6 +144,50 @@ int heif_image_handle_get_pixel_aspect_ratio(const heif_image_handle*, uint32_t*
 LIBHEIF_API
 heif_context* heif_image_handle_get_context(const heif_image_handle* handle);
 
+LIBHEIF_API
+const char* heif_image_handle_get_gimi_content_id(const heif_image_handle* handle);
+
+LIBHEIF_API
+void heif_image_handle_set_gimi_content_id(heif_image_handle* handle, const char* content_id);
+
+
+// --- cmpd component queries
+
+// Returns the number of components in the cmpd box, or 0 if no cmpd property exists.
+LIBHEIF_API
+uint32_t heif_image_handle_get_number_of_cmpd_components(const heif_image_handle*);
+
+// Returns the component_type for the given cmpd component index.
+// Returns 0 if out of range or no cmpd property.
+LIBHEIF_API
+uint16_t heif_image_handle_get_cmpd_component_type(const heif_image_handle*, uint32_t component_idx);
+
+// Returns the component_type_uri for the given cmpd component index (component_type >= 0x8000).
+// Returns NULL if the component does not have a URI.
+// The returned string must be freed with heif_string_release().
+LIBHEIF_API
+const char* heif_image_handle_get_cmpd_component_type_uri(const heif_image_handle*, uint32_t component_idx);
+
+
+// --- GIMI component content IDs (handle-level)
+
+// Returns non-zero (count of content IDs) if an ItemComponentContentIDProperty is set, 0 otherwise.
+LIBHEIF_API
+int heif_image_handle_has_gimi_component_content_ids(const heif_image_handle*);
+
+// Returns the GIMI component content ID for the given component index.
+// Returns NULL if no ItemComponentContentIDProperty is set or index is out of range.
+// The returned string must be freed with heif_string_release().
+LIBHEIF_API
+const char* heif_image_handle_get_gimi_component_content_id(const heif_image_handle*, uint32_t component_idx);
+
+// Set a GIMI component content ID for a single component.
+// If an ItemComponentContentIDProperty does not yet exist, one will be created.
+// The content IDs array is resized as needed (new entries default to empty).
+LIBHEIF_API
+void heif_image_handle_set_gimi_component_content_id(heif_image_handle*,
+                                                     uint32_t component_idx,
+                                                     const char* content_id);
 
 #ifdef __cplusplus
 }

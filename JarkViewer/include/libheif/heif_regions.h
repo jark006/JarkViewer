@@ -22,7 +22,9 @@
 #ifndef LIBHEIF_HEIF_REGIONS_H
 #define LIBHEIF_HEIF_REGIONS_H
 
-#include "heif.h"
+#include "heif_image_handle.h"
+#include "heif_library.h"
+#include "heif_error.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,10 +42,10 @@ typedef struct heif_region_item heif_region_item;
  * Each region item will contain zero or more regions, which may have different geometry or
  * mask representations.
 */
-enum heif_region_type
+typedef enum heif_region_type
 {
   /**
-   * Point gemetry.
+   * Point geometry.
    *
    * The region is represented by a single point.
    */
@@ -119,7 +121,7 @@ enum heif_region_type
    * considered to form a closed surface. Only the edge is part of the region.
   */
   heif_region_type_polyline = 6
-};
+} heif_region_type;
 
 typedef struct heif_region heif_region;
 
@@ -174,7 +176,7 @@ heif_error heif_context_get_region_item(const heif_context* context,
  * Get the item identifier for a region item.
  *
  * @param region_item the region item to query
- * @return the region item identifier (or -1 if the region_item is null)
+ * @return the region item identifier (or 0 if the region_item is null)
  */
 LIBHEIF_API
 heif_item_id heif_region_item_get_id(heif_region_item* region_item);
@@ -420,7 +422,7 @@ int heif_region_get_polygon_num_points(const heif_region* region);
  * The points are returned as pairs of X,Y coordinates, in the order X<sub>1</sub>,
  * Y<sub>1</sub>, X<sub>2</sub>, Y<sub>2</sub>, ..., X<sub>n</sub>, Y<sub>n</sub>.
  *
- * @param region the region to equery, which must be of type #heif_region_type_polygon
+ * @param region the region to query, which must be of type #heif_region_type_polygon
  * @param out_pts_array the array to return the points in, which must have twice as many entries as there are points
  * in the polygon.
  * @return heif_error_ok on success, or an error value indicating the problem on failure
@@ -442,7 +444,7 @@ heif_error heif_region_get_polygon_points(const heif_region* region,
  * The points are returned as pairs of X,Y coordinates, in the order X<sub>1</sub>,
  * Y<sub>1</sub>, X<sub>2</sub>, Y<sub>2</sub>, ..., X<sub>n</sub>, Y<sub>n</sub>.
  *
- * @param region the region to equery, which must be of type #heif_region_type_polygon
+ * @param region the region to query, which must be of type #heif_region_type_polygon
  * @param image_id the identifier for the image to transform / scale the region to
  * @param out_pts_array the array to return the points in, which must have twice as many entries as there are points
  * in the polygon.
@@ -484,7 +486,7 @@ int heif_region_get_polyline_num_points(const heif_region* region);
  * }
  * @endcode
  *
- * @param region the region to equery, which must be of type #heif_region_type_polyline
+ * @param region the region to query, which must be of type #heif_region_type_polyline
  * @param out_pts_array the array to return the points in, which must have twice as many entries as there are points
  * in the polyline.
  * @return heif_error_ok on success, or an error value indicating the problem on failure
@@ -720,6 +722,12 @@ heif_error heif_region_item_add_region_ellipse(heif_region_item* region_item,
  * The points are provided as pairs of X,Y coordinates, in the order X<sub>1</sub>,
  * Y<sub>1</sub>, X<sub>2</sub>, Y<sub>2</sub>, ..., X<sub>n</sub>, Y<sub>n</sub>.
  *
+ * @c pts_array must point to at least `2 * nPoints` values. The library cannot
+ * verify the size of the array, so passing a shorter array reads beyond its end.
+ * @c nPoints must not be negative and @c pts_array must not be `NULL` when
+ * @c nPoints is greater than zero. Otherwise the function fails without
+ * modifying the region item.
+ *
  * @param region_item the region item that holds this polygon region
  * @param pts_array the array of points in X,Y order (see above)
  * @param nPoints the number of points
@@ -742,6 +750,12 @@ heif_error heif_region_item_add_region_polygon(heif_region_item* region_item,
  * intersect (even minimally) a one-pixel line drawn along the polyline.
  * The points are provided as pairs of X,Y coordinates, in the order X<sub>1</sub>,
  * Y<sub>1</sub>, X<sub>2</sub>, Y<sub>2</sub>, ..., X<sub>n</sub>, Y<sub>n</sub>.
+ *
+ * @c pts_array must point to at least `2 * nPoints` values. The library cannot
+ * verify the size of the array, so passing a shorter array reads beyond its end.
+ * @c nPoints must not be negative and @c pts_array must not be `NULL` when
+ * @c nPoints is greater than zero. Otherwise the function fails without
+ * modifying the region item.
  *
  * @param region_item the region item that holds this polyline region
  * @param pts_array the array of points in X,Y order (see above)
@@ -812,12 +826,16 @@ heif_error heif_region_item_add_region_referenced_mask(heif_region_item* region_
  * part of the region. If the bit value is `0`, the corresponding pixel is not part of the
  * region.
  *
+ * @c width and @c height must both be non-zero and @c mask_data_len must be exactly
+ * `(width * height + 7) / 8`, the number of bytes needed to hold one bit per pixel.
+ * Otherwise the function fails without modifying the region item.
+ *
  * @param region_item the region item that holds this mask region
  * @param x the x value for the top-left corner of this mask region
  * @param y the y value for the top-left corner of this mask region
  * @param width the width of this mask region
  * @param height the height of this mask region
- * @param mask_data the location to return the mask data
+ * @param mask_data the mask data to store
  * @param mask_data_len the length of the mask data, in bytes
  * @param out_region pointer to pointer to the returned region (optional, see below)
  * @return heif_error_ok on success, or an error value indicating the problem on failure
