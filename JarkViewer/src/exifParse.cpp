@@ -148,6 +148,73 @@ std::string ExifParse::handleMathDiv(std::string_view str) {
     }
 }
 
+// 从 JPEG 字节流反推编码质量：找 DQT 段的 8 位亮度量化表，与 IJG 标准表逐项比对。
+// 质量与量化表一一对应（质量 <50 时表按 5000/Q 放大、>50 时按 (200-2Q) 缩小），
+// 反推值是近似（有些编码器会微调表），界面按"约 N"展示。
+int ExifParse::jpegQualityFromBytes(std::span<const uint8_t> buf) {
+    // IJG 标准亮度量化表（对应质量 50）
+    static constexpr uint8_t standardLuminance[64] = {
+        16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55,
+        14, 13, 16, 24, 40, 57, 69, 56, 14, 17, 22, 29, 51, 87, 80, 62,
+        18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92,
+        49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99
+    };
+
+    if (buf.size() < 4 || buf[0] != 0xFF || buf[1] != 0xD8)
+        return 0;
+
+    size_t pos = 2;
+    while (pos + 4 <= buf.size()) {
+        if (buf[pos] != 0xFF) {
+            ++pos; // 段间的填充字节
+            continue;
+        }
+
+        const uint8_t marker = buf[pos + 1];
+        if (marker == 0xFF) {
+            ++pos;
+            continue;
+        }
+        if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { // 无长度字段的标记
+            pos += 2;
+            continue;
+        }
+        if (marker == 0xDA || marker == 0xD9) // 压缩数据开始/图像结束，之后没有新段
+            break;
+
+        const size_t length = (size_t(buf[pos + 2]) << 8) | buf[pos + 3];
+        if (length < 2 || pos + 2 + length > buf.size())
+            break;
+
+        if (marker == 0xDB) { // DQT：一个或多个量化表
+            size_t p = pos + 4;
+            const size_t end = pos + 2 + length;
+            while (p < end) {
+                const uint8_t tableInfo = buf[p++];
+                const size_t tableBytes = (tableInfo >> 4 ? size_t{ 2 } : size_t{ 1 }) * 64;
+                if (p + tableBytes > end)
+                    break;
+                if ((tableInfo & 0x0F) == 0 && (tableInfo >> 4) == 0) { // 8 位亮度表
+                    double sum = 0.0;
+                    for (int i = 0; i < 64; ++i)
+                        sum += static_cast<double>(buf[p + i]) / standardLuminance[i];
+                    const double scale = sum / 64.0;
+                    if (scale <= 0.0)
+                        return 0;
+                    const int quality = scale <= 1.0
+                        ? static_cast<int>(std::lround(100.0 - scale * 50.0))
+                        : static_cast<int>(std::lround(50.0 / scale));
+                    return (std::clamp)(quality, 1, 100);
+                }
+                p += tableBytes;
+            }
+        }
+
+        pos = pos + 2 + length;
+    }
+    return 0;
+}
+
 namespace {
 
     // 解析 Exiv2 输出的分数文本（当前版本是空格分隔的"10 600"，也兼容"10/600"与纯数字）

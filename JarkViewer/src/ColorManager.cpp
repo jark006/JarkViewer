@@ -142,6 +142,22 @@ std::vector<uint8_t> ColorManager::readMonitorIccProfile() const {
     return readFileBytes(profilePath);
 }
 
+std::string ColorManager::profileDescription(const std::vector<uint8_t>& icc) {
+    if (icc.empty())
+        return {};
+
+    cmsHPROFILE profile = cmsOpenProfileFromMem(icc.data(), static_cast<cmsUInt32Number>(icc.size()));
+    if (!profile)
+        return {};
+
+    char buffer[256] = {};
+    std::string name;
+    if (cmsGetProfileInfoASCII(profile, cmsInfoDescription, "en", "US", buffer, sizeof(buffer)) > 0)
+        name = buffer;
+    cmsCloseProfile(profile);
+    return name;
+}
+
 std::vector<uint8_t>& ColorManager::readMonitorIccProfileCached() {
     static std::mutex mutex;
     static std::vector<uint8_t> cachedProfile;

@@ -371,6 +371,7 @@ struct ImageAsset {
     std::shared_ptr<jark::VectorImage> vectorSource; // 矢量图源（SVG），按需重新光栅化
     std::shared_ptr<jark::VideoSource> videoSource;  // 视频源（实况照片/视频文件），用于实时播放
     int orientation = 1;                     // EXIF 方向（1~8），解码器已按此旋转像素
+    int jpegQuality = 0;                     // JPEG 质量因子（量化表反推的近似值，0=未知/非 JPEG）
 
     // 占位内容（主页/解码失败）：primaryFrame 为空时表示尚未生成（probe 等无界面场景保持为空，
     // 据此判定解码失败；界面层在尺寸/DPI/语言/主题变化时按 placeholderStamp 重新绘制）

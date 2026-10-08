@@ -13,6 +13,9 @@ public:
 
     static std::vector<uint8_t> readEmbeddedIccProfile(std::wstring_view path, std::span<const uint8_t> buf);
 
+    // 内嵌 ICC 的简介名（"Adobe RGB (1998)"、"Display P3" 这类），取不到返回空
+    static std::string profileDescription(const std::vector<uint8_t>& icc);
+
 private:
     HWND hwnd = nullptr;
 

@@ -3191,9 +3191,12 @@ ImageAsset ImageDatabase::decodeByFormat(jark::FileFormat format, const wstring&
         return imageAsset;
     }
 
-    case jark::FileFormat::Jpeg:
+    case jark::FileFormat::Jpeg: {
         // 可能是 Android 动态照片（MotionPhoto）
-        return loadMotionPhoto(path, buf, true);
+        auto imageAsset = loadMotionPhoto(path, buf, true);
+        imageAsset.jpegQuality = ExifParse::jpegQualityFromBytes(buf);
+        return imageAsset;
+    }
 
     case jark::FileFormat::Heif:
         return loadMotionPhoto(path, buf, false);

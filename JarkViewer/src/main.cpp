@@ -272,6 +272,15 @@ public:
     bool ctrlIsPressing = false;
     bool smoothShift = false;
     bool showExif = false;
+    // EXIF 面板的附加信息与滚动状态（附加信息在切图时算一次，见 updateExifPanelExtras）
+    const ImageAsset* panelInfoAsset_ = nullptr;
+    std::array<std::array<uint32_t, 256>, 3> histogram_{};
+    uint32_t histogramPeak_ = 0;
+    bool histogramReady_ = false;
+    std::string panelColorSpace_;
+    cv::Rect2f exifPanelRect_{};
+    float exifPanelScroll_ = 0.0f;
+    float exifPanelMaxScroll_ = 0.0f;
     Cood mousePos, mousePressPos;
     ImageDatabase imgDB;
 
@@ -931,6 +940,19 @@ public:
         syncNavigation();
         if (applyNavigationEvent(navigation.mouseWheel({ clientPoint.x, clientPoint.y }, zDelta)))
             return;
+
+        // EXIF 面板内的滚轮只滚面板内容，不穿透成画布缩放
+        if (showExif &&
+            static_cast<float>(clientPoint.x) >= exifPanelRect_.x &&
+            static_cast<float>(clientPoint.x) < exifPanelRect_.x + exifPanelRect_.width &&
+            static_cast<float>(clientPoint.y) >= exifPanelRect_.y &&
+            static_cast<float>(clientPoint.y) < exifPanelRect_.y + exifPanelRect_.height) {
+            exifPanelScroll_ -= zDelta / static_cast<float>(WHEEL_DELTA) * dp(66);
+            exifPanelScroll_ = (std::clamp)(exifPanelScroll_, 0.0f, exifPanelMaxScroll_);
+            markPresentRequested();
+            return;
+        }
+
         switch (cursorPos)
         {
         case CursorPos::centerArea:
@@ -2074,7 +2096,78 @@ public:
         drawList->AddText(uiPos(x + padX, y + padY), imColor(GlobalVar::currentTheme.FG), label.c_str());
     }
 
-    // EXIF/AI 提示词面板：半透明底 + 自动折行的文本
+    // EXIF 面板的附加信息（直方图/内嵌 ICC 简介名）：切图时算一次（直方图要遍历像素）
+    void updateExifPanelExtras() {
+        if (!curPar.imageAssetPtr || curPar.imageAssetPtr->placeholder != PlaceholderKind::None)
+            return;
+        if (panelInfoAsset_ == curPar.imageAssetPtr.get())
+            return;
+        panelInfoAsset_ = curPar.imageAssetPtr.get();
+
+        histogramReady_ = false;
+        histogramPeak_ = 0;
+        panelColorSpace_.clear();
+
+        // RGB 直方图：超过约四百万像素就按步长采样（够画 128 列）
+        const cv::Mat& image = currentSourceImage();
+        cv::Mat bgr;
+        if (image.channels() == 4)
+            cv::cvtColor(image, bgr, cv::COLOR_BGRA2BGR);
+        else if (image.channels() == 3)
+            bgr = image;
+        if (!bgr.empty()) {
+            for (auto& channel : histogram_)
+                channel.fill(0);
+            const int step = (std::max)(1, static_cast<int>(bgr.total() / (4u << 20)));
+            for (int y = 0; y < bgr.rows; y += step) {
+                const uint8_t* row = bgr.ptr<uint8_t>(y);
+                for (int x = 0; x < bgr.cols; x += step) {
+                    const uint8_t* px = row + static_cast<size_t>(x) * 3;
+                    ++histogram_[0][px[2]]; // R
+                    ++histogram_[1][px[1]]; // G
+                    ++histogram_[2][px[0]]; // B
+                }
+            }
+            for (const auto& channel : histogram_) {
+                for (uint32_t count : channel)
+                    histogramPeak_ = (std::max)(histogramPeak_, count);
+            }
+            histogramReady_ = histogramPeak_ > 0;
+        }
+
+        if (!curPar.imageAssetPtr->iccProfile.empty())
+            panelColorSpace_ = ColorManager::profileDescription(curPar.imageAssetPtr->iccProfile);
+    }
+
+    // RGB 直方图：三条通道半透明叠加（128 列、两档合一），底部一条基线
+    void drawHistogram(ImDrawList* drawList, float left, float top, float right, float height) const {
+        constexpr int kColumns = 128;
+        constexpr ImU32 kChannelColors[3] = {
+            IM_COL32(255, 82, 82, 128),
+            IM_COL32(82, 255, 82, 128),
+            IM_COL32(82, 82, 255, 128),
+        };
+
+        const float width = right - left;
+        const float baseY = top + height;
+        drawList->AddRectFilled(uiPos(left, top), uiPos(right, baseY), imColor(GlobalVar::currentTheme.BG, 0.45f));
+
+        const float columnWidth = width / kColumns;
+        for (int channel = 0; channel < 3; ++channel) {
+            for (int column = 0; column < kColumns; ++column) {
+                const uint32_t value = (std::max)(histogram_[channel][column * 2], histogram_[channel][column * 2 + 1]);
+                if (value == 0)
+                    continue;
+                const float barHeight = static_cast<float>(value) / histogramPeak_ * (height - 2.0f);
+                drawList->AddRectFilled(
+                    uiPos(left + column * columnWidth, baseY - barHeight),
+                    uiPos(left + (column + 1) * columnWidth, baseY), kChannelColors[channel]);
+            }
+        }
+        drawList->AddLine(uiPos(left, baseY), uiPos(right, baseY), imColor(GlobalVar::currentTheme.FG, 0.35f));
+    }
+
+    // EXIF/AI 提示词面板：半透明底 + 直方图/色彩空间/质量头部 + 可滚动的折行文本
     void drawExifPanel() {
         if (!showExif || winWidth < dp(100) || winHeight < dp(100))
             return;
@@ -2082,27 +2175,80 @@ public:
         if (!curPar.imageAssetPtr || curPar.imageAssetPtr->exifInfo.empty())
             return;
 
+        updateExifPanelExtras();
+
         ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        const float scale = uiScale();
         const float padding = static_cast<float>(dp(12));
         const float panelWidth = (winWidth - padding * 2.0f) / 4.0f;
         const float panelHeight = winHeight - padding * 2.0f;
+        exifPanelRect_ = { padding, padding, panelWidth, panelHeight };
 
         drawList->AddRectFilled(uiPos(padding, padding), uiPos(padding + panelWidth, padding + panelHeight),
-            imColor(GlobalVar::currentTheme.BG_DEEP, 0.82f), 8.0f * uiScale());
+            imColor(GlobalVar::currentTheme.BG_DEEP, 0.82f), 8.0f * scale);
 
-        const float textLeft = padding + dp(10);
-        const float textRight = padding + panelWidth - dp(10);
-        drawWrappedText(drawList, textLeft, padding + dp(8), textRight, panelHeight - dp(16),
-            curPar.imageAssetPtr->exifInfo, imColor(GlobalVar::currentTheme.FG));
+        const float contentLeft = padding + dp(10);
+        const float contentRight = padding + panelWidth - dp(10);
+        const bool chinese = jark::prefersChineseResources();
+        float contentTop = padding + dp(8);
+
+        // 头部：直方图与内嵌 ICC 的名字、JPEG 质量（都是"当前这张图"的附加信息）
+        if (histogramReady_) {
+            drawHistogram(drawList, contentLeft, contentTop, contentRight, dp(56));
+            contentTop += dp(56) + dp(6);
+        }
+        if (!panelColorSpace_.empty()) {
+            const std::string line = (chinese ? "色彩空间: " : "Color space: ") + panelColorSpace_;
+            drawList->AddText(uiPos(contentLeft, contentTop), imColor(GlobalVar::currentTheme.FG), line.c_str());
+            contentTop += ImGui::GetTextLineHeight();
+        }
+        if (curPar.imageAssetPtr->jpegQuality > 0) {
+            const std::string line = chinese
+                ? std::format("质量: 约 {}（由量化表反推）", curPar.imageAssetPtr->jpegQuality)
+                : std::format("Quality: approx. {} (from quantization table)", curPar.imageAssetPtr->jpegQuality);
+            drawList->AddText(uiPos(contentLeft, contentTop), imColor(GlobalVar::currentTheme.FG), line.c_str());
+            contentTop += ImGui::GetTextLineHeight();
+        }
+        if (contentTop > padding + dp(8)) {
+            contentTop += dp(4);
+            drawList->AddLine(uiPos(contentLeft, contentTop), uiPos(contentRight, contentTop),
+                imColor(GlobalVar::currentTheme.FG, 0.25f));
+            contentTop += dp(6);
+        }
+
+        // 文本区：先量总高再画（滚动偏移 + 裁剪区间），屏外的行直接跳过
+        const float textBottom = padding + panelHeight - dp(8);
+        const float textViewHeight = textBottom - contentTop;
+        const std::string& text = curPar.imageAssetPtr->exifInfo;
+        const float totalHeight = drawWrappedText(nullptr, contentLeft, 0.0f, contentRight,
+            0.0f, 0.0f, text, 0, false);
+        exifPanelMaxScroll_ = (std::max)(0.0f, totalHeight - textViewHeight);
+        exifPanelScroll_ = (std::clamp)(exifPanelScroll_, 0.0f, exifPanelMaxScroll_);
+
+        drawList->PushClipRect(uiPos(contentLeft, contentTop), uiPos(contentRight, textBottom), true);
+        drawWrappedText(drawList, contentLeft, contentTop - exifPanelScroll_, contentRight,
+            contentTop, textBottom, text, imColor(GlobalVar::currentTheme.FG), true);
+        drawList->PopClipRect();
+
+        // 滚动条：贴在面板右缘
+        if (exifPanelMaxScroll_ > 0.5f) {
+            const float thumbHeight = (std::max)(static_cast<float>(dp(24)), textViewHeight * textViewHeight / totalHeight);
+            const float thumbTop = contentTop + (textViewHeight - thumbHeight) * (exifPanelScroll_ / exifPanelMaxScroll_);
+            drawList->AddRectFilled(uiPos(contentRight + dp(2), contentTop),
+                uiPos(contentRight + dp(4), textBottom), imColor(GlobalVar::currentTheme.FG, 0.15f));
+            drawList->AddRectFilled(uiPos(contentRight + dp(2), thumbTop),
+                uiPos(contentRight + dp(4), thumbTop + thumbHeight), imColor(GlobalVar::currentTheme.FG, 0.45f));
+        }
     }
 
-    // 按宽度折行绘制（CJK 逐字断行即可；拉丁文尽量在空格处断开）
-    void drawWrappedText(ImDrawList* drawList, float left, float top, float right, float maxHeight,
-        const std::string& text, ImU32 color) {
+    // 按宽度折行（CJK 逐字断行即可；拉丁文尽量在空格处断开）。draw=false 时只测量总高；
+    // draw=true 时从 top 起画、clipTop/clipBottom 之外的行跳过（y 仍推进），配合滚动使用。
+    float drawWrappedText(ImDrawList* drawList, float left, float top, float right,
+        float clipTop, float clipBottom, const std::string& text, ImU32 color, bool draw) {
         const float lineHeight = ImGui::GetTextLineHeight();
         const float wrapWidth = right - left;
         if (wrapWidth <= 8.0f)
-            return;
+            return 0.0f;
 
         float y = top;
         size_t index = 0;
@@ -2111,11 +2257,12 @@ public:
         auto flushLine = [&](const std::string& value) {
             if (value.empty())
                 return;
-            drawList->AddText(uiPos(left, y), color, value.c_str());
+            if (draw && y + lineHeight >= clipTop && y <= clipBottom)
+                drawList->AddText(uiPos(left, y), color, value.c_str());
             y += lineHeight;
         };
 
-        while (index < text.size() && y + lineHeight <= top + maxHeight) {
+        while (index < text.size()) {
             const size_t charStart = index;
             const unsigned char byte = static_cast<unsigned char>(text[index]);
 
@@ -2148,6 +2295,7 @@ public:
         }
 
         flushLine(line);
+        return y - top;
     }
 
     // 是否有界面窗口（设置/批量/打印/编辑）在显示
