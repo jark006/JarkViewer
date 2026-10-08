@@ -148,6 +148,117 @@ std::string ExifParse::handleMathDiv(std::string_view str) {
     }
 }
 
+namespace {
+
+    // 解析 Exiv2 输出的分数文本（当前版本是空格分隔的"10 600"，也兼容"10/600"与纯数字）
+    bool parseExifFraction(std::string_view text, double& value) {
+        while (!text.empty() && text.front() == ' ')
+            text.remove_prefix(1);
+        while (!text.empty() && text.back() == ' ')
+            text.remove_suffix(1);
+        if (text.empty())
+            return false;
+
+        const size_t separator = text.find_first_of(" /");
+        try {
+            if (separator == std::string_view::npos) {
+                value = std::stod(std::string(text));
+                return true;
+            }
+            const double numerator = std::stod(std::string(text.substr(0, separator)));
+            const double denominator = std::stod(std::string(text.substr(separator + 1)));
+            if (denominator == 0.0)
+                return false;
+            value = numerator / denominator;
+            return true;
+        }
+        catch (const std::exception&) {
+            return false;
+        }
+    }
+
+    // 定点格式化并去掉尾随的 0 与小数点（2.80 -> 2.8、8.0 -> 8）
+    std::string trimFixed(double value, int precision) {
+        std::string text = std::format("{:.{}f}", value, precision);
+        while (text.size() > 1 && text.back() == '0')
+            text.pop_back();
+        if (!text.empty() && text.back() == '.')
+            text.pop_back();
+        return text;
+    }
+
+    // 摄影习惯的数值写法：曝光时间 1/60 s、光圈 f/2.8、焦距 89.9 mm、曝光补偿 +1/3 EV、
+    // ISO 400、方向翻词。按标签号判定（不依赖它落在哪个 IFD），只翻认得的标签；
+    // 认不得的返回空串、退回通用显示——厂商私有标签照规范翻会翻出错的词，
+    // 而错的词比一个数字更误导人。
+    std::string formatExifValue(uint16_t tagId, std::string_view value) {
+        switch (tagId) {
+        case 0x829A: { // ExposureTime 曝光时间
+            double seconds = 0.0;
+            if (!parseExifFraction(value, seconds) || seconds <= 0.0)
+                return {};
+            // 相机存进 EXIF 的分数五花八门（尼康把 1/60 秒存成 10/600），
+            // 照搬分母会差十倍，按值重算分母；一秒以上写小数
+            if (seconds >= 1.0)
+                return std::format("{} s", trimFixed(seconds, 1));
+            return std::format("1/{} s", std::lround(1.0 / seconds));
+        }
+        case 0x829D: { // FNumber 光圈值
+            double fNumber = 0.0;
+            if (!parseExifFraction(value, fNumber) || fNumber <= 0.0)
+                return {};
+            return std::format("f/{}", trimFixed(fNumber, 1));
+        }
+        case 0x920A: { // FocalLength 焦距
+            double focalLength = 0.0;
+            if (!parseExifFraction(value, focalLength) || focalLength <= 0.0)
+                return {};
+            return std::format("{} mm", trimFixed(focalLength, 1));
+        }
+        case 0x8827:   // ISOSpeedRatings（旧名）
+        case 0x8833: { // ISOSpeed
+            double iso = 0.0;
+            if (!parseExifFraction(value, iso) || iso <= 0.0)
+                return {};
+            return std::format("ISO {}", std::lround(iso));
+        }
+        case 0x9204: { // ExposureBiasValue 曝光补偿：保留三分之一档这类常用步进
+            double exposureBias = 0.0;
+            if (!parseExifFraction(value, exposureBias))
+                return {};
+            const long long thirds = std::llround(exposureBias * 3.0);
+            if (thirds == 0)
+                return "0 EV";
+            if (thirds % 3 == 0)
+                return std::format("{:+d} EV", thirds / 3);
+            return std::format("{:+d}/3 EV", thirds);
+        }
+        case 0x0112: { // Orientation 方向
+            double orientation = 0.0;
+            if (!parseExifFraction(value, orientation))
+                return {};
+            switch (std::lround(orientation)) {
+            case 1: return getUIString(173); // 正常
+            case 3: return getUIString(176); // 旋转180°
+            case 6: return getUIString(175); // 顺时针旋转90°
+            case 8: return getUIString(174); // 逆时针旋转90°
+            default: return {};              // 镜像等少见值保持数字
+            }
+        }
+        case 0xA001: { // ColorSpace 色彩空间（sRGB / Adobe RGB 是专名，不翻译）
+            if (value == "1")
+                return "sRGB";
+            if (value == "2")
+                return "Adobe RGB";
+            return {};
+        }
+        default:
+            return {};
+        }
+    }
+
+}
+
 std::string ExifParse::exifDataToString(wstring_view path, const Exiv2::ExifData& exifData) {
     if (exifData.empty()) {
         JARK_LOG("No EXIF data {}", jarkUtils::wstringToUtf8(path));
@@ -330,6 +441,10 @@ std::string ExifParse::exifDataToString(wstring_view path, const Exiv2::ExifData
                 wstring_view str(buf.data(), buf.size());
                 tagValue = jarkUtils::wstringToUtf8(str);
             }
+        }
+        else if (const std::string formatted = formatExifValue(tag.tag(), tagValue); !formatted.empty()) {
+            // 摄影习惯的数值写法（1/60 s / f/2.8 / 89.9 mm / +1/3 EV / ISO 400 / 方向翻词）
+            tagValue = formatted;
         }
         else if (2 < tagValue.length() && tagValue.length() < 100) {
             auto res = handleMathDiv(tagValue);
