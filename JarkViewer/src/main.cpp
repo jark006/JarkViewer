@@ -1304,6 +1304,20 @@ public:
             operateQueue.push({ ActionENUM::renameImage });
         }break;
 
+        case ContextMenu::copyToTarget: {
+            copyOrMoveCurrentImage(false);
+        }break;
+
+        case ContextMenu::moveToTarget: {
+            copyOrMoveCurrentImage(true);
+        }break;
+
+        case ContextMenu::chooseTargetDir: {
+            const std::wstring chosen = jarkUtils::SelectFolder(m_hWnd);
+            if (!chosen.empty())
+                wcscpy_s(GlobalVar::settingParameter.copyTargetDir, chosen.c_str());
+        }break;
+
         case ContextMenu::deleteImage: {
             operateQueue.push({ ActionENUM::deleteImg });
         }break;
@@ -2010,6 +2024,91 @@ public:
         curPar.Init(winWidth, winHeight);
         updateNavigationDirectory();
         operateQueue.push({ ActionENUM::refresh });
+    }
+
+    // 复制/移动当前图片到目标文件夹（首次使用时选择并记住）：目标不存在自动创建，
+    // 重名按资源管理器习惯让到 "名 (2).ext"，绝不覆盖已有文件；移动成功后与删除一样
+    // 从列表摘掉当前项并显示下一张。
+    void copyOrMoveCurrentImage(bool move) {
+        if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size() ||
+            imgFileList[curFileIdx] == m_wndCaption)
+            return;
+
+        if (GlobalVar::settingParameter.copyTargetDir[0] == 0) {
+            const std::wstring chosen = jarkUtils::SelectFolder(m_hWnd);
+            if (chosen.empty())
+                return;
+            wcscpy_s(GlobalVar::settingParameter.copyTargetDir, chosen.c_str());
+        }
+
+        const std::wstring target = GlobalVar::settingParameter.copyTargetDir;
+        const std::filesystem::path source(imgFileList[curFileIdx]);
+        std::error_code errorCode;
+
+        const auto showError = [&]() {
+            auto errMsg = std::format(L"{} 0x{:08X}", getUIStringW(move ? 56 : 55).c_str(),
+                static_cast<unsigned>(errorCode.value()));
+            MessageBoxW(m_hWnd, errMsg.c_str(), getUIStringW(1), MB_OK | MB_ICONERROR);
+        };
+
+        std::filesystem::create_directories(target, errorCode); // 目标不存在自动创建（含多层）
+        if (errorCode) {
+            showError();
+            return;
+        }
+
+        // 重名让路：a.png -> "a (2).png"
+        std::filesystem::path destination = std::filesystem::path(target) / source.filename();
+        for (int index = 2; std::filesystem::exists(destination, errorCode) && index < 10000; ++index) {
+            destination = std::filesystem::path(target) / (source.stem().wstring() +
+                std::format(L" ({}).", index) + source.extension().wstring().substr(1));
+        }
+
+        if (move) {
+            std::filesystem::rename(source, destination, errorCode);
+            if (errorCode) {
+                // 跨盘移动 rename 会失败，退化为复制 + 删除
+                errorCode.clear();
+                std::filesystem::copy_file(source, destination, std::filesystem::copy_options::none, errorCode);
+                if (!errorCode)
+                    std::filesystem::remove(source, errorCode);
+            }
+        }
+        else {
+            std::filesystem::copy_file(source, destination, std::filesystem::copy_options::none, errorCode);
+        }
+
+        if (errorCode) {
+            showError();
+            return;
+        }
+
+        JARK_LOG("{}: {} -> {}", move ? "move" : "copy",
+            jarkUtils::wstringToUtf8(source.wstring()), jarkUtils::wstringToUtf8(destination.wstring()));
+
+        if (move) {
+            // 与删除相同的收尾：从列表摘掉当前项、显示下一张
+            jark::ThumbnailService::instance().invalidate(source.wstring());
+            stopMediaPlayback();
+            imgFileList.erase(imgFileList.begin() + curFileIdx);
+
+            if (imgFileList.empty()) {
+                imgFileList.emplace_back(m_wndCaption);
+                curFileIdx = 0;
+                imgDB.put(m_wndCaption, placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
+            }
+            else if (curFileIdx >= (int)imgFileList.size()) {
+                curFileIdx = (int)imgFileList.size() - 1;
+            }
+
+            curPar.imageAssetPtr = imgDB.getSafePtr(
+                imgFileList[curFileIdx],
+                imgFileList[(curFileIdx + 1) % imgFileList.size()]);
+            updatePlaceholderImage();
+            curPar.Init(winWidth, winHeight);
+            updateNavigationDirectory();
+            operateQueue.push({ ActionENUM::refresh });
+        }
     }
 
     // 矢量图（SVG）在缩放稳定后按需重新光栅化；返回 true 表示位图已更新、需要重绘

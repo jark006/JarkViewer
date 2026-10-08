@@ -166,7 +166,10 @@ struct SettingParameter {
     // 鼠标悬停「实况」角标是主动操作，会重播并出声，不受此项影响）
     bool livePhotoAutoPlaySound = false;
 
-    uint32_t reserve[783]; // 原 800，划出 64+4 字节给 monitorDevice 与 livePhotoAutoPlaySound
+    wchar_t copyTargetDir[260] = {};        // 复制/移动图片的目标文件夹（空=未设置，首次使用时选择）
+    wchar_t externalEditor[260] = {};       // 外部编辑器程序路径（空=未设置，首次使用时选择）
+
+    uint32_t reserve[523]; // 原 800，依次划给 monitorDevice(64) + livePhotoAutoPlaySound(4) + 两个路径(2×520)
 
     char extCheckedListStr[800];
 
@@ -249,6 +252,8 @@ static_assert(offsetof(SettingParameter, hideNavigator) == 67);
 static_assert(offsetof(SettingParameter, rightClickAction) == 92);
 static_assert(offsetof(SettingParameter, monitorDevice) == 96);
 static_assert(offsetof(SettingParameter, livePhotoAutoPlaySound) == 160);
+static_assert(offsetof(SettingParameter, copyTargetDir) == 162);   // bool 后按 wchar_t 的对齐(2)排
+static_assert(offsetof(SettingParameter, externalEditor) == 682);
 static_assert(offsetof(SettingParameter, extCheckedListStr) == 3296);
 
 struct rcFileInfo {
@@ -397,7 +402,7 @@ enum class ShowExtraUI :int {
 enum class ContextMenu :int {
     openNewImage = 1000, copyImageInfo, copyImagePath, copyImageData, toggleExifDisplay, openContainerFloder, deleteImage,
     openFileProperties, printImage, toggleFullScreen, openSetting, openHelp, aboutSoftware, exitSoftware, batchProcess,
-    editImage, slideshow, renameImage
+    editImage, slideshow, renameImage, copyToTarget, moveToTarget, chooseTargetDir
 };
 
 struct Action {
@@ -606,6 +611,7 @@ public:
 
     // 选取文件
     static std::wstring SelectFile(HWND hWnd);
+    static std::wstring SelectFolder(HWND hWnd); // 选文件夹（复制/移动目标、外部编辑器场景）
 
     // 图像另存为 选取文件路径
     static std::pair<std::wstring, bool> saveImageDialogW(wstring_view title);

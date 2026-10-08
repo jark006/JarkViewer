@@ -98,6 +98,11 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   校验空名/非法字符/结尾点空格/保留设备名/过长/同名，通过后把新路径交回主窗口执行
   `applyRename()`——改盘 + 列表自然重排 + 缩略图失效 + 缓存作废重装）。窗口一律经
   `anyWindowVisible()/closeTopWindow()` 登记输入与 Esc 行为，新增窗口时别漏。
+  右键菜单在「打开所在位置」之后依次是 重命名 / 复制到目标文件夹 / 移动到目标文件夹 /
+  选择目标文件夹：目标记在 `SettingParameter::copyTargetDir`（单目标，首次使用弹
+  `jarkUtils::SelectFolder`），目标不存在自动创建（含多层）、重名按资源管理器习惯让到
+  `名 (2).ext` 绝不覆盖、跨盘移动退化为复制+删除；移动成功与删除同样从列表摘掉当前项。
+  加菜单项注意加速键不要与既有项重复（`&C` 已被「复制图像数据」占用）。
   **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
   宽 = 1.5 倍高、悬停/按下铺系统红底 `#C42B1C` 与白色 ✕），改动在 `imgui.cpp` 的
   `RenderWindowTitleBarContents()`、`imgui_widgets.cpp` 的 `CloseButton()`（多一个 `size` 参数，

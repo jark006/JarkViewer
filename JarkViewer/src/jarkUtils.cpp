@@ -577,6 +577,25 @@ std::wstring jarkUtils::SelectFile(HWND hWnd) {
     }
 }
 
+std::wstring jarkUtils::SelectFolder(HWND hWnd) {
+    // lpszTitle 要活到 SHBrowseForFolder 返回：getUIStringW 按值返回，先存一份 wstring
+    const std::wstring title = getUIStringW(181).str();
+
+    BROWSEINFOW browseInfo{};
+    browseInfo.hwndOwner = hWnd;
+    browseInfo.lpszTitle = title.c_str();
+    browseInfo.ulFlags = BIF_RETURNONLYFSDIRS | BIF_USENEWUI;
+
+    LPITEMIDLIST itemList = SHBrowseForFolderW(&browseInfo);
+    if (!itemList)
+        return {};
+
+    wchar_t path[MAX_PATH] = {};
+    const bool ok = SHGetPathFromIDListW(itemList, path) == TRUE;
+    CoTaskMemFree(itemList);
+    return ok ? std::wstring(path) : std::wstring();
+}
+
 // ext需要带点 ".png"
 static bool isExt(const std::wstring& path, const std::wstring& ext) {
     if (ext.empty() || path.length() <= ext.length())
