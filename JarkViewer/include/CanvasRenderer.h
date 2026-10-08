@@ -20,6 +20,16 @@ struct ViewState {
     int slideY = 0;
     int rotation = 0; // 0/1/2/3 分别表示 0°、逆时针 90°、180°、顺时针 90°
     bool border = true; // 占位界面（主页/解码失败）不画图像边框
+
+    // 源位图只覆盖名义图像的一块区域时的归一化区域（相对**旋转后**的名义图像）；
+    // 默认 (0,0,1,1) 表示整幅。矢量图放大超过全幅光栅化上限后按可视区域出高清块，
+    // 由它描述这块位图对应图像里的哪一部分。
+    double sourceLeft = 0.0;
+    double sourceTop = 0.0;
+    double sourceWidth = 1.0;
+    double sourceHeight = 1.0;
+    // 位图已按 rotation 预旋转（区域光栅化时由渲染矩阵一次完成），采样不再套旋转
+    bool sourcePreRotated = false;
 };
 
 // 旋转后的图像几何。visible 为归一化可见区域，位图采样分辨率不参与定位。

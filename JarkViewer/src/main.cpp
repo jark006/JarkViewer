@@ -1453,7 +1453,44 @@ public:
     }
 
     void drawCanvas(const cv::Mat& srcImg, cv::Mat& canvas) const {
-        jark::drawImageToCanvas(srcImg, canvas, viewState());
+        jark::ViewState view = viewState();
+        // 矢量图放大超过全幅光栅化上限时改用可视区域的高清块（覆盖当前可视区域才用）
+        if (const jark::VectorImage* detail = activeVectorDetail(canvas.size())) {
+            view.sourcePreRotated = true;
+            view.sourceLeft = detail->detailLeft;
+            view.sourceTop = detail->detailTop;
+            view.sourceWidth = detail->detailWidth;
+            view.sourceHeight = detail->detailHeight;
+            jark::drawImageToCanvas(detail->detailFrame, canvas, view);
+            return;
+        }
+        jark::drawImageToCanvas(srcImg, canvas, view);
+    }
+
+    // 能用的高清块：旋转一致，且当前可视区域完全落在它覆盖的范围内；
+    // 否则这一帧先用全幅位图（放大后偏糊，但不会缺块）
+    const jark::VectorImage* activeVectorDetail(cv::Size canvasSize) const {
+        if (!curPar.imageAssetPtr)
+            return nullptr;
+
+        const auto& vectorImage = curPar.imageAssetPtr->vectorSource;
+        if (!vectorImage || vectorImage->detailFrame.empty() || vectorImage->detailRotation != curPar.rotation)
+            return nullptr;
+
+        const auto geometry = jark::imageGeometry(viewState(), canvasSize);
+        if (geometry.visible.width <= 0.0 || geometry.visible.height <= 0.0)
+            return nullptr;
+
+        constexpr double TOLERANCE = 1e-6;
+        const double right = geometry.visible.x + geometry.visible.width;
+        const double bottom = geometry.visible.y + geometry.visible.height;
+        if (geometry.visible.x < vectorImage->detailLeft - TOLERANCE ||
+            geometry.visible.y < vectorImage->detailTop - TOLERANCE ||
+            right > vectorImage->detailLeft + vectorImage->detailWidth + TOLERANCE ||
+            bottom > vectorImage->detailTop + vectorImage->detailHeight + TOLERANCE)
+            return nullptr;
+
+        return vectorImage.get();
     }
 
 
@@ -1791,6 +1828,7 @@ public:
     std::chrono::steady_clock::time_point pendingLoadStart_{};
     bool allowPreviewSwap_ = false;           // 等待期间是否允许缩略图预览顶替当前画面
     uint64_t previewVersion_ = 0;             // 已顶上画面的缩略图版本（防重复换）
+    std::weak_ptr<jark::VectorImage> lastDetailVector_; // 上次出过区域高清块的矢量图（切图时释放其位图）
 
     // 文件大小的短文本（B/KB/MB/GB），0 表示取不到、不显示
     static std::wstring formatFileSize(uintmax_t bytes) {
@@ -2265,15 +2303,109 @@ public:
 
     // 矢量图（SVG）在缩放稳定后按需重新光栅化；返回 true 表示位图已更新、需要重绘
     bool refreshVectorRasterIfNeeded() {
-        if (!curPar.imageAssetPtr || !curPar.imageAssetPtr->vectorSource)
+        if (!curPar.imageAssetPtr)
             return false;
 
+        // 高清块只服务当前这张图：切走后立刻释放上一张的，
+        // 否则 LRU 里每张放大过的 SVG 都会攒一份几十 MB 的位图
+        auto currentVector = curPar.imageAssetPtr->vectorSource;
+        bool changed = false;
+        if (auto previous = lastDetailVector_.lock(); previous && previous != currentVector) {
+            previous->detailFrame.release();
+            previous->detailRotation = -1;
+            previous->detailLeft = previous->detailTop = previous->detailWidth = previous->detailHeight = 0.0;
+        }
+        lastDetailVector_ = currentVector;
+        if (!currentVector)
+            return false;
+
+        const auto& vectorImage = *currentVector;
+        const int intrinsicLongEdge = (std::max)(vectorImage.intrinsicWidth, vectorImage.intrinsicHeight);
         const int targetEdge = jark::vectorTargetEdge(
             *curPar.imageAssetPtr, curPar.zoomCur, CurImageParameter::ZOOM_BASE);
-        if (!jark::refreshVectorRaster(*curPar.imageAssetPtr, targetEdge))
+
+        changed = jark::refreshVectorRaster(*curPar.imageAssetPtr, targetEdge) || changed;
+        // 放大超过全幅上限后，全幅位图（鸟瞰、缩略图、打印/批处理仍用它）已经榨不出细节，
+        // 再按当前可视区域出一张 1:1 于屏幕的高清块；缩回上限以内就把它丢掉省内存。
+        const double scale = static_cast<double>(curPar.zoomCur) / static_cast<double>(CurImageParameter::ZOOM_BASE);
+        if (intrinsicLongEdge * scale > static_cast<double>(jark::VECTOR_RASTER_MAX_EDGE)) {
+            changed = refreshVectorDetailTile() || changed;
+        }
+        else if (!vectorImage.detailFrame.empty()) {
+            curPar.imageAssetPtr->vectorSource->detailFrame.release();
+            curPar.imageAssetPtr->vectorSource->detailRotation = -1;
+            changed = true;
+        }
+
+        if (changed)
+            operateQueue.push({ ActionENUM::refresh });
+        return changed;
+    }
+
+    // 按当前可视区域光栅化高清块（见 VectorImage::detailFrame）；返回 true 表示位图有变化
+    bool refreshVectorDetailTile() {
+        auto& vectorImage = *curPar.imageAssetPtr->vectorSource;
+        const auto geometry = jark::imageGeometry(viewState(), { winWidth, winHeight });
+        const int nominalW = geometry.nominalSize.width;
+        const int nominalH = geometry.nominalSize.height;
+        if (nominalW <= 0 || nominalH <= 0 || geometry.scale <= 0.0 ||
+            geometry.visible.width <= 0.0 || geometry.visible.height <= 0.0)
             return false;
 
-        operateQueue.push({ ActionENUM::refresh });
+        // 复用判断只看**可视区域**：位图会带余量渲染，可视区域还在旧块里就不用重来，
+        // 否则每帧都要重算（余量会被逐帧的微小移动一点点吃掉）
+        constexpr double PAD = 0.25;
+        const bool sameRotation = vectorImage.detailRotation == curPar.rotation &&
+            !vectorImage.detailFrame.empty() && vectorImage.detailWidth > 0.0;
+        const bool covers = sameRotation &&
+            vectorImage.detailLeft <= geometry.visible.x + 1e-6 &&
+            vectorImage.detailTop <= geometry.visible.y + 1e-6 &&
+            vectorImage.detailLeft + vectorImage.detailWidth >= geometry.visible.x + geometry.visible.width - 1e-6 &&
+            vectorImage.detailTop + vectorImage.detailHeight >= geometry.visible.y + geometry.visible.height - 1e-6;
+        const double currentPixelsPerNominal = sameRotation
+            ? vectorImage.detailFrame.cols / (vectorImage.detailWidth * nominalW) : 0.0;
+        if (covers && currentPixelsPerNominal >= geometry.scale * 0.7)
+            return false;
+
+        const double padX = geometry.visible.width * PAD;
+        const double padY = geometry.visible.height * PAD;
+        const double left = std::clamp(geometry.visible.x - padX, 0.0, 1.0);
+        const double top = std::clamp(geometry.visible.y - padY, 0.0, 1.0);
+        const double right = std::clamp(geometry.visible.x + geometry.visible.width + padX, 0.0, 1.0);
+        const double bottom = std::clamp(geometry.visible.y + geometry.visible.height + padY, 0.0, 1.0);
+        if (right <= left || bottom <= top)
+            return false;
+
+        // 目标分辨率：一个屏幕像素对一个位图像素；长边超上限时整体缩小
+        double pixelsPerNominal = geometry.scale;
+        const double tileW = (right - left) * nominalW * pixelsPerNominal;
+        const double tileH = (bottom - top) * nominalH * pixelsPerNominal;
+        const double limit = static_cast<double>(jark::VECTOR_DETAIL_MAX_EDGE) / (std::max)(tileW, tileH);
+        if (limit < 1.0)
+            pixelsPerNominal *= limit;
+
+        const int tileX0 = static_cast<int>(std::floor(left * nominalW));
+        const int tileY0 = static_cast<int>(std::floor(top * nominalH));
+        const int tileX1 = static_cast<int>(std::ceil(right * nominalW));
+        const int tileY1 = static_cast<int>(std::ceil(bottom * nominalH));
+        const int outW = (std::max)(1, static_cast<int>(std::lround((tileX1 - tileX0) * pixelsPerNominal)));
+        const int outH = (std::max)(1, static_cast<int>(std::lround((tileY1 - tileY0) * pixelsPerNominal)));
+
+        const auto begin = std::chrono::steady_clock::now();
+        cv::Mat tile = jark::renderVectorImageRegion(vectorImage,
+            cv::Rect2d(tileX0, tileY0, tileX1 - tileX0, tileY1 - tileY0), curPar.rotation, outW, outH);
+        if (tile.empty())
+            return false;
+        JARK_LOG("矢量高清块：{}x{}，名义区域 ({},{})-({},{})，旋转 {}，{:.0f} ms",
+            tile.cols, tile.rows, tileX0, tileY0, tileX1, tileY1, curPar.rotation,
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count());
+
+        vectorImage.detailFrame = std::move(tile);
+        vectorImage.detailRotation = curPar.rotation;
+        vectorImage.detailLeft = static_cast<double>(tileX0) / nominalW;
+        vectorImage.detailTop = static_cast<double>(tileY0) / nominalH;
+        vectorImage.detailWidth = static_cast<double>(tileX1 - tileX0) / nominalW;
+        vectorImage.detailHeight = static_cast<double>(tileY1 - tileY0) / nominalH;
         return true;
     }
 

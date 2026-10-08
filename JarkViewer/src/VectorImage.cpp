@@ -75,6 +75,42 @@ cv::Mat renderVectorImageAtEdge(const VectorImage& vectorImage, int longEdge) {
     return renderVectorImage(vectorImage, width, height);
 }
 
+cv::Mat renderVectorImageRegion(const VectorImage& vectorImage, const cv::Rect2d& nominalRect,
+    int rotation, int width, int height) {
+    if (!vectorImage.document || width <= 0 || height <= 0 ||
+        nominalRect.width < 1.0 || nominalRect.height < 1.0)
+        return {};
+
+    // 名义空间就是文档空间按 rotation 旋转后的结果；把"文档坐标 -> 名义坐标"的仿射
+    // 系数写进渲染矩阵，再叠加"名义坐标 -> 输出位图"的缩放与平移，
+    // 这样一张位图就是可视区域的高清块，无需再整体旋转。
+    const double docW = vectorImage.intrinsicWidth;
+    const double docH = vectorImage.intrinsicHeight;
+    double a = 1.0, b = 0.0, c = 0.0, d = 1.0, e = 0.0, f = 0.0;
+    switch (rotation & 3) {
+    case 1: a = 0.0; b = -1.0; c = 1.0; d = 0.0; e = 0.0; f = docW; break;
+    case 2: a = -1.0; b = 0.0; c = 0.0; d = -1.0; e = docW; f = docH; break;
+    case 3: a = 0.0; b = 1.0; c = -1.0; d = 0.0; e = docH; f = 0.0; break;
+    default: break;
+    }
+
+    const double scaleX = width / nominalRect.width;
+    const double scaleY = height / nominalRect.height;
+
+    lunasvg::Bitmap bitmap(width, height);
+    if (bitmap.isNull())
+        return {};
+
+    vectorImage.document->render(bitmap, lunasvg::Matrix(
+        static_cast<float>(scaleX * a), static_cast<float>(scaleY * b),
+        static_cast<float>(scaleX * c), static_cast<float>(scaleY * d),
+        static_cast<float>(scaleX * (e - nominalRect.x)), static_cast<float>(scaleY * (f - nominalRect.y))));
+
+    cv::Mat raster = cv::Mat(height, width, CV_8UC4, bitmap.data(), bitmap.stride()).clone();
+    unpremultiplyInPlace(raster);
+    return raster;
+}
+
 int initialVectorRasterEdge(const VectorImage& vectorImage) {
     const int intrinsicLongEdge = (std::max)(vectorImage.intrinsicWidth, vectorImage.intrinsicHeight);
     if (intrinsicLongEdge <= 0)

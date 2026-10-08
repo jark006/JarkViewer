@@ -108,8 +108,11 @@ namespace {
     }
 
     void drawCanvasImpl(const cv::Mat& srcImg, cv::Mat& canvas, const ViewState& view) {
+        // 预旋转过的源位图（矢量图的区域高清块）采样时不再套旋转
+        const int rotation = view.sourcePreRotated ? 0 : view.rotation;
+
         int srcH, srcW;
-        if (view.rotation == 0 || view.rotation == 2) {
+        if (rotation == 0 || rotation == 2) {
             srcH = srcImg.rows;
             srcW = srcImg.cols;
         }
@@ -130,12 +133,21 @@ namespace {
             return;
         const int nominalW = geometry.nominalSize.width;
         const int nominalH = geometry.nominalSize.height;
-        const float srcScaleX = (float)srcW / (float)nominalW;
-        const float srcScaleY = (float)srcH / (float)nominalH;
+        // 位图可能只覆盖名义图像的一块（sourceWidth/Height 为那块区域的归一化尺寸），
+        // 采样密度按"位图像素 / 该区域的名义像素"算
+        const double sourceWidth = view.sourceWidth > 0.0 ? view.sourceWidth : 1.0;
+        const double sourceHeight = view.sourceHeight > 0.0 ? view.sourceHeight : 1.0;
+        const float srcScaleX = (float)srcW / ((float)nominalW * (float)sourceWidth);
+        const float srcScaleY = (float)srcH / ((float)nominalH * (float)sourceHeight);
         const double renderedW = geometry.renderedSize.width;
         const double renderedH = geometry.renderedSize.height;
         const int deltaW = geometry.origin.x;
         const int deltaH = geometry.origin.y;
+        // 采样原点：位图左上角在画布上的位置（整幅时与图像原点重合）
+        const int sampleDeltaW = deltaW +
+            (int)std::llround(view.sourceLeft * nominalW * geometry.scale);
+        const int sampleDeltaH = deltaH +
+            (int)std::llround(view.sourceTop * nominalH * geometry.scale);
 
         int xStart = deltaW < 0 ? 0 : deltaW;
         int yStart = deltaH < 0 ? 0 : deltaH;
@@ -191,35 +203,35 @@ namespace {
             concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * view.zoomBase / view.zoom); // 2K屏 50%缩放一帧34ms 100%缩放一帧14ms
-                int srcY = (int)((y - deltaH) * zoomInvertY); // 快一点  2K屏 50%缩放一帧28ms 100%缩放一帧14ms
+                int srcY = (int)((y - sampleDeltaH) * zoomInvertY); // 快一点  2K屏 50%缩放一帧28ms 100%缩放一帧14ms
 
                 srcY = std::clamp(srcY, 0, srcH - 1);
 
-                switch (view.rotation) {
+                switch (rotation) {
                 case 0:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx4(srcImg, srcX, srcY, x, y, isLowZoom);
                     }
                     break;
                 case 1:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx4(srcImg, srcH - 1 - srcY, srcX, x, y, isLowZoom);
                     }
                     break;
                 case 2:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx4(srcImg, srcW - 1 - srcX, srcH - 1 - srcY, x, y, isLowZoom);
                     }
                     break;
                 default:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx4(srcImg, srcY, srcW - 1 - srcX, x, y, isLowZoom);
                     }
@@ -232,35 +244,35 @@ namespace {
             concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * view.zoomBase / view.zoom);
-                int srcY = (int)((y - deltaH) * zoomInvertY);
+                int srcY = (int)((y - sampleDeltaH) * zoomInvertY);
 
                 srcY = std::clamp(srcY, 0, srcH - 1);
 
-                switch (view.rotation) {
+                switch (rotation) {
                 case 0:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx3(srcImg, srcX, srcY, isLowZoom);
                     }
                     break;
                 case 1:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx3(srcImg, srcH - 1 - srcY, srcX, isLowZoom);
                     }
                     break;
                 case 2:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx3(srcImg, srcW - 1 - srcX, srcH - 1 - srcY, isLowZoom);
                     }
                     break;
                 default:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx3(srcImg, srcY, srcW - 1 - srcX, isLowZoom);
                     }
@@ -273,35 +285,35 @@ namespace {
             concurrency::parallel_for(yStart, yEnd, [&](int y) {
                 auto ptr = ((uint32_t*)canvas.ptr()) + y * canvasW;
                 //int srcY = (int)((int64_t)(y - deltaH) * view.zoomBase / view.zoom);
-                int srcY = (int)((y - deltaH) * zoomInvertY);
+                int srcY = (int)((y - sampleDeltaH) * zoomInvertY);
 
                 srcY = std::clamp(srcY, 0, srcH - 1);
 
-                switch (view.rotation) {
+                switch (rotation) {
                 case 0:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx1(srcImg, srcX, srcY, isLowZoom);
                     }
                     break;
                 case 1:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx1(srcImg, srcH - 1 - srcY, srcX, isLowZoom);
                     }
                     break;
                 case 2:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx1(srcImg, srcW - 1 - srcX, srcH - 1 - srcY, isLowZoom);
                     }
                     break;
                 default:
                     for (int x = xStart; x < xEnd; x++) {
-                        int srcX = (int)((x - deltaW) * zoomInvertX);
+                        int srcX = (int)((x - sampleDeltaW) * zoomInvertX);
                         srcX = std::clamp(srcX, 0, srcW - 1);
                         ptr[x] = getSrcPx1(srcImg, srcY, srcW - 1 - srcX, isLowZoom);
                     }

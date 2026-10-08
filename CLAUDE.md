@@ -36,8 +36,11 @@ python tools/gen_testdata.py <输出目录>
 # 色彩管理自检（源/目标同为 sRGB 时恒等跳过、变换生效、四通道 alpha 不动、大图并行与串行逐字节一致）
 ./x64/Release/JarkViewer.exe --probe --color-test
 
-# SVG 自检（light-dark()/var() 折叠、半透明区域反预乘为直通 alpha、空白保持透明）
+# SVG 自检（light-dark()/var() 折叠、半透明区域反预乘为直通 alpha、按可视区域光栅化的区域/旋转语义）
 ./x64/Release/JarkViewer.exe --probe --svg-test
+
+# 文件列表排序自检（名称自然序 / 修改时间 / 文件大小，以及当前图片下标跟随重排）
+./x64/Release/JarkViewer.exe --probe --sort-test
 
 # 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
 ./x64/Release/JarkViewer.exe --probe --navigation-test
@@ -228,7 +231,8 @@ pwsh tools/verify_source_invariant_checks.ps1
 - `JarkViewer/include/MediaDecoder.h` / `MediaPlayer.h` / `AudioOutput.h`（对应 `src/*.cpp`）组成媒体播放链路：`MediaDecoder` 在内存数据上做解复用+解码，按出现顺序产出视频帧或音频批（音频统一重采样为 48kHz 立体声 16 位）；`AudioOutput` 用 XAudio2 输出并提供已播放样本数作为主时钟；`MediaPlayer` 以音频时钟驱动视频帧、一次播完。实况照片（livp / MotionPhoto）与视频文件都走这条路：静态图/首帧作 `ImageAsset::primaryFrame`，视频字节放在 `ImageAsset::videoSource`，由主窗口自动播放一次后回到静态图（不再预解码成帧序列，避免上百 MB 内存）。空格键在实况照片上是播放开关：播放中切回静态图（并把 `playedAsset` 标记为已播放，防自动续播）、静态图时从头播放（主动操作，出声）。
 - `JarkViewer/include/CanvasRenderer.h` 与 `JarkViewer/src/CanvasRenderer.cpp` 是从 `JarkViewerApp` 抽出的画布绘制模块：按 `ViewState`（名义尺寸 / 定点缩放 / 平移 / 旋转）把图像绘制到 BGRA 画布，含透明区域棋盘格与图像边框。`JarkViewerApp::drawCanvas()` 只是把 `curPar` 转成 `ViewState` 后调用它。`imageGeometry()` 是主画布与鸟瞰**共用**的纯几何（旋转后名义尺寸、显示矩形、归一化可见区域——`slide + round((canvas-rendered)/2)` 的定位公式只有这一处），`navigationSlide()` 把归一化图像点换算成目标 slide（某轴完整可见时保持居中、不改动原有“允许留白”的拖图夹取）；`--probe --navigation-test` 用合成断言覆盖旋转/平移/端点夹取与浮层输入归属。`ViewState::border=false` 表示不画图像边框（主页/解码失败是界面画面，不是照片）。
 - 主页与解码失败画面由 `JarkViewer/include|src/InfoScreen.{h,cpp}` **按当前语言、主题、DPI 实时绘制**（旧的 `home.png`/`tips.png`、`getHomeMat()/getErrorTipsMat()` 和 ColorManager 里"识别内置提示图"的像素启发式都已删除）：`ImageAsset::placeholder`（`PlaceholderKind`：Home/UnsupportedFormat/DecodeFailed/FileMissing）与 `placeholderDetail` 由 `myLoader` 在失败时填写——文件头与扩展名都识别不出→UnsupportedFormat，能识别但解码失败→DecodeFailed，打不开/不存在→FileMissing（各解码器的失败分支保持"空帧 + format=None"交给 myLoader 继续路由，不再往 primaryFrame 塞提示图）。**失败时 primaryFrame 保持为空**：`--probe` 据此判定失败并输出 `placeholder=<原因>`，批量处理也会如实报"无法解码"（以前提示图会被当成解码成功的图参与批处理）。界面层用 `JarkViewerApp::updatePlaceholderImage()` 按 `jark::infoScreenStamp(尺寸, DPI缩放, 语言, 主题, 按钮交互)` 决定重绘（结果写进 `placeholderStamp`；返回 0/1/2 = 无变化/仅内容变/尺寸也变，只有尺寸变才 `curPar.Init()`，悬停反馈不会重置缩放）：`initOpenFile`/`switchToFile`/重载/删除都在 `curPar.Init()` 前调用一次，`DrawScene()` 开头再兜一次，窗口缩放/换主题/换语言自动重绘。支持格式清单直接读 `ImageDatabase::supportExt/supportRaw/videoExt`，永远与实际解码能力一致。主页是图标 + 名称/版本 + **「打开图片」按钮**（`homeButtonRect` 与绘制共用同一布局；主窗口把客户区坐标按缩放/平移/旋转逆变换回画布像素做命中，悬停/按下有底色反馈，点击等同 Ctrl+O）。文案是窄表 156~165。
-- `JarkViewer/include/VectorImage.h` 与 `JarkViewer/src/VectorImage.cpp` 负责矢量图（SVG）的按需光栅化：`ImageAsset::vectorSource` 持有 lunasvg 文档与文档尺寸（intrinsic），位图分辨率随缩放变化（`vectorTargetEdge()` + `refreshVectorRaster()`，滞后阈值 1.25 避免缩放动画中反复渲染，长边上限 4096）。主窗口在画面稳定后（`DrawScene` 空闲分支）调用 `refreshVectorRasterIfNeeded()` 升级分辨率。
+- `JarkViewer/include/VectorImage.h` 与 `JarkViewer/src/VectorImage.cpp` 负责矢量图（SVG）的按需光栅化：`ImageAsset::vectorSource` 持有 lunasvg 文档与文档尺寸（intrinsic），位图分辨率随缩放变化（`vectorTargetEdge()` + `refreshVectorRaster()`，滞后阈值 1.25 避免缩放动画中反复渲染，长边上限 4096）。主窗口在画面稳定后（`DrawScene` 空闲分支）调用 `refreshVectorRasterIfNeeded()` 升级分辨率。lunasvg 的位图是 **ARGB32 预乘**（内存 B,G,R,A），`renderVectorImage()` 一律**手工反预乘**成直通 alpha（直接调 `convertToRGBA()` 会换成 R,G,B,A 字节序，画布按 B 读第一个字节会红蓝互换）。
+  **放大超过 4096 上限后按可视区域出高清块**（`VECTOR_DETAIL_MAX_EDGE` / `VectorImage::detailFrame`）：全幅位图（鸟瞰、缩略图、打印/批处理仍用它）已经榨不出细节，这时用 `renderVectorImageRegion()` 只光栅化当前可视区域+25% 余量（`VectorImage.cpp` 把"文档→旋转后名义空间"的仿射系数写进 `Document::render(bitmap, matrix)` 的矩阵里一次完成，所以位图直接就是旋转后的名义空间，取样不必再套旋转）。`CanvasRenderer` 侧只多了 `ViewState::sourceLeft/Top/Width/Height`（归一化区域）与 `sourcePreRotated`：采样原点按区域左上角平移、采样密度按"位图像素 / 该区域的名义像素"算，元素级循环一行没改。**复用判断只看可视区域（不含余量）**，否则余量会被逐帧的微小移动吃掉、每帧重光栅化；可视区域跑出旧块外的那一帧退回全幅位图（糊但不缺块），稳定后自动重出。切图时释放上一张的高清块（`lastDetailVector_`），避免 LRU 里每张 SVG 各攒几十 MB。
 - `JarkViewer/include/jarkUtils.h` 与 `JarkViewer/src/jarkUtils.cpp` 集中放置 Win32/OpenCV 工具、主题/设置全局状态、剪贴板、全屏、资源读取、文件操作和日志。
 - `JarkViewer/src/TextRenderer.cpp`、`stringRes.cpp`、`exifParse.cpp`、`videoDecoder.cpp`、`blpDecoder.cpp` 分别支撑图像文字渲染、多语言字符串、元数据解析、视频帧解码和 BLP 解码。EXIF 数值的**摄影写法**（曝光时间 `1/60 s`、光圈 `f/2.8`、焦距 `89.9 mm`、曝光补偿 `+1/3 EV`、ISO、方向翻词）由 `exifParse.cpp` 的 `formatExifValue()` 负责：按**标签号**判定（不依赖落在哪个 IFD）、只翻认得的标签，认不得的返回空串退回通用显示（厂商私有标签照规范翻会翻出错的词）；曝光时间的分母按值重算，不能照搬 EXIF 里存的分母（尼康把 1/60 存成 10/600）。
 

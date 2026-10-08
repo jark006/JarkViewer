@@ -884,6 +884,67 @@ namespace {
             check(inlineVar[1] >= 250 && inlineVar[3] == 255, "内联 style 中的 var() 生效");
         }
 
+        // 可视区域光栅化：四象限图（TL 红 / TR 绿 / BL 蓝 / BR 白，均不透明），
+        // 逐块渲染后按颜色断言——同时钉死 lunasvg::Document::render(matrix) 的坐标语义
+        const std::string quadrantSvg = R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">)svg"
+            R"svg(<rect x="0" y="0" width="50" height="50" fill="#ff0000"/>)svg"
+            R"svg(<rect x="50" y="0" width="50" height="50" fill="#00ff00"/>)svg"
+            R"svg(<rect x="0" y="50" width="50" height="50" fill="#0000ff"/>)svg"
+            R"svg(<rect x="50" y="50" width="50" height="50" fill="#ffffff"/></svg>)svg";
+
+        const auto makeVectorImage = [](const std::string& svg, int width, int height) {
+            const std::string processed = SVGPreprocessor().preprocessSVG(svg.data(), svg.size());
+            const std::string& source = processed.empty() ? svg : processed;
+            jark::VectorImage vectorImage;
+            vectorImage.document = lunasvg::Document::loadFromData(source.data(), source.size());
+            vectorImage.intrinsicWidth = width;
+            vectorImage.intrinsicHeight = height;
+            return vectorImage;
+        };
+
+        jark::VectorImage quadrants = makeVectorImage(quadrantSvg, 100, 100);
+        check(quadrants.document != nullptr, "四象限用例加载成功");
+
+        const auto regionCenter = [&](const cv::Rect2d& rect, int rotation) {
+            const cv::Mat tile = jark::renderVectorImageRegion(quadrants, rect, rotation,
+                static_cast<int>(rect.width), static_cast<int>(rect.height));
+            if (tile.empty() || tile.type() != CV_8UC4)
+                return cv::Vec4b(0, 0, 0, 0);
+            return tile.at<cv::Vec4b>(tile.rows / 2, tile.cols / 2);
+        };
+        const auto nearColor = [](const cv::Vec4b& value, int b, int g, int r) {
+            return std::abs(value[0] - b) <= 4 && std::abs(value[1] - g) <= 4 &&
+                std::abs(value[2] - r) <= 4 && value[3] >= 250;
+        };
+
+        {
+            const cv::Vec4b tl = regionCenter({ 0, 0, 50, 50 }, 0);
+            check(nearColor(tl, 0, 0, 255), std::format("区域渲染（旋转 0）左上块为红：(B,G,R,A)=({},{},{},{})",
+                tl[0], tl[1], tl[2], tl[3]));
+            const cv::Vec4b tr = regionCenter({ 50, 0, 50, 50 }, 0);
+            check(nearColor(tr, 0, 255, 0), "区域渲染（旋转 0）右上块为绿");
+            const cv::Vec4b bl = regionCenter({ 0, 50, 50, 50 }, 0);
+            check(nearColor(bl, 255, 0, 0), "区域渲染（旋转 0）左下块为蓝");
+        }
+        {
+            // 旋转 1 时名义空间 = 文档逆时针转 90°：名义左上块对应文档右上块
+            const cv::Vec4b tile = regionCenter({ 0, 0, 50, 50 }, 1);
+            check(nearColor(tile, 0, 255, 0), "区域渲染（旋转 1）名义左上块对应文档右上块（绿）");
+            const cv::Vec4b lower = regionCenter({ 0, 50, 50, 50 }, 1);
+            check(nearColor(lower, 0, 0, 255), "区域渲染（旋转 1）名义左下块对应文档左上块（红）");
+        }
+        {
+            // 半透明：区域渲染同样要反预乘（与整幅渲染口径一致）
+            jark::VectorImage translucent = makeVectorImage(translucentSvg, 100, 100);
+            const cv::Mat tile = jark::renderVectorImageRegion(translucent, { 25, 25, 50, 50 }, 0, 20, 20);
+            check(!tile.empty(), "半透明用例区域渲染成功");
+            if (!tile.empty()) {
+                const cv::Vec4b center = tile.at<cv::Vec4b>(10, 10);
+                check(nearColor(center, 0, 0, 255) == false && center[2] >= 250 && std::abs(center[3] - 128) <= 2,
+                    std::format("区域渲染同样反预乘：(B,G,R,A)=({},{},{},{})", center[0], center[1], center[2], center[3]));
+            }
+        }
+
         report = std::format("---- SVG 自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
         return report;
     }
