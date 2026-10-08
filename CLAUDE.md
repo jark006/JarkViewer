@@ -91,8 +91,11 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
   宽 = 1.5 倍高、悬停/按下铺系统红底 `#C42B1C` 与白色 ✕），改动在 `imgui.cpp` 的
   `RenderWindowTitleBarContents()`、`imgui_widgets.cpp` 的 `CloseButton()`（多一个 `size` 参数，
-  默认 0 即原来的 FontSize 见方，Dock 页签栏仍走原行为）与 `imgui_internal.h` 的声明处，
-  三处都有 `[JarkViewer 本地修改]` 注释；**升级 imgui 后要把这三处补回去**。
+  默认 0 即原来的 FontSize 见方，Dock 页签栏仍走原行为）与 `imgui_internal.h` 的声明处；
+  另有第四处：`imgui.cpp` 的 `Begin()`（`window->WindowRounding` 赋值处）**去掉了对
+  ViewportOwned 窗口强制零圆角的分支**——多视口模式下，比主视口还大的窗口（如小主窗口下的
+  设置/编辑窗口）会被分离成独立 OS 窗口并原本被画成直角，本地修改让它们保留主题圆角。
+  四处都有 `[JarkViewer 本地修改]` 注释；**升级 imgui 后要把这四处补回去**。
   窗口只允许从**右下角的抓手**改尺寸：`UiHost` 里设了 `io.ConfigWindowsResizeFromEdges = false`
   （ImGui 自带开关，关掉后上下左右四条边框与左下角抓手都不能拖，只剩右下角那一个），**别删这一行**，
   否则缩放后的窗口边框到处都能拖、很容易误触。

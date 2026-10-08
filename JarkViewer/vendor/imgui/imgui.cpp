@@ -8444,10 +8444,11 @@ bool ImGui::Begin(const char* name, bool* p_open, ImGuiWindowFlags flags)
 
         // Lock window rounding for the frame (so that altering them doesn't cause inconsistencies)
         // Large values tend to lead to variety of artifacts and are not recommended.
+        // [JarkViewer 本地修改] ViewportOwned（装不进主视口而被分离成独立 OS 窗口的窗口，如
+        // 小主窗口下的设置/编辑窗口）原本被强制 WindowRounding=0 画成直角；这里保留主题圆角，
+        // 让所有 ImGui 窗口在任何窗口尺寸下外观一致。
         if ((flags & ImGuiWindowFlags_ChildWindow) && !window->DockIsActive)
             window->WindowRounding = style.ChildRounding;
-        else if (window->RootWindowDockTree->ViewportOwned)
-            window->WindowRounding = 0.0f;
         else
             window->WindowRounding = ((flags & ImGuiWindowFlags_Popup) && !(flags & ImGuiWindowFlags_Modal)) ? style.PopupRounding : style.WindowRounding;
 
