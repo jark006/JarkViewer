@@ -33,7 +33,7 @@ python tools/gen_testdata.py <输出目录>
 # 标注逻辑自检（合成底图 + 像素断言，不需要人眼）
 ./x64/Release/JarkViewer.exe --probe --annotate [--annotate-out 输出目录] [图片]
 
-# 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch）
+# 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
 ./x64/Release/JarkViewer.exe --probe --navigation-test
 ./x64/Release/JarkViewer.exe --probe --thumbnail-test [--out-dir 临时目录]
 
@@ -137,16 +137,20 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   原位复用**，保持 4096 字节布局；旧设置默认 false=显示），别再加新字段。
 - `JarkViewer/include|src/ThumbnailService.{h,cpp}` 是缩略图服务（`jark` 命名空间，单例）：
   取图顺序是**内存缓存 → `JarkViewer.thumbnail` 持久缓存 → `IThumbnailCache`(`WTS_INCACHEONLY`)
-  → Shell 正常提取（`WTS_EXTRACT`）**——提取默认走系统 surrogate，**禁止 `WTS_EXTRACTINPROC`、
-  禁止直接加载 provider DLL、禁止回退查看器的原图解码链**（失败只显示占位图）；因此 JPEG 等无
-  自研处理器的格式用系统缩略图缓存，本程序注册过的扩展名（wp2/raw 等）由 JarkThumbnailProvider
-  经 Shell 提供，缩略图带自身不解码原图。缓存文件固定在**实际设置文件（`GlobalVar::settingPath`）
-  同目录**、固定名 `JarkViewer.thumbnail`（不是 `JarkViewer.db` 的扩展名）：64 字节文件头 +
-  **1000 个定长索引槽** + 追加数据区（规范化路径 + ≤256px PNG，显式序列化、CRC 校验、损坏只丢
-  单条）；LRU 按“实际展示”更新（预取不刷热），跨进程用命名互斥锁提交、`generation/epoch` 保证
-  在途旧结果不覆盖清理后的缓存；原图只查文件属性（大小/修改时间），覆盖保存等已知变化要
-  `invalidate()`。两个常驻 worker（缓存 I/O 与 Shell COM 各自 `CoInitializeEx`）：慢提取不阻塞
-  缓存查询/清理，退出有界等待，同步 COM 调用**不能**强制中断、线程只持有自己的状态。
+  → Shell 正常提取（`WTS_EXTRACT`）→ 工程内解码器兜底**——Shell 提取默认走系统 surrogate，
+  **禁止 `WTS_EXTRACTINPROC`、禁止直接加载 provider DLL**；Shell 拿不到缩略图时（无处理器、
+  未安装 JarkThumbnailProvider.dll 等）由专属解码线程用**私有 `ImageDatabase` 实例**调
+  `myLoader` 生成（缩到长边 ≤256 的 8UC4，深度转换复用 `ImageDatabase::convertMatToCV_8U`，
+  与查看器显示同一套语义；成功后照常持久化，失败才落占位、仅内存记忆），因此预览带不依赖
+  任何 Shell 处理器注册，也不碰应用的图像缓存与窗口状态。缓存文件固定在**实际设置文件
+  （`GlobalVar::settingPath`）同目录**、固定名 `JarkViewer.thumbnail`（不是 `JarkViewer.db`
+  的扩展名）：64 字节文件头 + **1000 个定长索引槽** + 追加数据区（规范化路径 + ≤256px PNG，
+  显式序列化、CRC 校验、损坏只丢单条）；LRU 按“实际展示”更新（预取不刷热），跨进程用命名
+  互斥锁提交、`generation/epoch` 保证在途旧结果不覆盖清理后的缓存；原图只查文件属性
+  （大小/修改时间），覆盖保存等已知变化要 `invalidate()`。三个常驻 worker（缓存 I/O、Shell COM、
+  本地解码兜底，后两者各自 `CoInitializeEx`，解码线程 `THREAD_PRIORITY_BELOW_NORMAL` 不抢前台
+  解码）：慢提取/慢解码不阻塞缓存查询/清理，退出有界等待，同步调用**不能**强制中断、
+  线程只持有自己的状态。
   GPU 侧：鸟瞰用纹理槽 5、缩略图带用 16..79，`UiHost::releaseTexture(slot)` 是新增的单槽释放
   （清理缩略图**不能**调全局 `releaseTextures()`，会连其它窗口的纹理一起失效）；后台只产 CPU 位图，
   上传/释放在界面线程。设置页常规页有「显示鸟瞰图」与「清理缩略图缓存」

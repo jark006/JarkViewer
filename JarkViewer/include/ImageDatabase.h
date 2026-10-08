@@ -485,6 +485,9 @@ public:
 
     static bool isDecodeFailed(const ImageAsset& imageAsset) noexcept;
 
+    // 任意深度 → 8 位的统一转换：查看器显示与缩略图服务的兜底解码共用同一套语义
+    static void convertMatToCV_8U(cv::Mat& mat);
+
     ImageAsset myLoader(const wstring& path);
     ImageAsset loader(const wstring& path);
 };

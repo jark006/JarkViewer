@@ -40,7 +40,9 @@ public:
 
     static ThumbnailService& instance();
     // 传入 GlobalVar::settingPath.parent_path() / L"JarkViewer.thumbnail"。
-    // 服务不访问查看器全局变量、原图解码器、窗口句柄或 GPU 对象。
+    // 服务不访问查看器全局变量、应用的图像缓存、窗口句柄或 GPU 对象；
+    // Shell 提取失败时（无处理器、未安装 JarkThumbnailProvider.dll 等）由独立
+    // 解码线程用私有 ImageDatabase 实例兜底，预览带不依赖任何 Shell 处理器注册。
     void initialize(const std::filesystem::path& cacheFile);
     // 最多等待工作线程 400 ms；同步 Shell 调用阻塞时由线程自持状态，
     // 返回后的旧结果不会发布或发起新写入。已开始的磁盘事务可能稍后结束。
@@ -65,7 +67,7 @@ private:
 };
 
 // 只操作 testDirectory 下新建的唯一子目录，保留文件便于排障。
-// 不调用原图解码器，也不触碰应用实例的缓存。
+// 兜底解码自检会解码测试目录内自建的测试图，但不触碰应用实例的缓存。
 bool runThumbnailCacheTests(std::ostream& output,
     const std::filesystem::path& testDirectory);
 // 仅供上述自检启动的两个子进程，共享临时目录验证真实跨进程写入。

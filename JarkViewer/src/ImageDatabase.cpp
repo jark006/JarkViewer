@@ -1856,25 +1856,25 @@ cv::Mat ImageDatabase::loadSTB(wstring_view path, std::span<const uint8_t> buf) 
 
 
 ImageAsset ImageDatabase::loadSVG(wstring_view path, std::span<const uint8_t> buf) {
-    static bool isInitFont = false;
-
-    if (!isInitFont) {
-        isInitFont = true;
-
+    // 字体只需注册一次；函数内静态的惰性初始化天然线程安全——
+    // 缩略图服务的兜底解码线程可能与界面线程同时解码 SVG。
+    static const bool isInitFont = [] {
         // SVG 内文字用系统字体渲染（不再内嵌 ttf）
         wchar_t windowsDir[MAX_PATH] = {};
         const UINT length = ::GetWindowsDirectoryW(windowsDir, MAX_PATH);
         if (length > 0 && length < MAX_PATH) {
             const std::wstring fontDir = std::wstring(windowsDir) + L"\\Fonts\\";
             for (const wchar_t* fileName : { L"msyh.ttc", L"Deng.ttf", L"simhei.ttf", L"segoeui.ttf" }) {
-                const std::string path = jarkUtils::wstringToUtf8(fontDir + fileName);
-                if (lunasvg_add_font_face_from_file("", false, false, path.c_str())) {
-                    JARK_LOG("SVG 字体：{}", path);
+                const std::string fontPath = jarkUtils::wstringToUtf8(fontDir + fileName);
+                if (lunasvg_add_font_face_from_file("", false, false, fontPath.c_str())) {
+                    JARK_LOG("SVG 字体：{}", fontPath);
                     break;
                 }
             }
         }
-    }
+        return true;
+    }();
+    (void)isInitFont;
 
     SVGPreprocessor preprocessor;
     auto SVGData = preprocessor.preprocessSVG((const char*)buf.data(), buf.size());
@@ -2140,7 +2140,7 @@ static std::string parseImageAssetInfo(wstring_view path, ImageAsset& imageAsset
 }
 
 // 只接受 8 位通道
-static void convertMatToCV_8U(cv::Mat& mat) {
+void ImageDatabase::convertMatToCV_8U(cv::Mat& mat) {
     if (mat.empty() || mat.depth() == CV_8U)
         return;
 
@@ -2184,9 +2184,9 @@ static void convertMatToCV_8U(cv::Mat& mat) {
 }
 
 static void convertImageAssetToCV_8U(ImageAsset& imageAsset) {
-    convertMatToCV_8U(imageAsset.primaryFrame);
+    ImageDatabase::convertMatToCV_8U(imageAsset.primaryFrame);
     for (auto& frame : imageAsset.frames) {
-        convertMatToCV_8U(frame);
+        ImageDatabase::convertMatToCV_8U(frame);
     }
 }
 

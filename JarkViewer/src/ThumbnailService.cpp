@@ -1,12 +1,17 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+// 同 framework.h：不让 Windows.h 引入旧 winsock.h，避免与 libraw 链里的 winsock2.h 冲突
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include "../include/ThumbnailService.h"
 #include <Windows.h>
 #include <ShlObj.h>
 #include <thumbcache.h>
 #include <wrl/client.h>
-#include <opencv2/imgcodecs.hpp>
+#include <opencv2/opencv.hpp>
+#include "ImageDatabase.h"
 
 #include <algorithm>
 #include <array>
@@ -652,6 +657,50 @@ cv::Mat sharedBitmapImage(ISharedBitmap* shared) {
     return result;
 }
 
+// —— 本地解码兜底 ——
+// Shell 链路拿不到缩略图时（无处理器、未安装 JarkThumbnailProvider.dll 等），
+// 由解码工作线程用工程内解码器生成缩略图，预览带因此不依赖任何已注册的 Shell 处理器。
+// 只在解码线程调用：独立 ImageDatabase 实例，不进应用缓存，也不读窗口/显示器状态。
+
+bool localDecodeEligible(const std::wstring& path) {
+    const auto slash = path.find_last_of(L"\\/");
+    const auto dot = path.rfind(L'.');
+    if (dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash) || dot + 1 >= path.size())
+        return false;
+    std::wstring ext = path.substr(dot + 1);
+    for (auto& c : ext) if (c >= L'A' && c <= L'Z') c = wchar_t(c + (L'a' - L'A'));
+    return ImageDatabase::supportExt.contains(ext) || ImageDatabase::supportRaw.contains(ext)
+        || ImageDatabase::videoExt.contains(ext);
+}
+
+// 任意解码结果 → 长边不超过 kEdge 的 8UC4 缩略图；失败返回空。
+cv::Mat thumbnailImage(cv::Mat image) {
+    if (image.empty() || image.channels() < 1 || image.channels() > 4)
+        return {};
+    try {
+        ImageDatabase::convertMatToCV_8U(image); // 与查看器显示同一套深度语义
+        if (image.channels() == 1) cv::cvtColor(image, image, cv::COLOR_GRAY2BGRA);
+        else if (image.channels() == 3) cv::cvtColor(image, image, cv::COLOR_BGR2BGRA);
+        const double edge = (std::max)(image.cols, image.rows);
+        if (edge > double(kEdge)) {
+            const double scale = double(kEdge) / edge;
+            cv::resize(image, image, cv::Size(), scale, scale, cv::INTER_AREA);
+        }
+        if (image.type() != CV_8UC4 || image.cols < 1 || image.rows < 1
+            || image.cols > int(kEdge) || image.rows > int(kEdge)) return {};
+        return image;
+    } catch (...) { return {}; }
+}
+
+cv::Mat decodeLocalThumbnail(ImageDatabase& database, const std::wstring& path) {
+    ImageAsset asset;
+    try { asset = database.myLoader(path); } catch (...) { return {}; }
+    if (ImageDatabase::isDecodeFailed(asset)) return {};
+    // 动图取第一帧；EXIF 方向已由各解码分支按查看器同一策略应用。
+    const cv::Mat& source = !asset.primaryFrame.empty() ? asset.primaryFrame : asset.frames.front();
+    return thumbnailImage(source);
+}
+
 struct ShellResult {
     cv::Mat image;
     HRESULT cached = E_FAIL, extracted = E_FAIL;
@@ -709,6 +758,7 @@ struct Completion {
     ShellTask task;
     cv::Mat image;
     bool failed = false;
+    bool fromShell = true; // false = 本地解码兜底结果，失败时不再重复排队
 };
 struct MemoryItem {
     Metadata metadata;
@@ -735,6 +785,7 @@ struct ServiceState {
     std::vector<Request> desired;
     std::deque<Request> requests;
     std::deque<ShellTask> shellQueue;
+    std::deque<ShellTask> decodeQueue;
     std::deque<Completion> completions;
     std::unordered_set<std::wstring> invalidations;
     std::unordered_map<std::wstring, MemoryItem> memory;
@@ -762,7 +813,7 @@ struct ServiceState {
     }
     void requeueLocked() {
         ++generation;
-        requests.clear(); shellQueue.clear(); completions.clear();
+        requests.clear(); shellQueue.clear(); decodeQueue.clear(); completions.clear();
         for (auto& r : desired) {
             r.generation = generation;
             requests.push_back(r);
@@ -849,6 +900,41 @@ void runShell(const std::shared_ptr<ServiceState>& state) {
 uint64_t currentEpoch(const std::shared_ptr<ServiceState>& state) {
     std::lock_guard lock(state->mutex);
     return state->epoch;
+}
+
+// Shell 失败后的兜底解码线程：与 Shell 线程分开，慢解码既不挡住系统提取，
+// 也不阻塞缓存查询/清理。独立 ImageDatabase 实例只在本线程使用。
+void runDecode(const std::shared_ptr<ServiceState>& state) {
+    try {
+        const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED); // WIC 兜底解码需要 COM
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL); // 不抢查看大图的前台解码
+        ImageDatabase database;
+        for (;;) {
+            ShellTask task;
+            {
+                std::unique_lock lock(state->mutex);
+                state->wake.wait(lock, [&] { return state->stop || !state->decodeQueue.empty(); });
+                if (state->stop) break;
+                task = std::move(state->decodeQueue.front());
+                state->decodeQueue.pop_front();
+                if (!state->currentLocked(task.request)) continue;
+            }
+            Completion result;
+            result.task = task;
+            result.fromShell = false;
+            try { result.image = decodeLocalThumbnail(database, task.request.path); }
+            catch (...) { result.image.release(); }
+            result.failed = result.image.empty();
+            {
+                std::lock_guard lock(state->mutex);
+                if (state->currentLocked(task.request) && state->completions.size() < kQueueLimit)
+                    state->completions.push_back(std::move(result));
+                state->wake.notify_all();
+            }
+        }
+        if (SUCCEEDED(initialized)) CoUninitialize();
+    } catch (...) { /* 兜底解码失败不影响主界面。 */ }
+    workerFinished(state);
 }
 
 void persistItem(const std::shared_ptr<ServiceState>& state, DiskCache& disk,
@@ -963,6 +1049,19 @@ void processCompletion(const std::shared_ptr<ServiceState>& state, DiskCache& di
             state->requests.push_front(task.request);
         return;
     }
+    if (result.failed && result.fromShell && localDecodeEligible(task.request.path)) {
+        // Shell 拿不到缩略图（没有处理器或未安装 provider DLL）：排队本地解码兜底；
+        // 成功照常发布并持久化，失败才落占位。可见项排在预取项前面。
+        std::lock_guard lock(state->mutex);
+        if (!state->currentLocked(task.request) || state->decodeQueue.size() >= kQueueLimit) return;
+        auto position = task.request.visible
+            ? std::find_if(state->decodeQueue.begin(), state->decodeQueue.end(),
+                [](const ShellTask& r) { return !r.request.visible; })
+            : state->decodeQueue.end();
+        state->decodeQueue.insert(position, task);
+        state->wake.notify_all();
+        return;
+    }
     acceptImage(state, disk, task.request, task.metadata, std::move(result.image), result.failed, false, task.epoch);
 }
 
@@ -1036,7 +1135,7 @@ void stopState(std::shared_ptr<ServiceState> state) {
     std::unique_lock lock(state->mutex);
     state->stop = true;
     ++state->generation;
-    state->requests.clear(); state->shellQueue.clear(); state->completions.clear();
+    state->requests.clear(); state->shellQueue.clear(); state->decodeQueue.clear(); state->completions.clear();
     state->wake.notify_all();
     // 同步 Shell/文件系统调用无法安全强制中断。线程只持有自己的状态与局部变量，
     // 不使用 TerminateThread、不无限 join，也不引用查看器的全局对象。
@@ -1066,7 +1165,7 @@ void ThumbnailService::initialize(const std::filesystem::path& cacheFile) {
         try { std::thread([state, function] { function(state); }).detach(); }
         catch (...) { workerFinished(state); throw; }
     };
-    try { launch(runCacheIo); launch(runShell); }
+    try { launch(runCacheIo); launch(runShell); launch(runDecode); }
     catch (...) {
         stopState(impl_->state.exchange({}));
     }
@@ -1421,6 +1520,96 @@ bool runThumbnailCacheTests(std::ostream& output, const std::filesystem::path& t
         acceptImage(state, workerSeed, oldRequest, afterMetadata, decodeCachePng(png), false, false, seed.epoch);
         check(state->published.load()->empty() && workerSeed.sync().entries == 0,
             "stopped/old-generation result cannot publish or persist");
+
+        // —— Shell 失败后的本地解码兜底：预览带不依赖任何已注册的 Shell 处理器 ——
+        check(localDecodeEligible(L"C:\\t\\a.psd") && localDecodeEligible(L"C:\\t\\a.CR2")
+            && localDecodeEligible(L"C:\\t\\a.mp4") && !localDecodeEligible(L"C:\\t\\a.xyz")
+            && !localDecodeEligible(L"C:\\t\\noextension"),
+            "local decode eligibility by extension");
+
+        const auto localSource = root / L"local-source.png";
+        {
+            cv::Mat gradient(200, 300, CV_8UC3);
+            for (int y = 0; y < gradient.rows; ++y)
+                for (int x = 0; x < gradient.cols; ++x)
+                    gradient.at<cv::Vec3b>(y, x) = cv::Vec3b(
+                        static_cast<uchar>(x), static_cast<uchar>(y), static_cast<uchar>(64));
+            std::vector<uchar> pngBytes;
+            cv::imencode(".png", gradient, pngBytes);
+            std::ofstream out(localSource, std::ios::binary);
+            out.write(reinterpret_cast<const char*>(pngBytes.data()), static_cast<std::streamsize>(pngBytes.size()));
+        }
+        {
+            ImageDatabase database;
+            const auto image = decodeLocalThumbnail(database, localSource.wstring());
+            check(!image.empty() && image.type() == CV_8UC4 && image.cols == 256 && image.rows == 171,
+                "local decode shrinks to 256-edge BGRA thumbnail");
+        }
+
+        // 全链路：模拟 Shell 全部提取失败（等同未安装 JarkThumbnailProvider.dll）。
+        const auto fallbackPath = root / L"fallback.thumbnail";
+        auto fallbackVersions = std::make_shared<std::atomic<uint64_t>>(0);
+        auto fallbackState = std::make_shared<ServiceState>(fallbackPath, fallbackVersions);
+        fallbackState->workers = 3;
+        std::thread([state = fallbackState] { runCacheIo(state); }).detach();
+        std::thread([state = fallbackState] { runDecode(state); }).detach();
+        std::thread([state = fallbackState] {
+            for (;;) {
+                ShellTask task;
+                {
+                    std::unique_lock lock(state->mutex);
+                    state->wake.wait(lock, [&] { return state->stop || !state->shellQueue.empty(); });
+                    if (state->stop) break;
+                    task = std::move(state->shellQueue.front());
+                    state->shellQueue.pop_front();
+                    if (!state->currentLocked(task.request)) continue;
+                }
+                Completion result;
+                result.task = task;
+                result.failed = true; // 永远模拟提取失败
+                std::lock_guard lock(state->mutex);
+                if (state->currentLocked(task.request) && state->completions.size() < kQueueLimit)
+                    state->completions.push_back(std::move(result));
+                state->wake.notify_all();
+            }
+            workerFinished(state);
+        }).detach();
+
+        const auto brokenSource = root / L"broken.psd";
+        { std::ofstream out(brokenSource, std::ios::binary); out << "not a real psd"; }
+        const auto localKey = pathKey(localSource.wstring());
+        const auto brokenKey = pathKey(brokenSource.wstring());
+        {
+            std::lock_guard lock(fallbackState->mutex);
+            fallbackState->desired.push_back({ localSource.wstring(), localKey, true, true, 0 });
+            fallbackState->desired.push_back({ brokenSource.wstring(), brokenKey, true, true, 0 });
+            fallbackState->requeueLocked();
+        }
+        auto publishedOf = [&](const std::wstring& key) -> Thumbnail {
+            const auto snapshot = fallbackState->published.load();
+            const auto found = snapshot->find(key);
+            return found == snapshot->end() ? Thumbnail{} : found->second;
+        };
+        bool fallbackOk = false;
+        waitFor([&] {
+            const auto t = publishedOf(localKey);
+            fallbackOk = !t.failed && !t.image.empty();
+            return fallbackOk || t.failed;
+        }, std::chrono::seconds(10));
+        const auto localThumb = publishedOf(localKey);
+        check(fallbackOk && localThumb.image.type() == CV_8UC4
+            && (std::max)(localThumb.image.cols, localThumb.image.rows) == int(kEdge),
+            "shell failure falls back to local decode and publishes thumbnail");
+        check(waitFor([&] { return publishedOf(brokenKey).failed; }, std::chrono::seconds(10)),
+            "undecodable file degrades to placeholder after fallback");
+        DiskCache fallbackDisk(fallbackPath);
+        const auto localMetadata = sourceMetadata(localSource.wstring());
+        check(waitFor([&] {
+            return fallbackDisk.lookup(localKey, localMetadata, false).code == CacheCode::Ok;
+        }, std::chrono::seconds(5)), "locally decoded thumbnail persists to disk cache");
+        check(fallbackDisk.lookup(brokenKey, sourceMetadata(brokenSource.wstring()), false).code == CacheCode::Miss,
+            "failed fallback stays memory-only");
+        stopState(fallbackState);
     } catch (const std::exception& error) {
         output << "FAIL exception: " << error.what() << '\n'; ++failed;
     } catch (...) { output << "FAIL unknown exception\n"; ++failed; }
