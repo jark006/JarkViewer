@@ -587,6 +587,17 @@ namespace {
         overlay.cancel();
         check(!overlay.ownsGesture() && overlay.mouseUp(1).handled, "失捕获取消后吞掉残余抬起");
         check(!overlay.mouseDown({ 500, 400 }, 1).handled, "非浮层区域不拦截主图");
+
+        // 预览带：整块控件区域都是触发区（不用移到最底部那条窄边）
+        ui::NavigationOverlay stripOverlay;
+        std::vector<std::wstring> stripFiles;
+        for (int i = 0; i < 24; ++i)
+            stripFiles.push_back(L"C:\\fake-folder\\image-" + std::to_wstring(i) + L".png");
+        stripOverlay.setDirectory(stripFiles, 12);
+        stripOverlay.sync({ 1000, 600, 2 << 16, 1 << 16, 0, 0, 0 }, { 1280, 800 }, 1, true, false, 1, 12);
+        check(!stripOverlay.mouseMove({ 640, 600 }, false).handled, "预览带区域之外不拦截主图");
+        const auto stripEnter = stripOverlay.mouseMove({ 640, 740 }, false);
+        check(stripEnter.handled && stripEnter.redraw, "进入预览带区域立即展开（无需移到最底部）");
         return std::format("---- navigation: {} ok, {} failed ----\n", passed, failed) + report;
     }
 

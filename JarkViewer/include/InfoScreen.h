@@ -17,12 +17,17 @@
 
 namespace jark {
 
-// 内容指纹：尺寸、DPI 缩放、界面语言、深浅主题任一变化都应重新绘制
-uint64_t infoScreenStamp(cv::Size size, float scale);
+// 内容指纹：尺寸、DPI 缩放、界面语言、深浅主题、按钮交互状态任一变化都应重新绘制
+uint64_t infoScreenStamp(cv::Size size, float scale, int interaction = 0);
 
 // 绘制主页/解码失败占位画面（CV_8UC4，尺寸为画布的物理像素，scale 为界面 DPI 缩放）。
-// detail 为补充信息（通常是文件路径），主页可传空。
-cv::Mat renderInfoScreen(PlaceholderKind kind, const std::wstring& detail, cv::Size size, float scale);
+// detail 为补充信息（通常是文件路径），主页可传空；interaction 为主页按钮状态
+// （0 普通 / 1 悬停 / 2 按下，其它页面忽略）。
+cv::Mat renderInfoScreen(PlaceholderKind kind, const std::wstring& detail, cv::Size size, float scale,
+    int interaction = 0);
+
+// 主页「打开图片」按钮的矩形（画布像素坐标），与 renderInfoScreen 使用同一套布局
+cv::Rect homeButtonRect(cv::Size size, float scale);
 
 // 供 --probe 输出使用的短名（home / unsupported / decode-failed / missing）
 const char* placeholderName(PlaceholderKind kind);

@@ -263,6 +263,7 @@ public:
     jark::ui::NavigationOverlay navigation;
     uint64_t navigationImageVersion = 1;
     uint64_t directoryVersion = 1;
+    int homeButtonState = 0; // 主页「打开图片」按钮：0 普通 / 1 悬停 / 2 按下
 
     CursorPos cursorPos = CursorPos::centerArea;
     CursorPos cursorPosLast = CursorPos::centerArea;
@@ -334,20 +335,68 @@ public:
         return asset;
     }
 
-    // 尺寸、DPI、语言或主题变化时重新绘制当前占位画面；返回 true 表示有更新
-    bool updatePlaceholderImage() {
+    bool isHomeScreen() const {
+        return curPar.imageAssetPtr && curPar.imageAssetPtr->placeholder == PlaceholderKind::Home;
+    }
+
+    // 主页「打开图片」按钮命中：把客户区坐标逆变换回画布像素（考虑缩放/平移/旋转）
+    bool homeButtonHit(int x, int y) const {
+        if (!isHomeScreen() || curPar.imageAssetPtr->primaryFrame.empty())
+            return false;
+
+        const auto geometry = jark::imageGeometry(viewState(), { winWidth, winHeight });
+        if (geometry.scale <= 0.0 || geometry.nominalSize.empty())
+            return false;
+
+        const int nominalX = static_cast<int>((x - geometry.origin.x) / geometry.scale);
+        const int nominalY = static_cast<int>((y - geometry.origin.y) / geometry.scale);
+        const cv::Size bitmap = curPar.imageAssetPtr->primaryFrame.size();
+        cv::Point source;
+        switch (curPar.rotation & 3) {
+        case 1: source = { bitmap.width - 1 - nominalY, nominalX }; break;
+        case 2: source = { bitmap.width - 1 - nominalX, bitmap.height - 1 - nominalY }; break;
+        case 3: source = { nominalY, bitmap.height - 1 - nominalX }; break;
+        default: source = { nominalX, nominalY }; break;
+        }
+        return jark::homeButtonRect({ winWidth, winHeight }, uiScale()).contains(source);
+    }
+
+    void setHomeButtonState(int state) {
+        if (homeButtonState == state)
+            return;
+        homeButtonState = state;
+        if (isHomeScreen()) {
+            curPar.imageAssetPtr->placeholderStamp = 0; // 交给 DrawScene 按新状态重绘按钮
+            markPresentRequested();
+        }
+    }
+
+    void openImageFromHome() {
+        wstring filePath = jarkUtils::SelectFile(m_hWnd);
+        if (!filePath.empty()) {
+            initOpenFile(filePath);
+            operateQueue.push({ ActionENUM::refresh });
+        }
+    }
+
+    // 尺寸、DPI、语言、主题或按钮状态变化时重新绘制当前占位画面。
+    // 返回 0=无变化；1=仅内容变化；2=尺寸也变化（调用方需要重新 Init 视图）
+    int updatePlaceholderImage() {
         ImageAsset* asset = curPar.imageAssetPtr.get();
         if (!asset || asset->placeholder == PlaceholderKind::None)
-            return false;
+            return 0;
 
         const cv::Size size{ winWidth, winHeight };
-        const uint64_t stamp = jark::infoScreenStamp(size, uiScale());
+        const int interaction = asset->placeholder == PlaceholderKind::Home ? homeButtonState : 0;
+        const uint64_t stamp = jark::infoScreenStamp(size, uiScale(), interaction);
         if (asset->placeholderStamp == stamp)
-            return false;
+            return 0;
 
+        const bool sizeChanged = asset->primaryFrame.empty() || asset->primaryFrame.size() != size;
         asset->placeholderStamp = stamp;
-        asset->primaryFrame = jark::renderInfoScreen(asset->placeholder, asset->placeholderDetail, size, uiScale());
-        return true;
+        asset->primaryFrame = jark::renderInfoScreen(asset->placeholder, asset->placeholderDetail,
+            size, uiScale(), interaction);
+        return sizeChanged ? 2 : 1;
     }
 
     void initOpenFile(wstring filePath) {
@@ -356,6 +405,7 @@ public:
         curFileIdx = -1;
         imgFileList.clear();
         imgDB.clear();
+        homeButtonState = 0;
         stopMediaPlayback();
         updateNavigationDirectory();
 
@@ -536,6 +586,7 @@ public:
 
     void OnPointerCancel() override {
         navigation.cancel();
+        setHomeButtonState(0);
         mouseIsPressing = false;
         ctrlIsPressing = false;
         extraUIFlag = ShowExtraUI::none;
@@ -552,6 +603,10 @@ public:
         switch ((uint64_t)btnState)
         {
         case WM_LBUTTONDOWN: {//左键
+            if (isHomeScreen() && homeButtonHit(x, y)) { // 主页「打开图片」按钮：按下并显示按压态
+                setHomeButtonState(2);
+                return;
+            }
             if (cursorPos == CursorPos::centerArea) {
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed = duration_cast<std::chrono::milliseconds>(now - lastClickTimestamp).count();
@@ -616,6 +671,13 @@ public:
         {
         case WM_LBUTTONUP: {//左键
             mouseIsPressing = false;
+            if (homeButtonState == 2) { // 主页按钮：在按钮内抬起才算点击，等同 Ctrl+O
+                const bool inside = homeButtonHit(x, y);
+                setHomeButtonState(inside ? 1 : 0);
+                if (inside)
+                    openImageFromHome();
+                return;
+            }
             operateQueue.push({ ActionENUM::refresh });
             return;
         }
@@ -652,6 +714,12 @@ public:
         syncNavigation();
         if (applyNavigationEvent(navigation.mouseMove({ x, y }, mouseIsPressing)))
             return;
+
+        if (isHomeScreen()) { // 主页「打开图片」按钮的悬停/按下反馈
+            const int desired = homeButtonHit(x, y)
+                ? (homeButtonState == 2 && mouseIsPressing ? 2 : 1) : 0;
+            setHomeButtonState(desired);
+        }
 
         const int edgeWidth = dp(50);   // 悬停热区宽度按 DPI 缩放，与按钮资源图一致
         const int edgeHeight = dp(50);
@@ -779,6 +847,7 @@ public:
 
     void OnMouseLeave() override {
         navigation.mouseLeave();
+        setHomeButtonState(0);
         cursorPosLast = cursorPos = CursorPos::centerArea;
         extraUIFlag = ShowExtraUI::none;
         if (GetCapture() != m_hWnd)
@@ -1970,9 +2039,10 @@ public:
         updateMediaPlayback(); // 实时播放推进（含音频时钟驱动的帧切换）
         updateSlideshow();     // 幻灯片按间隔自动切换
 
-        // 主页/解码失败占位画面：尺寸、DPI、语言或主题变化时重新绘制
-        if (updatePlaceholderImage()) {
-            curPar.Init(winWidth, winHeight);
+        // 主页/解码失败占位画面：尺寸、DPI、语言、主题或按钮状态变化时重新绘制
+        if (const int placeholderChange = updatePlaceholderImage(); placeholderChange != 0) {
+            if (placeholderChange == 2)
+                curPar.Init(winWidth, winHeight); // 只有尺寸变化才需要重新布局视图（悬停反馈不动缩放）
             operateQueue.push({ ActionENUM::refresh });
         }
 

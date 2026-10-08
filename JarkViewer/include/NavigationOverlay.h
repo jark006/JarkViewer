@@ -70,7 +70,7 @@ private:
     cv::Point mouse_{ -1, -1 };
     cv::Point2d grabOffset_;
     cv::Rect2f overviewPanel_, overviewImage_, viewFrame_;
-    cv::Rect2f trigger_, strip_, previous_, next_;
+    cv::Rect2f strip_, previous_, next_; // strip_ 同时是展开触发区（鼠标进入即展开）
     int capacity_ = 0;
     int first_ = 0;
     int current_ = -1;

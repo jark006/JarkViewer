@@ -20,24 +20,16 @@ namespace jark {
 namespace {
 
 // 窄表新增文案（追加在表尾，见 stringRes.cpp）
-constexpr uint32_t kStrHomeHint = 156;
-constexpr uint32_t kStrZoneRotateLeft = 157;
-constexpr uint32_t kStrZoneRotateRight = 158;
-constexpr uint32_t kStrZonePrev = 159;
-constexpr uint32_t kStrZoneNext = 160;
-constexpr uint32_t kStrZonePrint = 161;
-constexpr uint32_t kStrZoneSetting = 162;
-constexpr uint32_t kStrHomeCaption = 163;
-constexpr uint32_t kStrErrorUnsupported = 164;
-constexpr uint32_t kStrErrorDecode = 165;
-constexpr uint32_t kStrErrorMissing = 166;
-constexpr uint32_t kStrReasonUnsupported = 167;
-constexpr uint32_t kStrReasonDecode = 168;
-constexpr uint32_t kStrReasonMissing = 169;
-constexpr uint32_t kStrFormatsTitle = 170;
-constexpr uint32_t kStrFormatsCommon = 171;
-constexpr uint32_t kStrFormatsVideo = 172;
-constexpr uint32_t kStrImageArea = 173;
+constexpr uint32_t kStrErrorUnsupported = 156;
+constexpr uint32_t kStrErrorDecode = 157;
+constexpr uint32_t kStrErrorMissing = 158;
+constexpr uint32_t kStrReasonUnsupported = 159;
+constexpr uint32_t kStrReasonDecode = 160;
+constexpr uint32_t kStrReasonMissing = 161;
+constexpr uint32_t kStrFormatsTitle = 162;
+constexpr uint32_t kStrFormatsCommon = 163;
+constexpr uint32_t kStrFormatsVideo = 164;
+constexpr uint32_t kStrOpenImage = 165;
 
 // 警示色：只用于失败页的徽章与标题点缀（主题里没有红色）
 constexpr uint32_t kErrorAccentDeep = 0xFFE06E5E;
@@ -71,24 +63,6 @@ void fillRoundedRect(cv::Mat& image, cv::Rect rect, int radius, uint32_t color) 
     for (const auto corner : { cv::Point{ rect.x + r, rect.y + r }, cv::Point{ rect.x + rect.width - 1 - r, rect.y + r },
              cv::Point{ rect.x + r, rect.y + rect.height - 1 - r }, cv::Point{ rect.x + rect.width - 1 - r, rect.y + rect.height - 1 - r } })
         cv::circle(image, corner, r, scalar, cv::FILLED, cv::LINE_AA);
-}
-
-void strokeRoundedRect(cv::Mat& image, cv::Rect rect, int radius, uint32_t color, int thickness) {
-    const cv::Scalar scalar = bgra(color);
-    const int r = std::clamp(radius, 0, (std::min)(rect.width, rect.height) / 2);
-    if (r <= 0) {
-        cv::rectangle(image, rect, scalar, thickness, cv::LINE_AA);
-        return;
-    }
-    const int x0 = rect.x, y0 = rect.y, x1 = rect.x + rect.width, y1 = rect.y + rect.height;
-    cv::line(image, { x0 + r, y0 }, { x1 - r, y0 }, scalar, thickness, cv::LINE_AA);
-    cv::line(image, { x0 + r, y1 }, { x1 - r, y1 }, scalar, thickness, cv::LINE_AA);
-    cv::line(image, { x0, y0 + r }, { x0, y1 - r }, scalar, thickness, cv::LINE_AA);
-    cv::line(image, { x1, y0 + r }, { x1, y1 - r }, scalar, thickness, cv::LINE_AA);
-    cv::ellipse(image, { x0 + r, y0 + r }, { r, r }, 180, 0, 90, scalar, thickness, cv::LINE_AA);
-    cv::ellipse(image, { x1 - r, y0 + r }, { r, r }, 90, 0, 90, scalar, thickness, cv::LINE_AA);
-    cv::ellipse(image, { x1 - r, y1 - r }, { r, r }, 0, 0, 90, scalar, thickness, cv::LINE_AA);
-    cv::ellipse(image, { x0 + r, y1 - r }, { r, r }, 270, 0, 90, scalar, thickness, cv::LINE_AA);
 }
 
 // 把带透明通道的小图（应用图标）合成到画布上
@@ -208,79 +182,70 @@ ScreenContext makeContext(PlaceholderKind kind, cv::Size size, float scale) {
     return context;
 }
 
-// 主页：图标 + 名称/版本 + 打开提示 + 悬停分区示意图 + 常用操作提示
-cv::Mat renderHome(cv::Size size, float scale) {
+// 主页布局度量：renderHome 与 homeButtonRect 共用同一套数字，保证按钮绘制与命中一致
+int logicalPx(float logical, float scale) {
+    return static_cast<int>(std::lround(logical * scale));
+}
+
+struct HomeMetrics {
+    int iconSize = 0;
+    int titleHeight = 0;
+    int versionHeight = 0;
+    int buttonWidth = 0;
+    int buttonHeight = 0;
+    int contentTop = 0;
+};
+
+HomeMetrics homeMetrics(cv::Size size, float scale) {
+    TextRenderer& text = screenText();
+    HomeMetrics metrics;
+    metrics.iconSize = logicalPx(84, scale);
+    text.setSize(logicalPx(38, scale));
+    metrics.titleHeight = text.lineHeight();
+    text.setSize(logicalPx(16, scale));
+    metrics.versionHeight = text.lineHeight();
+    metrics.buttonWidth = logicalPx(220, scale);
+    metrics.buttonHeight = logicalPx(54, scale);
+
+    const int total = metrics.iconSize + logicalPx(16, scale) + metrics.titleHeight + logicalPx(2, scale) +
+        metrics.versionHeight + logicalPx(34, scale) + metrics.buttonHeight;
+    metrics.contentTop = (std::max)(logicalPx(20, scale), (size.height - total) / 2);
+    return metrics;
+}
+
+// 主页：图标 + 名称/版本 + 「打开图片」按钮（按钮状态由 interaction 决定：0 普通 / 1 悬停 / 2 按下）
+cv::Mat renderHome(cv::Size size, float scale, int interaction) {
     auto context = makeContext(PlaceholderKind::Home, size, scale);
-    const std::wstring_view version = appVersion;
+    const auto metrics = homeMetrics(size, scale);
+    const bool dark = GlobalVar::isCurrentUIDarkMode;
 
-    const int iconSize = context.px(84);
-    const float widthLogical = static_cast<float>(size.width) / scale;
-    const float diagramWidth = std::clamp(widthLogical - 140.0f, 200.0f, 600.0f);
-    const float diagramHeight = diagramWidth * 0.52f;
-
-    // 内容总高（含各行行高），整体垂直居中
-    const auto lineHeightOf = [&](float fontLogical) {
-        context.text->setSize(context.px(fontLogical));
-        return context.text->lineHeight();
-    };
-    int total = iconSize + context.px(14) + lineHeightOf(38) + context.px(2) + lineHeightOf(16) +
-        context.px(26) + lineHeightOf(19) + context.px(30) + context.px(diagramHeight) + context.px(26) + lineHeightOf(15);
-    context.y = (std::max)(context.px(20), (context.height() - total) / 2);
-
-    if (const cv::Mat icon = loadAppIcon(iconSize); !icon.empty()) {
-        blendImage(context.canvas, icon, context.centerX - icon.cols / 2, context.y);
-        context.y += iconSize;
+    int y = metrics.contentTop;
+    if (const cv::Mat icon = loadAppIcon(metrics.iconSize); !icon.empty()) {
+        blendImage(context.canvas, icon, context.centerX - icon.cols / 2, y);
+        y += metrics.iconSize;
     }
 
-    context.gap(14);
-    context.centerLine("JarkViewer", 38, context.fg, widthLogical - 120.0f);
-    context.gap(2);
-    context.centerLine(jarkUtils::wstringToUtf8(version), 16, context.muted, widthLogical - 120.0f);
-    context.gap(26);
-    context.centerLine(getUIString(kStrHomeHint), 19, context.fg, widthLogical - 120.0f);
-    context.gap(30);
+    y += logicalPx(16, scale);
+    context.text->setSize(logicalPx(38, scale));
+    context.text->putAlignCenter(context.canvas, { 0, y, context.width(), metrics.titleHeight }, "JarkViewer", context.fg);
+    y += metrics.titleHeight + logicalPx(2, scale);
+    context.text->setSize(logicalPx(16, scale));
+    const std::string version = jarkUtils::wstringToUtf8(appVersion);
+    context.text->putAlignCenter(context.canvas, { 0, y, context.width(), metrics.versionHeight },
+        version.c_str(), context.muted);
+    y += metrics.versionHeight + logicalPx(34, scale);
 
-    // 悬停分区示意图：窗口轮廓 + 六个热区 + 四周名称（与真实热区一致）
-    const int diagramWidthPx = context.px(diagramWidth);
-    const int diagramHeightPx = context.px(diagramHeight);
-    const int windowX = context.centerX - diagramWidthPx / 2;
-    const int windowY = context.y;
-    const cv::Rect windowRect{ windowX, windowY, diagramWidthPx, diagramHeightPx };
-    strokeRoundedRect(context.canvas, windowRect, context.px(10),
-        mixColor(context.fg, context.bg, 0.72f), (std::max)(1, context.px(1.0f)));
-
-    const int inset = context.px(12);
-    const int zoneWidth = context.px(96);
-    const int zoneHeight = context.px(64);
-    const int zoneRadius = context.px(8);
-    const cv::Rect zones[6] = {
-        { windowRect.x + inset, windowRect.y + inset, zoneWidth, zoneHeight },                          // 左上 左转
-        { windowRect.x + windowRect.width - inset - zoneWidth, windowRect.y + inset, zoneWidth, zoneHeight }, // 右上 右转
-        { windowRect.x + inset, windowRect.y + (windowRect.height - zoneHeight) / 2, zoneWidth, zoneHeight }, // 左中 上一张
-        { windowRect.x + windowRect.width - inset - zoneWidth, windowRect.y + (windowRect.height - zoneHeight) / 2, zoneWidth, zoneHeight }, // 右中 下一张
-        { windowRect.x + inset, windowRect.y + windowRect.height - inset - zoneHeight, zoneWidth, zoneHeight }, // 左下 打印
-        { windowRect.x + windowRect.width - inset - zoneWidth, windowRect.y + windowRect.height - inset - zoneHeight, zoneWidth, zoneHeight }, // 右下 设置
-    };
-    const uint32_t zoneLabels[6] = { kStrZoneRotateLeft, kStrZoneRotateRight, kStrZonePrev,
-        kStrZoneNext, kStrZonePrint, kStrZoneSetting };
-    for (int i = 0; i < 6; ++i) {
-        fillRoundedRect(context.canvas, zones[i], zoneRadius, context.tag);
-        context.text->setSize(context.px(15));
-        const cv::Rect labelRect = (i % 2 == 0)
-            ? cv::Rect{ windowRect.x - context.px(104), zones[i].y, context.px(90), zones[i].height }
-            : cv::Rect{ windowRect.x + windowRect.width + context.px(14), zones[i].y, context.px(90), zones[i].height };
-        if (i % 2 == 0)
-            context.text->putAlignRight(context.canvas, labelRect, getUIString(zoneLabels[i]), context.muted);
-        else
-            context.text->putAlignLeft(context.canvas, labelRect, getUIString(zoneLabels[i]), context.muted);
-    }
-    // 窗口中央标注，说明这块空框是"图像显示区"
-    context.text->setSize(context.px(15));
-    context.text->putAlignCenter(context.canvas, windowRect, getUIString(kStrImageArea), context.muted);
-    context.y += diagramHeightPx;
-
-    context.gap(26);
-    context.centerLine(getUIString(kStrHomeCaption), 15, context.muted, widthLogical - 100.0f);
+    // 主按钮：底色用主题选中色，悬停/按下时向文字色靠拢；文字取与之反差的一侧
+    const cv::Rect button = homeButtonRect(size, scale);
+    uint32_t fill = GlobalVar::currentTheme.CHECK;
+    if (interaction == 1)
+        fill = mixColor(fill, context.fg, 0.18f);
+    else if (interaction >= 2)
+        fill = mixColor(fill, context.fg, 0.32f);
+    fillRoundedRect(context.canvas, button, logicalPx(12, scale), fill);
+    context.text->setSize(logicalPx(22, scale));
+    context.text->putAlignCenter(context.canvas, button, getUIString(kStrOpenImage),
+        dark ? 0xFFF6F8FE : 0xFF1A1B1F);
     return context.canvas;
 }
 
@@ -351,7 +316,6 @@ cv::Mat renderError(PlaceholderKind kind, const std::wstring& detail, cv::Size s
         context.px(20) + lineHeightOf(15) + context.px(10) + context.px(8);
     for (const auto& block : blocks)
         total += block.height + context.px(8);
-    total += context.px(14) + lineHeightOf(17);
     context.y = (std::max)(context.px(20), (context.height() - total) / 2);
 
     // 警示徽章：圆形描边 + 感叹号
@@ -405,14 +369,12 @@ cv::Mat renderError(PlaceholderKind kind, const std::wstring& detail, cv::Size s
             context.gap(8);
         }
     }
-    context.gap(14);
-    context.centerLine(getUIString(kStrHomeHint), 17, context.muted, widthLogical - 120.0f);
     return context.canvas;
 }
 
 } // namespace
 
-uint64_t infoScreenStamp(cv::Size size, float scale) {
+uint64_t infoScreenStamp(cv::Size size, float scale, int interaction) {
     uint64_t hash = 14695981039346656037ull;
     const auto mix = [&hash](uint64_t value) { hash = (hash ^ value) * 1099511628211ull; };
     mix(static_cast<uint32_t>(size.width));
@@ -420,10 +382,18 @@ uint64_t infoScreenStamp(cv::Size size, float scale) {
     mix(static_cast<uint32_t>(std::lround(scale * 100.0f)));
     mix(GlobalVar::settingParameter.UI_LANG);
     mix(GlobalVar::isCurrentUIDarkMode ? 1u : 2u);
+    mix(static_cast<uint32_t>(interaction)); // 主页"打开图片"按钮的悬停/按下状态
     return hash;
 }
 
-cv::Mat renderInfoScreen(PlaceholderKind kind, const std::wstring& detail, cv::Size size, float scale) {
+cv::Rect homeButtonRect(cv::Size size, float scale) {
+    const auto metrics = homeMetrics(size, scale);
+    const int y = metrics.contentTop + metrics.iconSize + logicalPx(16, scale) + metrics.titleHeight +
+        logicalPx(2, scale) + metrics.versionHeight + logicalPx(34, scale);
+    return { size.width / 2 - metrics.buttonWidth / 2, y, metrics.buttonWidth, metrics.buttonHeight };
+}
+
+cv::Mat renderInfoScreen(PlaceholderKind kind, const std::wstring& detail, cv::Size size, float scale, int interaction) {
     if (kind == PlaceholderKind::None)
         return {};
 
@@ -432,7 +402,7 @@ cv::Mat renderInfoScreen(PlaceholderKind kind, const std::wstring& detail, cv::S
     scale = std::clamp(scale, 0.5f, 4.0f);
 
     if (kind == PlaceholderKind::Home)
-        return renderHome(size, scale);
+        return renderHome(size, scale, interaction);
     return renderError(kind, detail, size, scale);
 }
 

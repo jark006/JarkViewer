@@ -60,7 +60,7 @@ void NavigationOverlay::sync(const ViewState& view, cv::Size clientSize, float s
 
 void NavigationOverlay::layout() {
     overviewPanel_ = overviewImage_ = viewFrame_ = {};
-    strip_ = trigger_ = previous_ = next_ = {};
+    strip_ = previous_ = next_ = {};
     if (blocked_)
         return;
     const float margin = 10.0f * scale_;
@@ -71,7 +71,7 @@ void NavigationOverlay::layout() {
     const float arrow = 26.0f * scale_;
     const float height = 112.0f * scale_;
     if (!files_.empty() && width > arrow * 2 + 24.0f * scale_) {
-        trigger_ = { left, clientSize_.height - 24.0f * scale_, width, 24.0f * scale_ };
+        // strip_ 就是触发区：鼠标进入整块预览带区域（而不是最底部一条窄边）即展开
         strip_ = { left, clientSize_.height - height - margin / 2, width, height };
         previous_ = { left, strip_.y, arrow, height };
         next_ = { left + width - arrow, strip_.y, arrow, height };
@@ -120,8 +120,7 @@ int NavigationOverlay::itemAt(cv::Point point) const {
 }
 
 bool NavigationOverlay::hit(cv::Point point) const {
-    return !blocked_ && (contains(overviewPanel_, point) ||
-        (stripVisible_ && contains(strip_, point)) || contains(trigger_, point));
+    return !blocked_ && (contains(overviewPanel_, point) || contains(strip_, point));
 }
 
 cv::Point NavigationOverlay::slideAt(cv::Point point) const {
@@ -143,9 +142,12 @@ NavigationOverlay::Event NavigationOverlay::mouseMove(cv::Point point, bool canv
         event.slide = slideAt(point);
         return event;
     }
-    const bool visible = contains(trigger_, point) || (stripVisible_ && contains(strip_, point));
+    const bool visible = contains(strip_, point);
     if (stripVisible_ != visible) {
         stripVisible_ = visible;
+        // 展开时把当前图片居中显示（手动滚动后不会被抢回去，只在显示/隐藏切换时重新居中）
+        if (visible)
+            first_ = (std::max)(0, current_ - capacity_ / 2);
         layout();
         updateRequests();
         event.redraw = true;
