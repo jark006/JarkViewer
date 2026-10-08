@@ -419,20 +419,35 @@ private:
         const float swatchSpacing = ImGui::GetStyle().ItemSpacing.x;
         const float swatchSize = std::floor((ImGui::GetContentRegionAvail().x -
             swatchSpacing * static_cast<float>(std::size(kColors) - 1)) / std::size(kColors));
+        const float swatchRounding = ImGui::GetStyle().FrameRounding;
         for (size_t index = 0; index < std::size(kColors); ++index) {
             if (index > 0)
                 ImGui::SameLine();
 
             ImGui::PushID(static_cast<int>(index));
             const ImVec4 color = toImVec4(kColors[index]);
-            if (index == colorIndex_)
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 2.0f * scale);
-
-            if (ImGui::ColorButton("##swatch", color, ImGuiColorEditFlags_NoTooltip, { swatchSize, swatchSize }))
+            if (ImGui::ColorButton("##swatch", color,
+                    ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, { swatchSize, swatchSize }))
                 colorIndex_ = static_cast<uint32_t>(index);
 
-            if (index == colorIndex_)
-                ImGui::PopStyleVar();
+            // 选中态是色块外圈一道强调色描边（与滑块/勾选同色），与色块之间留出背景
+            // 空隙，压在任何颜色上都清晰；点击当帧立即生效。
+            // 注意：不能改写 FrameBorderSize 再按"点击后"的 colorIndex_ 收尾——点击会在
+            // 循环中途改写它，导致 Push/PopStyleVar 失配（ImGui 错误恢复会给整个侧栏
+            // 画一帧红框）。此处的描边方案天然无此问题。
+            const ImVec2 swatchMin = ImGui::GetItemRectMin();
+            const ImVec2 swatchMax = ImGui::GetItemRectMax();
+            auto* drawList = ImGui::GetWindowDrawList();
+            if (index == colorIndex_) {
+                drawList->AddRect({ swatchMin.x - 2.5f * scale, swatchMin.y - 2.5f * scale },
+                    { swatchMax.x + 2.5f * scale, swatchMax.y + 2.5f * scale },
+                    ImGui::GetColorU32(ImGuiCol_CheckMark), swatchRounding + 2.5f * scale, 0, 2.0f * scale);
+            }
+            else if (ImGui::IsItemHovered()) {
+                drawList->AddRect({ swatchMin.x - 2.0f * scale, swatchMin.y - 2.0f * scale },
+                    { swatchMax.x + 2.0f * scale, swatchMax.y + 2.0f * scale },
+                    ImGui::GetColorU32(ImGuiCol_CheckMark, 0.45f), swatchRounding + 2.0f * scale, 0, 1.5f * scale);
+            }
             ImGui::PopID();
         }
 
