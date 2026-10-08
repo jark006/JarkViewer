@@ -222,8 +222,11 @@ pwsh tools/verify_source_invariant_checks.ps1
 - 幻灯片播放（'P' 键或右键菜单）会切到窗口全屏（`jarkUtils::SetFullScreen`，退出时还原；
   进来之前本来就全屏的话不还原），按 ESC 停止播放。**播放期间画面上只留图片本身**：
   `hidesOverlayUi()`（就是 `slideshowActive`）让鸟瞰图/底部预览带/EXIF 面板/悬停按钮/动图播放条/
-  实况角标全部不画，对应的鼠标命中（`NavigationOverlay` 走 `sync(blocked=true)`、面板滚轮、
-  角标悬停重播）也一起停，免得"看不见的控件"还在吃鼠标；左右边缘点击换图仍然有效。
+  实况角标/**「加载中」浮标**全部不画，对应的鼠标命中（`NavigationOverlay` 走 `sync(blocked=true)`、
+  面板滚轮、角标悬停重播）也一起停，免得"看不见的控件"还在吃鼠标；左右边缘点击换图仍然有效。
+  加浮标那条是后补的：预读只预取"列表里的下一张"（`switchToFile` 的 `nextIndex`），
+  幻灯片设成**随机**时下一张是随机挑的、预读永远取错图 → 每次切换都现场解码 → `pendingLoad_`
+  为真 → 浮标闪一下（"加载中 0.0s"）。顺序播放时预读命中，一般不闪。
   ESC 停止后原样恢复（不动任何设置项）。`toggleSlideshow()` 里要补 `markPresentRequested()`：
   本来就在全屏时不会走 `WM_SIZE`，画面稳定分支也不会自己出帧，少了它浮层要等下一次换图才消失/回来。
 - 打印窗口的预览必须**基于 sourceImage_ 的副本**做调整（`refreshPreviewIfNeeded()` 里小图也要
