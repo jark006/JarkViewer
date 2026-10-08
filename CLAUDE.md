@@ -106,9 +106,15 @@ pwsh tools/verify_source_invariant_checks.ps1
   **2 列**表格排版：列数不能再多，单元格宽度按窗口默认宽度算，3 列以上"窗口左右边缘：上一张 /
   下一张"这类长条目会被裁掉；关于页顶部的软件图标是 `IDB_PNG_ABOUT_ICON`
   （`file/aboutIcon.png`，从旧版设置页贴图 `settingRes.png` 里抠出来的透明底图标，纹理槽 4），
-  深浅主题通用，不需要两套图。常规页最上面的六个勾选项按 **3 行 2 列**排布（ImGui 没有等宽列：
-  第二列起点 = 第一列最长项的实际文本宽 + 勾选框宽 + 列间距，随语言自适应；增减勾选项时
-  记得同步这个列宽推导）。
+  深浅主题通用，不需要两套图。常规页最上面的勾选项按 **2 列**排布（现在 9 项，末行只有左列一项。
+  ImGui 没有等宽列：第二列起点 = 第一列（偶数下标项）最长文本的实际文本宽 + 勾选框宽 + 列间距，
+  随语言自适应；增减勾选项时记得同步这个列宽推导）。「到最后一张时停住」「全屏时使用纯黑背景」
+  都在这组里。
+  **右键不再有"退出程序"这个可选项**（右键 = 只弹右键菜单）：设置页那行单选已删除，
+  `SettingParameter` 里的旧字段原位改名成 `legacyRightClickAction`（删掉会改变结构体布局、
+  把旧设置文件整体错读）。`ShowContextMenu(hwnd, x, y)` 收的是**客户区坐标**、内部自己
+  `ClientToScreen`，所以 `WM_RBUTTONUP` 里那下 `PostMessageW(WM_CONTEXTMENU, MAKELPARAM(x, y))`
+  **不要**再自己转屏幕坐标——转一次就成了双重换算，菜单整体偏出窗口偏移那么多。
 - 各窗口都是 ImGui 窗口（不再是独立窗口线程）：`SettingWindow.h`（常规/文件关联/帮助/关于）、
   `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）、
   `RenameWindow.h`（重命名当前图片：Ctrl+R 或右键菜单，只编辑文件名主体、扩展名保持原样；
@@ -214,7 +220,12 @@ pwsh tools/verify_source_invariant_checks.ps1
   `switchToFile()` 结束前要 `operateQueue.push({refresh})`，否则幻灯片在画面稳定时换图，
   主循环还走空闲分支，屏幕会停在上一张（播放到动图之后“不再换图”就是这样来的）。
 - 幻灯片播放（'P' 键或右键菜单）会切到窗口全屏（`jarkUtils::SetFullScreen`，退出时还原；
-  进来之前本来就全屏的话不还原），按 ESC 停止播放。
+  进来之前本来就全屏的话不还原），按 ESC 停止播放。**播放期间画面上只留图片本身**：
+  `hidesOverlayUi()`（就是 `slideshowActive`）让鸟瞰图/底部预览带/EXIF 面板/悬停按钮/动图播放条/
+  实况角标全部不画，对应的鼠标命中（`NavigationOverlay` 走 `sync(blocked=true)`、面板滚轮、
+  角标悬停重播）也一起停，免得"看不见的控件"还在吃鼠标；左右边缘点击换图仍然有效。
+  ESC 停止后原样恢复（不动任何设置项）。`toggleSlideshow()` 里要补 `markPresentRequested()`：
+  本来就在全屏时不会走 `WM_SIZE`，画面稳定分支也不会自己出帧，少了它浮层要等下一次换图才消失/回来。
 - 打印窗口的预览必须**基于 sourceImage_ 的副本**做调整（`refreshPreviewIfNeeded()` 里小图也要
   clone）：`applyImageAdjustments()` 是就地修改的，图小于预览上限时浅拷贝会连着原图一起改，
   预览会叠加前一次的效果、另存和打印也跟着错。`adjustBrightnessContrast()` 里对比度>100 时
@@ -248,7 +259,7 @@ pwsh tools/verify_source_invariant_checks.ps1
   内嵌 profile 的来源按格式分：JXL/HEIF/实况在 `myLoader` 各自的分支里填 `iccProfile`，其余格式（JPEG/PNG/WebP/TIFF…）由 `ImageDatabase::readIccProfile()` 用 Exiv2 从文件补读，两条路都调它。
   两个 profile 都缺或逐字节相同时变换是恒等的，直接**跳过**（一亿像素白跑一趟要两三百毫秒，这步紧跟在解码之后、顶在出图时间上）；`applyToMat` 就地变换、`cmsFLAGS_COPY_ALPHA` 保证 alpha 不动，大图按行并行（与串行逐字节一致，`--probe --color-test` 钉着）；开日志会打一行 `色彩管理: 源 → 目标 (WxH Nch)`，"颜色不对"的报告先看这一行。
   **超色域颜色转窄色域会被剪裁，看着像串色但不是 bug**：`D:\Downloads\test\P3\Webkit-logo-P3.jxl` 整幅只有 Display P3 的两种超饱和红（255,0,0 与 242,0,0），转 sRGB 后都被剪到 (255,0,0) —— 图案消失、只剩纯红；这时关掉色彩管理看到的"隐约图案"才是假的（那是把 P3 数值直接当 sRGB 读的未管理画面）。`--color-test` 里有这组已知值断言（P3 三原色/中灰/次级饱和红 → sRGB 落点，与 lcms2 参考实现一致），改色彩链路后跑它。
-  缩略图那条路（`ThumbnailService` 的本地解码兜底）**目前不做色彩管理**：解码线程按约定不读显示器状态，而按固定 sRGB 转又会在宽色域显示器上与画面不一致；要改的话得把目标 profile 由界面线程传进来，并且让持久缩略图缓存把色彩管理状态算进缓存键（否则切换开关会留旧图）。
+  缩略图那条路（`ThumbnailService` 的本地解码兜底）**有意不做色彩管理**：它是"大概预览"，不要求准确，何况解码线程按约定不读显示器状态、按固定 sRGB 转又会在宽色域显示器上与主画面不一致。别再往上加 ICC（要加就得连持久缓存键一起改，否则切换开关会留旧图）。
 - `JarkViewer/include/jarkUtils.h` 与 `JarkViewer/src/jarkUtils.cpp` 集中放置 Win32/OpenCV 工具、主题/设置全局状态、剪贴板、全屏、资源读取、文件操作和日志。
 - `JarkViewer/src/TextRenderer.cpp`、`stringRes.cpp`、`exifParse.cpp`、`videoDecoder.cpp`、`blpDecoder.cpp` 分别支撑图像文字渲染、多语言字符串、元数据解析、视频帧解码和 BLP 解码。EXIF 数值的**摄影写法**（曝光时间 `1/60 s`、光圈 `f/2.8`、焦距 `89.9 mm`、曝光补偿 `+1/3 EV`、ISO、方向翻词）由 `exifParse.cpp` 的 `formatExifValue()` 负责：按**标签号**判定（不依赖落在哪个 IFD）、只翻认得的标签，认不得的返回空串退回通用显示（厂商私有标签照规范翻会翻出错的词）；曝光时间的分母按值重算，不能照搬 EXIF 里存的分母（尼康把 1/60 存成 10/600）。
   **Exif UserComment 的编码不能靠猜固定端序**：AI 生图工具（A1111/ComfyUI/Fooocus…）把提示词、参数甚至整份 ComfyUI 工作流 JSON 塞进这个标签，正文是 8 字节字符集码（`UNICODE\0` / `ASCII\0\0\0` / `JIS\0\0\0\0\0` / 8 个 0 = 未指定）之后跟正文，**UNICODE 的 UTF-16 不强制带 BOM**，大小端都有；而且 Exiv2 回吐的字节序不一定等于文件 TIFF 头（实测 `II` 文件也可能拿到小端）。早先按 `bigEndian` 硬解，ASCII 提示词会被整段解成"低字节恒为 0"的汉字（`hyperdetailed` → `栀礀瀀攀爀`）。现在 `utf16ToUtf8()` 先认 BOM，没有 BOM 就两种端序都解、用 `textPlausibility()` 打分（可打印 ASCII 加分，控制字符与 `(c & 0xFF) == 0` 的高位字符扣分）挑更像话的那个，难分伯仲时才用调用者给的文件字节序；无前缀正文若中段出现 0x00（按单字节读明显坏掉）再按 UTF-16 补解，首尾的 0 一律去掉。文件字节序经 `getExifDetail` → `exifDataToString(path, exifData, image->byteOrder())` 传进来。`--probe --exif-test` 用现造的最小 JPEG（SOI+APP1+EOI）覆盖各种编码组合。

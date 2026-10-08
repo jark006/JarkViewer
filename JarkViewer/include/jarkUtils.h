@@ -155,7 +155,9 @@ struct SettingParameter {
     uint32_t UI_Mode = 0;                   // 界面主题 0:跟随系统  1:浅色  2:深色
     uint32_t UI_LANG = 0;                   // 界面语言：0:简体中文 1:繁體中文 2:English 3:日本語 4:한국어（见 Localization.h）
 
-    uint32_t rightClickAction = 0;          // 右键点击行为  0:打开菜单  1:退出程序
+    uint32_t legacyRightClickAction = 0;    // 已废弃：旧"右键点击行为"（0 菜单 / 1 退出程序）。
+                                            // 右键现在固定打开菜单；字段原位保留——删它会改变
+                                            // 结构体布局，旧设置文件会被整体错读
 
     // 最后使用的显示器设备名（MONITORINFOEXW::szDevice，如 \\.\DISPLAY2），空=未知、按主显示器。
     // 从 reserve 里原位划出 64 字节，结构体总布局不变（见下方 offsetof 断言）；
@@ -244,7 +246,7 @@ struct SettingParameter {
             UI_LANG = static_cast<uint32_t>(jark::kSimplifiedChineseIndex);
 
         // 右键点击行为检查 (0~1)
-        if (rightClickAction > 1) rightClickAction = 0;
+        if (legacyRightClickAction > 1) legacyRightClickAction = 0;
 
         // 文件列表排序检查 (0~2)
         if (sortMode > 2) sortMode = 0;
@@ -256,7 +258,7 @@ struct SettingParameter {
 
 static_assert(sizeof(SettingParameter) == 4096, "sizeof(SettingParameter) != 4096");
 static_assert(offsetof(SettingParameter, hideNavigator) == 67);
-static_assert(offsetof(SettingParameter, rightClickAction) == 92);
+static_assert(offsetof(SettingParameter, legacyRightClickAction) == 92);
 static_assert(offsetof(SettingParameter, monitorDevice) == 96);
 static_assert(offsetof(SettingParameter, livePhotoAutoPlaySound) == 160);
 static_assert(offsetof(SettingParameter, copyTargetDir) == 162);   // bool 后按 wchar_t 的对齐(2)排

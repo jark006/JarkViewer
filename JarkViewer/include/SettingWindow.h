@@ -144,8 +144,8 @@ private:
         auto& parameter = GlobalVar::settingParameter;
         const float scale = jark::ui::UiHost::instance().scale();
 
-        // 六个勾选项排成 3 行 2 列。ImGui 没有等宽列：第二列起点取第一列（偶数下标项）中
-        // 最长文本的宽度，再补上勾选框本身（框宽 + 框与文本间距）和一个列间距。
+        // 勾选项排成 2 列（偶数下标在左列）。ImGui 没有等宽列：第二列起点取第一列
+        // （偶数下标项）中最长文本的宽度，再补上勾选框本身（框宽 + 框与文本间距）和一个列间距。
         bool showNavigator = !parameter.hideNavigator;
         struct CheckItem {
             const char* label;
@@ -159,6 +159,8 @@ private:
             { getUIString(54), &parameter.isOneToOnePreferred },
             { getUIString(kStrShowNavigator), &showNavigator }, // 界面上是"显示"，存储取反
             { getUIString(171), &parameter.livePhotoAutoPlaySound }, // 实况自动播放声音（默认静音）
+            { getUIString(kStrStopAtLast), &parameter.stopAtListEnd },          // 到最后一张停住
+            { getUIString(kStrBlackFullscreen), &parameter.blackFullscreenBackground }, // 全屏纯黑背景
         };
         float secondColumn = 0.0f;
         for (int index = 0; index < IM_ARRAYSIZE(checkItems); index += 2)
@@ -179,8 +181,6 @@ private:
         ImGui::Spacing();
         drawRadioRow(kStrSortMode, { getUIString(kStrSortName), getUIString(kStrSortTime),
             getUIString(kStrSortSize) }, &parameter.sortMode, 0);
-        ImGui::Spacing();
-        ImGui::Checkbox(getUIString(kStrStopAtLast), &parameter.stopAtListEnd);
 
         ImGui::Spacing();
         drawRadioRow(17, { getUIString(121), getUIString(122), getUIString(123) }, &parameter.pptOrder, 0);
@@ -203,12 +203,6 @@ private:
               std::string(jark::languageDisplayName(jark::Language::Korean)),
               std::string(jark::languageDisplayName(jark::Language::Russian)) },
             &parameter.UI_LANG, 0);
-
-        ImGui::Spacing();
-        ImGui::Checkbox(getUIString(kStrBlackFullscreen), &parameter.blackFullscreenBackground);
-
-        ImGui::Spacing();
-        drawRadioRow(36, { getUIString(37), getUIString(38) }, &parameter.rightClickAction, 0);
 
         ImGui::Spacing();
         ImGui::Separator();

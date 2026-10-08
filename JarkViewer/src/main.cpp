@@ -604,8 +604,11 @@ public:
     void syncNavigation() {
         const bool hasImage = curFileIdx >= 0 && curFileIdx < static_cast<int>(imgFileList.size()) &&
             imgFileList[curFileIdx] != m_wndCaption;
+        // blocked=true 会把浮层整个停用（不画、也不吃鼠标）：幻灯片播放期间与"有二级窗口/
+        // 没图"同一种状态
         navigation.sync(viewState(), { winWidth, winHeight }, uiScale(),
-            !GlobalVar::settingParameter.hideNavigator, anyWindowVisible() || !hasImage,
+            !GlobalVar::settingParameter.hideNavigator,
+            anyWindowVisible() || !hasImage || hidesOverlayUi(),
             navigationImageVersion, curFileIdx);
     }
 
@@ -756,13 +759,10 @@ public:
             return;
         }
 
-        case WM_RBUTTONUP: {//右键
-            if (GlobalVar::settingParameter.rightClickAction == 0) {
-                PostMessageW(m_hWnd, WM_CONTEXTMENU, 0, MAKELPARAM(x, y));
-            }
-            else {
-                operateQueue.push({ ActionENUM::requestExit });
-            }
+        case WM_RBUTTONUP: {//右键：只弹右键菜单（退出走 Ctrl+W / ESC / 菜单项）
+            // 这里的 x,y 是**客户区坐标**，不要再 ClientToScreen：ShowContextMenu()
+            // 自己会换算（它同时被键盘菜单那条路按客户区坐标调用）。
+            PostMessageW(m_hWnd, WM_CONTEXTMENU, 0, MAKELPARAM(x, y));
             return;
         }
 
@@ -951,7 +951,7 @@ public:
             return;
 
         // EXIF 面板内的滚轮只滚面板内容，不穿透成画布缩放
-        if (showExif &&
+        if (showExif && !hidesOverlayUi() &&
             static_cast<float>(clientPoint.x) >= exifPanelRect_.x &&
             static_cast<float>(clientPoint.x) < exifPanelRect_.x + exifPanelRect_.width &&
             static_cast<float>(clientPoint.y) >= exifPanelRect_.y &&
@@ -1873,6 +1873,9 @@ public:
             JARK_LOG("幻灯片播放结束");
         }
         updateWindowCaption();
+        // 浮层（鸟瞰/预览带/EXIF…）在这一下里显示或消失，必须立刻重画一帧：
+        // 本来就在全屏时不会走 WM_SIZE，画面稳定分支又不会自己出帧
+        markPresentRequested();
     }
 
     // 播放结束（到点发现只有一张图时也要还原全屏）
@@ -2419,8 +2422,17 @@ public:
         return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, alpha);
     }
 
+    // 幻灯片播放期间画面上只留图片本身：鸟瞰图/底部预览带/EXIF 面板/悬停按钮/实况角标
+    // 全部不画，对应的鼠标命中（预览带悬停、面板滚轮、角标重播）也一起停——
+    // 否则"看不见的控件"还在吃鼠标。（按钮隐藏了但左右边缘点击换图仍然有效。）
+    // ESC 停止播放后原样恢复，不改动任何设置项。
+    bool hidesOverlayUi() const {
+        return slideshowActive;
+    }
+
     bool hasOverlayUi() const {
-        return extraUIFlag != ShowExtraUI::none && winWidth >= dp(100) && winHeight >= dp(100);
+        return extraUIFlag != ShowExtraUI::none && winWidth >= dp(100) && winHeight >= dp(100) &&
+            !hidesOverlayUi();
     }
 
     // 客户区坐标 → ImGui 坐标。多视口模式下主视口的原点是"客户区左上角在屏幕上的位置"，
@@ -2516,10 +2528,10 @@ public:
     // 「实况」角标：贴图片左上角（放大裁切时夹回可视区内），半透明底 + 文字，悬停高亮；
     // 悬停的重播动作在 OnMouseMove 里（见 liveBadgeHit）。只标实况照片，视频文件不带。
     void drawLiveBadge() {
-        liveBadgeVisible_ = false;
+        liveBadgeVisible_ = false; // 角标不可见 = 不可点、不可悬停重播（liveBadgeHit 看它）
 
         if (!currentIsLivePhoto_ || !curPar.imageAssetPtr ||
-            curPar.imageAssetPtr->placeholder != PlaceholderKind::None)
+            curPar.imageAssetPtr->placeholder != PlaceholderKind::None || hidesOverlayUi())
             return;
 
         const auto geometry = jark::imageGeometry(viewState(), { winWidth, winHeight });
@@ -2625,6 +2637,11 @@ public:
 
     // EXIF/AI 提示词面板：半透明底 + 直方图/色彩空间/质量头部 + 可滚动的折行文本
     void drawExifPanel() {
+        if (hidesOverlayUi()) {
+            exifPanelRect_ = {}; // 不画时也要清掉面板矩形，否则滚轮还会落到"看不见的面板"上
+            return;
+        }
+
         if (!showExif || winWidth < dp(100) || winHeight < dp(100))
             return;
 
@@ -2811,7 +2828,7 @@ public:
         const bool windowVisible = anyWindowVisible();
 
         auto& uiHost = jark::ui::UiHost::instance();
-        uiHost.setUiVisible(hasOverlayUi() || showExif || windowVisible);
+        uiHost.setUiVisible(hasOverlayUi() || (showExif && !hidesOverlayUi()) || windowVisible);
 
         // 本帧刚被关掉的窗口还画在这一帧的画面里，要再补一帧把它擦掉；
         // 否则主循环直接进空闲分支，屏幕停在旧画面上，看起来就是“点了关闭按钮卡住”。
