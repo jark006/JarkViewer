@@ -157,7 +157,12 @@ struct SettingParameter {
 
     uint32_t rightClickAction = 0;          // 右键点击行为  0:打开菜单  1:退出程序
 
-    uint32_t reserve[800];
+    // 最后使用的显示器设备名（MONITORINFOEXW::szDevice，如 \\.\DISPLAY2），空=未知、按主显示器。
+    // 从 reserve 里原位划出 64 字节，结构体总布局不变（见下方 offsetof 断言）；
+    // 旧设置此段为零，走"没有记录"的回退路径。
+    wchar_t monitorDevice[CCHDEVICENAME] = {};
+
+    uint32_t reserve[784]; // 原 800，划出 32 个字（64 字节）给 monitorDevice
 
     char extCheckedListStr[800];
 
@@ -184,14 +189,16 @@ struct SettingParameter {
 
     // 检查参数
     void ValidateParameters() {
-        // 窗口位置大小检查
-        if (rect.left < 0) rect.left = 0;
-        if (rect.top < 0) rect.top = 0;
+        // 窗口位置大小检查：坐标是虚拟屏幕系，允许副屏的负坐标，
+        // 但矩形要和某块显示器有交集，完全落在显示器之外（屏幕拔了/换布局）才重置
         if (rect.right <= rect.left) {
             rect.right = rect.left + 800; // 默认宽度
         }
         if (rect.bottom <= rect.top) {
             rect.bottom = rect.top + 600; // 默认高度
+        }
+        if (!::MonitorFromRect(&rect, MONITOR_DEFAULTTONULL)) {
+            rect = {};
         }
 
         // 窗口模式检查 - 仅限 SW_MAXIMIZE SW_NORMAL
@@ -236,6 +243,7 @@ struct SettingParameter {
 static_assert(sizeof(SettingParameter) == 4096, "sizeof(SettingParameter) != 4096");
 static_assert(offsetof(SettingParameter, hideNavigator) == 67);
 static_assert(offsetof(SettingParameter, rightClickAction) == 92);
+static_assert(offsetof(SettingParameter, monitorDevice) == 96);
 static_assert(offsetof(SettingParameter, extCheckedListStr) == 3296);
 
 struct rcFileInfo {

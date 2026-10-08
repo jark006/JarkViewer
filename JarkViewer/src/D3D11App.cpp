@@ -2,6 +2,8 @@
 
 #include "UiHost.h"
 
+#include <algorithm>
+
 namespace {
 
 enum class PreferredAppMode {
@@ -136,14 +138,58 @@ void D3D11App::loadSettings() {
         }
     }
 
-    if (GlobalVar::settingParameter.showCmd == SW_NORMAL) {
+    // 计算恢复位置：优先放回上次使用的显示器（有记录且那块屏还接着），记录的位置
+    // 不在这块屏上（换过屏、最大化时存的空矩形）就放到它的工作区中央；没有记录或
+    // 屏幕已断开时按主屏兜底。副屏坐标允许为负，不能按主屏尺寸去夹。
+    auto& setting = GlobalVar::settingParameter;
+    if (setting.rect.right <= setting.rect.left || setting.rect.bottom <= setting.rect.top)
+        setting.rect = { 0, 0, 800, 600 }; // 尺寸先保证非零（最大化时 rect 是空的）
+
+    HMONITOR targetMonitor = nullptr;
+    if (setting.monitorDevice[0]) {
+        struct MonitorSearch {
+            const wchar_t* name;
+            HMONITOR monitor;
+        };
+        MonitorSearch search{ setting.monitorDevice, nullptr };
+        ::EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
+            auto* found = reinterpret_cast<MonitorSearch*>(data);
+            MONITORINFOEXW info{};
+            info.cbSize = sizeof(MONITORINFOEXW); // cbSize 在基类 MONITORINFO 里，不能走指定初始化器
+            if (::GetMonitorInfoW(monitor, &info) && wcscmp(info.szDevice, found->name) == 0) {
+                found->monitor = monitor;
+                return FALSE;
+            }
+            return TRUE;
+            }, reinterpret_cast<LPARAM>(&search));
+        targetMonitor = search.monitor;
+    }
+
+    if (targetMonitor) {
+        MONITORINFO info{ .cbSize = sizeof(MONITORINFO) };
+        if (::GetMonitorInfoW(targetMonitor, &info)) {
+            RECT overlap{};
+            if (!::IntersectRect(&overlap, &setting.rect, &info.rcWork)) {
+                const int workWidth = info.rcWork.right - info.rcWork.left;
+                const int workHeight = info.rcWork.bottom - info.rcWork.top;
+                const int width = (std::min)(static_cast<int>(setting.rect.right - setting.rect.left), workWidth);
+                const int height = (std::min)(static_cast<int>(setting.rect.bottom - setting.rect.top), workHeight);
+                setting.rect = {
+                    info.rcWork.left + (workWidth - width) / 2,
+                    info.rcWork.top + (workHeight - height) / 2,
+                    info.rcWork.left + (workWidth + width) / 2,
+                    info.rcWork.top + (workHeight + height) / 2 };
+            }
+        }
+    }
+    else if (setting.showCmd == SW_NORMAL) {
         int screenWidth = (::GetSystemMetrics(SM_CXFULLSCREEN));
         int screenHeight = (::GetSystemMetrics(SM_CYFULLSCREEN));
 
-        if (GlobalVar::settingParameter.rect.left >= screenWidth || GlobalVar::settingParameter.rect.bottom >= screenHeight ||
-            (GlobalVar::settingParameter.rect.right - GlobalVar::settingParameter.rect.left) >= screenWidth ||
-            (GlobalVar::settingParameter.rect.bottom - GlobalVar::settingParameter.rect.top) >= screenHeight) {
-            GlobalVar::settingParameter.rect = { screenWidth / 4, screenHeight / 4, screenWidth * 3 / 4, 100 + screenHeight * 3 / 4 };
+        if (setting.rect.left >= screenWidth || setting.rect.bottom >= screenHeight ||
+            (setting.rect.right - setting.rect.left) >= screenWidth ||
+            (setting.rect.bottom - setting.rect.top) >= screenHeight) {
+            setting.rect = { screenWidth / 4, screenHeight / 4, screenWidth * 3 / 4, 100 + screenHeight * 3 / 4 };
         }
     }
 }
@@ -158,6 +204,14 @@ void D3D11App::saveSettings() const {
     else {
         GlobalVar::settingParameter.showCmd = SW_MAXIMIZE;
         GlobalVar::settingParameter.rect = {};
+    }
+
+    // 记住窗口所在显示器（最大化/全屏也记）：下次启动优先回到这块屏
+    if (HMONITOR monitor = ::MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST)) {
+        MONITORINFOEXW info{};
+        info.cbSize = sizeof(MONITORINFOEXW);
+        if (::GetMonitorInfoW(monitor, &info))
+            wcscpy_s(GlobalVar::settingParameter.monitorDevice, info.szDevice);
     }
 
     memcpy(GlobalVar::settingParameter.header, GlobalVar::settingHeader.data(), GlobalVar::settingHeader.length());
@@ -184,7 +238,8 @@ HRESULT D3D11App::Initialize(HINSTANCE hInstance) {
     wcex.hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(IDI_JARKVIEWER));
     RegisterClassExW(&wcex);
 
-    RECT window_rect = GlobalVar::settingParameter.showCmd == SW_NORMAL ? GlobalVar::settingParameter.rect : RECT{ 0, 0, 800, 600 };
+    // loadSettings() 已把 rect 归一为目标显示器上的合法矩形（含最大化时的占位尺寸）
+    RECT window_rect = GlobalVar::settingParameter.rect;
     DWORD window_style = WS_OVERLAPPEDWINDOW;
     m_hWnd = CreateWindowExW(0, L"D3D11WndClass", m_wndCaption.c_str(), window_style,
         window_rect.left, window_rect.top, window_rect.right - window_rect.left, window_rect.bottom - window_rect.top,
