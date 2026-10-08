@@ -525,9 +525,11 @@ public:
         }
     }
 
-    // 打开图片的后半段：等待（在途的）解码、刷新占位、初始化视图、更新导航目录
+    // 打开图片的后半段：请求解码（不阻塞；未就绪则主页垫底 + "加载中"浮标，
+    // 就绪后由 updatePendingLoad 走 adoptCurrentImage 收尾）、刷新占位、初始化视图
     void finishOpenFile() {
-        curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + 1) % imgFileList.size()]);
+        if (auto asset = requestCurrentImage(imgFileList[(curFileIdx + 1) % imgFileList.size()]))
+            curPar.imageAssetPtr = std::move(asset);
         updatePlaceholderImage();
         curPar.Init(winWidth, winHeight);
         updateNavigationDirectory();
@@ -539,8 +541,8 @@ public:
             // 这里不能再跑前半段——imgDB.clear() 会把在途解码作废——直接等结果收尾。
             startupFilePrepared_ = false;
             finishOpenFile();
-            jarkUtils::startupTraceMark("first frame ready");
-            JARK_LOG("startup: first frame ready at {} ms", startupMs());
+            jarkUtils::startupTraceMark("open handled");
+            JARK_LOG("startup: open handled at {} ms", startupMs());
             return;
         }
 
@@ -1763,6 +1765,13 @@ public:
     uintmax_t captionBytes_ = 0;
     bool firstSceneDrawn_ = false; // 启动分段计时：首帧绘制时刻只记一次
 
+    // —— 渐进加载：当前图的解码不阻塞主循环，先给预览或旧图，就绪后再无缝换清晰图 ——
+    bool pendingLoad_ = false;                // 当前图正在后台解码
+    std::wstring pendingLoadPath_;
+    std::chrono::steady_clock::time_point pendingLoadStart_{};
+    bool allowPreviewSwap_ = false;           // 等待期间是否允许缩略图预览顶替当前画面
+    uint64_t previewVersion_ = 0;             // 已顶上画面的缩略图版本（防重复换）
+
     // 文件大小的短文本（B/KB/MB/GB），0 表示取不到、不显示
     static std::wstring formatFileSize(uintmax_t bytes) {
         if (bytes == 0)
@@ -1877,15 +1886,18 @@ public:
         ++navigationImageVersion;
         curFileIdx = newIndex;
 
-        if (direction > 0)
-            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + 1) % imgFileList.size()]);
-        else
-            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + imgFileList.size() - 1) % imgFileList.size()]);
+        const size_t nextIndex = direction > 0
+            ? (curFileIdx + 1) % imgFileList.size()
+            : (curFileIdx + imgFileList.size() - 1) % imgFileList.size();
+        auto loadedAsset = requestCurrentImage(imgFileList[nextIndex]);
+        if (loadedAsset)
+            curPar.imageAssetPtr = std::move(loadedAsset);
 
         updatePlaceholderImage();
         curPar.Init(winWidth, winHeight);
 
-        const int animationMode = direction == 0 ? 0 : GlobalVar::settingParameter.switchImageAnimationMode;
+        // 未就绪时不播切图动画（保留旧图停留，等 adoptCurrentImage 换入新图）
+        const int animationMode = (!loadedAsset || direction == 0) ? 0 : GlobalVar::settingParameter.switchImageAnimationMode;
         if (animationMode == 1)
             direction > 0 ? mainCanvasSlideToNextAnimationVertical() : mainCanvasSlideToPreAnimationVertical();
         else if (animationMode == 2)
@@ -1999,6 +2011,78 @@ public:
         playbackFrame = cv::Mat();
     }
 
+    // 请求加载当前图（非阻塞）：命中缓存立即返回；否则进入等待状态并返回空，
+    // 主循环由 updatePendingLoad() 每帧轮询收尾（超过 60 秒退回一次阻塞等待兜底）。
+    std::shared_ptr<ImageAsset> requestCurrentImage(const std::wstring& nextPath) {
+        const std::wstring& path = imgFileList[curFileIdx];
+        imgDB.requestPreloadBatch({ path, nextPath });
+        if (auto ptr = imgDB.tryGetPtr(path)) {
+            pendingLoad_ = false;
+            return ptr;
+        }
+        beginPendingLoad(path);
+        return nullptr;
+    }
+
+    void beginPendingLoad(const std::wstring& path) {
+        pendingLoad_ = true;
+        pendingLoadPath_ = path;
+        pendingLoadStart_ = std::chrono::steady_clock::now();
+        previewVersion_ = 0;
+
+        // 当前没有真图可看（启动/主页/占位）时：主页画面垫底，缩略图就绪后顶上当模糊预览；
+        // 切图时保留旧图更平滑，不给预览
+        allowPreviewSwap_ = !(curPar.imageAssetPtr &&
+            curPar.imageAssetPtr->placeholder == PlaceholderKind::None &&
+            curPar.imageAssetPtr->format != ImageFormat::None);
+        if (allowPreviewSwap_)
+            curPar.imageAssetPtr = std::make_shared<ImageAsset>(
+                placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
+
+        jark::ThumbnailService::instance().updateRequests({ path });
+    }
+
+    void updatePendingLoad() {
+        // 解码完成（失败也会以空帧落缓存，交给占位逻辑显示失败原因）
+        if (auto asset = imgDB.tryGetPtr(pendingLoadPath_)) {
+            adoptCurrentImage(std::move(asset));
+            return;
+        }
+
+        if (std::chrono::steady_clock::now() - pendingLoadStart_ > std::chrono::seconds(60)) {
+            adoptCurrentImage(imgDB.getSafePtr(pendingLoadPath_, pendingLoadPath_));
+            return;
+        }
+
+        // 缩略图先到：仅在没有真图可看时顶上（浅拷贝共享缩略图服务的只读像素）
+        if (allowPreviewSwap_) {
+            const auto thumbnail = jark::ThumbnailService::instance().get(pendingLoadPath_);
+            if (!thumbnail.image.empty() && thumbnail.version != previewVersion_) {
+                previewVersion_ = thumbnail.version;
+                ImageAsset previewAsset{ ImageFormat::Still, thumbnail.image };
+                curPar.imageAssetPtr = std::make_shared<ImageAsset>(std::move(previewAsset));
+                updatePlaceholderImage();
+                curPar.Init(winWidth, winHeight);
+                operateQueue.push({ ActionENUM::refresh });
+                JARK_LOG("progressive: 缩略图预览已顶上（原图仍在解码）");
+            }
+        }
+    }
+
+    // 挂起的加载完成：接管真图并做与同步路径相同的收尾
+    void adoptCurrentImage(std::shared_ptr<ImageAsset> asset) {
+        pendingLoad_ = false;
+        pendingLoadPath_.clear();
+        previewVersion_ = 0;
+        allowPreviewSwap_ = false;
+        curPar.imageAssetPtr = std::move(asset);
+        updatePlaceholderImage();
+        curPar.Init(winWidth, winHeight);
+        operateQueue.push({ ActionENUM::refresh });
+        jarkUtils::startupTraceMark("image adopted"); // 每次切图/加载完成都留点，便于对照首帧时刻
+        JARK_LOG("progressive: 原图接管");
+    }
+
     // 重命名确认后执行：改磁盘、同步列表（重排后的新位置）、作废缓存并重新装载
     void applyRename(const std::wstring& newPath) {
         if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size())
@@ -2031,11 +2115,11 @@ public:
 
         imgDB.clear();            // 旧路径的缓存（连同相邻预读）一起作废，重新装载
         ++navigationImageVersion; // 导航里按旧坐标的换图请求作废
-        curPar.imageAssetPtr = imgDB.getSafePtr(
-            imgFileList[curFileIdx],
-            imgFileList[(curFileIdx + 1) % imgFileList.size()]);
-        updatePlaceholderImage();
-        curPar.Init(winWidth, winHeight);
+        if (auto asset = requestCurrentImage(imgFileList[(curFileIdx + 1) % imgFileList.size()])) {
+            curPar.imageAssetPtr = std::move(asset);
+            updatePlaceholderImage();
+            curPar.Init(winWidth, winHeight);
+        }
         updateNavigationDirectory();
         operateQueue.push({ ActionENUM::refresh });
     }
@@ -2115,11 +2199,11 @@ public:
                 curFileIdx = (int)imgFileList.size() - 1;
             }
 
-            curPar.imageAssetPtr = imgDB.getSafePtr(
-                imgFileList[curFileIdx],
-                imgFileList[(curFileIdx + 1) % imgFileList.size()]);
-            updatePlaceholderImage();
-            curPar.Init(winWidth, winHeight);
+            if (auto asset = requestCurrentImage(imgFileList[(curFileIdx + 1) % imgFileList.size()])) {
+                curPar.imageAssetPtr = std::move(asset);
+                updatePlaceholderImage();
+                curPar.Init(winWidth, winHeight);
+            }
             updateNavigationDirectory();
             operateQueue.push({ ActionENUM::refresh });
         }
@@ -2242,6 +2326,29 @@ public:
             drawOverlayIcon(bar, (winW - bar.w * scale) * 0.5f, 0.0f);
         } break;
         }
+    }
+
+    // 等待解码的浮标：贴客户区左上角显示已等待秒数；"画面"本身由主页垫底或旧图停留
+    void drawLoadingBadge() {
+        if (!pendingLoad_)
+            return;
+
+        const float scale = uiScale();
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - pendingLoadStart_).count();
+        const std::string label = std::format("{} {:.1f}s", getUIString(182), elapsedMs / 1000.0);
+
+        const float padX = 9.0f * scale;
+        const float padY = 4.0f * scale;
+        const ImVec2 textSize = ImGui::GetFont()->CalcTextSizeA(
+            ImGui::GetFontSize(), FLT_MAX, 0.0f, label.c_str());
+        const float x = 12.0f * scale;
+        const float y = 12.0f * scale;
+
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        drawList->AddRectFilled(uiPos(x, y), uiPos(x + textSize.x + padX * 2.0f, y + textSize.y + padY * 2.0f),
+            imColor(GlobalVar::currentTheme.BG_DEEP, 0.82f), 6.0f * scale);
+        drawList->AddText(uiPos(x + padX, y + padY), imColor(GlobalVar::currentTheme.FG), label.c_str());
     }
 
     // 「实况」角标：贴图片左上角（放大裁切时夹回可视区内），半透明底 + 文字，悬停高亮；
@@ -2526,6 +2633,7 @@ public:
         drawOverlayUi();
         drawExifPanel();
         drawLiveBadge();
+        drawLoadingBadge();
         navigation.draw(currentSourceImage(), uiPos(0.0f, 0.0f));
         SettingWindow::instance().draw();
         BatchWindow::instance().draw();
@@ -2554,6 +2662,9 @@ public:
             firstSceneDrawn_ = true;
             jarkUtils::startupTraceMark("first scene drawn");
         }
+
+        if (pendingLoad_)
+            updatePendingLoad();
 
         updateMediaPlayback(); // 实时播放推进（含音频时钟驱动的帧切换）
         updateSlideshow();     // 幻灯片按间隔自动切换
@@ -2587,11 +2698,11 @@ public:
 
                 if (currentPath == m_wndCaption) {
                     imgDB.put(m_wndCaption, placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
-                    curPar.imageAssetPtr = imgDB.getSafePtr(currentPath, currentPath);
+                    if (auto asset = requestCurrentImage(currentPath))
+                        curPar.imageAssetPtr = std::move(asset);
                 }
-                else {
-                    const auto& nextPath = imgFileList[(curFileIdx + 1) % imgFileList.size()];
-                    curPar.imageAssetPtr = imgDB.getSafePtr(currentPath, nextPath);
+                else if (auto asset = requestCurrentImage(imgFileList[(curFileIdx + 1) % imgFileList.size()])) {
+                    curPar.imageAssetPtr = std::move(asset);
                 }
 
                 updatePlaceholderImage();
@@ -2615,7 +2726,8 @@ public:
             // 窗口的可见性要单独看：刚被打开的窗口还没经过一帧，uiVisible() 还是旧值，
             // 少了这一项就要等鼠标动了才会画出来。
             const bool presentRequested = consumePresentRequest();
-            if (anyWindowVisible() || jark::ui::UiHost::instance().uiVisible() || presentRequested)
+            // 等图期间也要持续出帧：浮标的秒数要跳、轮询也要靠 DrawScene 每帧执行
+            if (anyWindowVisible() || jark::ui::UiHost::instance().uiVisible() || presentRequested || pendingLoad_)
                 PresentUiOnly();
 
             Sleep(1); // Windows机制限制，实际时长最小只能 15.6ms
@@ -2863,11 +2975,11 @@ public:
                 curFileIdx = (int)imgFileList.size() - 1;
             }
 
-            curPar.imageAssetPtr = imgDB.getSafePtr(
-                imgFileList[curFileIdx],
-                imgFileList[(curFileIdx + 1) % imgFileList.size()]);
-            updatePlaceholderImage();
-            curPar.Init(winWidth, winHeight);
+            if (auto asset = requestCurrentImage(imgFileList[(curFileIdx + 1) % imgFileList.size()])) {
+                curPar.imageAssetPtr = std::move(asset);
+                updatePlaceholderImage();
+                curPar.Init(winWidth, winHeight);
+            }
             updateNavigationDirectory();
         } break;
 

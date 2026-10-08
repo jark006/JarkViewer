@@ -253,5 +253,6 @@ pwsh tools/verify_source_invariant_checks.ps1
 - UI 文本来自 `stringRes`：**两张表同名不同文案**——`UIStringTable[stringID][语言]` 供 ImGui/画布，`UIStringTableWide[stringID][语言]` 供 Win32（窗口标题、菜单、消息框），写 `getUIStringW(id)` 时一定要核对**宽表**里那个 ID 是什么（历史上出过把消息框正文写成"关于 (&A)"菜单项的事故）。`getUIStringW` 返回 `UIStringWide`（自带缓冲区、可隐式转 `const wchar_t*`）：旧实现共用同一个 thread_local 缓冲，`MessageBoxW(h, getUIStringW(a), getUIStringW(b))` 后一次转换会冲掉前一次的指针内容（标题乱码）。需要指针活过当前语句时（如 `BROWSEINFO.lpszTitle`）用 `.str()` 存一份 `std::wstring`；丢给 `std::format`/`wstring_view` 参数时要显式 `.c_str()`。**新增文案追加到对应表尾**，并在使用处写成具名常量（各窗口文件里已有 `kStr*` 常量块）。改动后再跑一次 `--probe --lang-test`，它会打印窄表与宽表各若干条文案用于确认 ID 没有错位。
 - README 记录的 OpenCV 预编译库带有源码改动：移除 `imgcodecs` 分辨率限制，并将 HighGUI Win32 窗口光标从 `IDC_CROSS` 改为 `IDC_ARROW`；替换或重建 OpenCV 时要保留这些行为。
 - 不要提交 `.vcxproj.user`、`.vs/` 或机器相关的本地库路径。
+- **渐进加载**：当前图的解码不阻塞主循环——`requestCurrentImage()` 用 `LRU::tryGetPtr` 非阻塞查缓存，未命中就挂起，主循环每帧 `updatePendingLoad()` 轮询，就绪后 `adoptCurrentImage()` 收尾。等待期间：启动/主页场景用主页画面垫底（`allowPreviewSwap_`），缩略图（ThumbnailService，持久缓存命中时毫秒级）先到就先顶上当模糊预览；切图场景保留旧图停留（相邻图通常已被预取，点翻页零等待）。客户区左上角画「加载中 X.Xs」浮标（逐帧跳秒——画面稳定分支要按 `pendingLoad_` 持续出帧），超过 60 秒退回一次阻塞等待兜底。**新增"载入当前图"路径时一律用 `requestCurrentImage()`**，不要再直接调 `getSafePtr`（会退回"翻页等解码"）。
 - 主窗口渲染路径以 OpenCV `cv::Mat` 作为 CPU 画布，再交给 Direct3D 显示；避免在高频绘制路径中引入阻塞 I/O 或昂贵同步操作。
 - Debug 构建会分配控制台并启用 `JARK_LOG`；Release 下日志宏为空。

@@ -146,6 +146,16 @@ public:
         return getDataPtr(key);
     }
 
+    // 非阻塞查缓存：未命中立即返回空（不等待在途预读），供渐进加载每帧轮询
+    std::shared_ptr<valueType> tryGetPtr(const keyType& key) {
+        std::unique_lock<std::shared_mutex> lock(cache_mutex);
+        auto it = cache_map.find(key);
+        if (it == cache_map.end())
+            return nullptr;
+        cache_list.splice(cache_list.begin(), cache_list, it->second);
+        return it->second->second;
+    }
+
     std::shared_ptr<valueType> getSafePtr(const keyType& key, const keyType& nextKey) {
         if (key == nextKey)
             requestPreload(key);
