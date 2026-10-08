@@ -820,6 +820,74 @@ namespace {
         return report;
     }
 
+    // SVG 自检：验证 CSS 函数折叠（light-dark/var）与光栅化的反预乘
+    std::string runVectorTest() {
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+
+        // 半透明方块：fill-opacity 0.5 的纯红，四周透明
+        const std::string translucentSvg = R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">)svg"
+            R"svg(<rect x="25" y="25" width="50" height="50" fill="#ff0000" fill-opacity="0.5"/></svg>)svg";
+
+        // CSS 5 特性：--accent 定义在 :root，light-dark 与 var（含回退值）分别用在不同图元上
+        const std::string cssSvg = R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">)svg"
+            R"svg(<style>:root { --accent: #00ff00; } .box { fill: light-dark(#ff0000, #121212); stroke: var(--accent); }</style>)svg"
+            R"svg(<rect class="box" x="20" y="20" width="60" height="60"/>)svg"
+            R"svg(<rect x="120" y="20" width="60" height="60" style="fill: var(--accent);"/>)svg"
+            R"svg(<rect x="60" y="60" width="10" height="10" fill="var(--undefined, #0000ff)"/>)svg"
+            R"svg(</svg>)svg";
+
+        SVGPreprocessor preprocessor;
+        const std::string folded = preprocessor.preprocessSVG(cssSvg.data(), cssSvg.size());
+        check(!folded.empty(), "CSS 用例预处理成功");
+        check(folded.find("light-dark(") == std::string::npos && folded.find("var(") == std::string::npos,
+            "light-dark()/var() 全部折叠成字面量");
+        check(folded.find("#ff0000") != std::string::npos, "light-dark 取亮色分支");
+        check(folded.find("#00ff00") != std::string::npos, "var() 解析 :root 定义的自定义属性");
+        check(folded.find("#0000ff") != std::string::npos, "var() 未定义时使用回退值");
+
+        // 光栅化 + 反预乘：lunasvg 输出的是预乘 alpha，若不反预乘，纯红在 alpha=0.5 处会变成 (0,0,128,128)
+        const auto rasterize = [](const std::string& svg, int width, int height) {
+            const std::string processed = SVGPreprocessor().preprocessSVG(svg.data(), svg.size());
+            const std::string& source = processed.empty() ? svg : processed;
+            auto document = lunasvg::Document::loadFromData(source.data(), source.size());
+            if (!document)
+                return cv::Mat();
+            jark::VectorImage vectorImage;
+            vectorImage.document = std::move(document);
+            vectorImage.intrinsicWidth = width;
+            vectorImage.intrinsicHeight = height;
+            return jark::renderVectorImage(vectorImage, width, height);
+        };
+
+        const cv::Mat translucent = rasterize(translucentSvg, 100, 100);
+        check(!translucent.empty() && translucent.type() == CV_8UC4, "半透明 SVG 光栅化为 BGRA 位图");
+        if (!translucent.empty()) {
+            const cv::Vec4b center = translucent.at<cv::Vec4b>(50, 50);
+            check(center[2] >= 250 && center[1] <= 5 && center[0] <= 5 && std::abs(center[3] - 128) <= 2,
+                std::format("半透明纯红反预乘为直通 alpha：(B,G,R,A)=({},{},{},{}) 期望约 (0,0,255,128)",
+                    center[0], center[1], center[2], center[3]));
+            const cv::Vec4b corner = translucent.at<cv::Vec4b>(5, 5);
+            check(corner[3] == 0, "SVG 空白区域保持全透明");
+        }
+
+        const cv::Mat css = rasterize(cssSvg, 200, 100);
+        check(!css.empty(), "CSS 用例光栅化成功");
+        if (!css.empty()) {
+            const cv::Vec4b lightDark = css.at<cv::Vec4b>(50, 50);
+            check(lightDark[2] >= 250 && lightDark[3] == 255, "light-dark 图元按亮色分支绘制");
+            const cv::Vec4b inlineVar = css.at<cv::Vec4b>(50, 150);
+            check(inlineVar[1] >= 250 && inlineVar[3] == 255, "内联 style 中的 var() 生效");
+        }
+
+        report = std::format("---- SVG 自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
+        return report;
+    }
+
 } // namespace
 
 int runDecodeProbe(const std::vector<std::wstring>& argv) {
@@ -842,6 +910,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool colorTest = false;
     bool thumbnailTest = false;
     bool shellThumbnailTest = false;
+    bool vectorTest = false;
     int thumbnailWriter = -1;
     std::wstring annotateOutDir;
     jark::BatchOptions batchOptions;
@@ -872,6 +941,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--color-test") {
             colorTest = true;
+            continue;
+        }
+        if (argv[i] == L"--svg-test") {
+            vectorTest = true;
             continue;
         }
         if (argv[i] == L"--thumbnail-writer" && i + 1 < argv.size()) {
@@ -991,7 +1064,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !thumbnailTest && thumbnailWriter < 0) {
+    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !thumbnailTest && !vectorTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -1010,6 +1083,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (colorTest) {
         const auto text = runColorTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (vectorTest) {
+        const auto text = runVectorTest();
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

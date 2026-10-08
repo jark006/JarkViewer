@@ -36,6 +36,9 @@ python tools/gen_testdata.py <输出目录>
 # 色彩管理自检（源/目标同为 sRGB 时恒等跳过、变换生效、四通道 alpha 不动、大图并行与串行逐字节一致）
 ./x64/Release/JarkViewer.exe --probe --color-test
 
+# SVG 自检（light-dark()/var() 折叠、半透明区域反预乘为直通 alpha、空白保持透明）
+./x64/Release/JarkViewer.exe --probe --svg-test
+
 # 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
 ./x64/Release/JarkViewer.exe --probe --navigation-test
 ./x64/Release/JarkViewer.exe --probe --thumbnail-test [--out-dir 临时目录]

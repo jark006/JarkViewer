@@ -31,6 +31,28 @@ namespace {
         height = (std::max)(1, height);
     }
 
+    // lunasvg 的 Bitmap 是 ARGB32 预乘格式（内存布局 B,G,R,A，颜色分量各自已乘过 alpha）；
+    // 而画布合成（CanvasRenderer 的 getSrcPx4）按直通 alpha 计算 bg*(255-a)+src*a，
+    // 不反预乘的话半透明区域会被再乘一次 alpha（fill-opacity/opacity 区域整体偏暗）。
+    // 这里手工反预乘：既能修好偏暗，又保持 B,G,R,A 字节序——直接调 bitmap.convertToRGBA()
+    // 会把字节序换成 R,G,B,A，而画布把第一个字节当 B 读，会导致红蓝互换。
+    void unpremultiplyInPlace(cv::Mat& bgra) {
+        for (int y = 0; y < bgra.rows; ++y) {
+            uint8_t* px = bgra.ptr<uint8_t>(y);
+            for (int x = 0; x < bgra.cols; ++x, px += 4) {
+                const int alpha = px[3];
+                if (alpha == 0) {
+                    px[0] = px[1] = px[2] = 0;
+                    continue;
+                }
+                if (alpha == 255)
+                    continue;
+                for (int channel = 0; channel < 3; ++channel)
+                    px[channel] = static_cast<uint8_t>((std::min)(255, (px[channel] * 255 + alpha / 2) / alpha));
+            }
+        }
+    }
+
 } // namespace
 
 cv::Mat renderVectorImage(const VectorImage& vectorImage, int width, int height) {
@@ -41,7 +63,9 @@ cv::Mat renderVectorImage(const VectorImage& vectorImage, int width, int height)
     if (bitmap.isNull())
         return {};
 
-    return cv::Mat(height, width, CV_8UC4, bitmap.data(), bitmap.stride()).clone();
+    cv::Mat raster = cv::Mat(height, width, CV_8UC4, bitmap.data(), bitmap.stride()).clone();
+    unpremultiplyInPlace(raster);
+    return raster;
 }
 
 cv::Mat renderVectorImageAtEdge(const VectorImage& vectorImage, int longEdge) {
