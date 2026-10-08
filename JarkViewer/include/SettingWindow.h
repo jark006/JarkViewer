@@ -172,7 +172,8 @@ private:
               std::string(jark::languageDisplayName(jark::Language::TraditionalChinese)),
               std::string(jark::languageDisplayName(jark::Language::English)),
               std::string(jark::languageDisplayName(jark::Language::Japanese)),
-              std::string(jark::languageDisplayName(jark::Language::Korean)) },
+              std::string(jark::languageDisplayName(jark::Language::Korean)),
+              std::string(jark::languageDisplayName(jark::Language::Russian)) },
             &parameter.UI_LANG, 0);
 
         ImGui::Spacing();

@@ -180,7 +180,7 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   `DXGI_SWAP_EFFECT_DISCARD` + 单缓冲在本机会出现“Present 返回成功但窗口全白”，
   改回旧模型前请先复现验证；`WM_PAINT` 与尺寸变化会置 `m_presentRequested`，
   空闲分支据此补一次呈现。
-- `JarkViewer/include/Localization.h` 与 `src/Localization.cpp` 管界面语言（简体中文/繁體中文/English/日本語/한국어）：`UIStringTable[stringID][语言]` 与 `UIStringTableWide[stringID][语言]` 两张表（前者供画布文字、后者供 Win32 API；同 ID 文案不同是历史遗留，新增文案请追加到表尾）。`getUIString()` 按当前语言取用并在缺失时回退到英文、简体中文；`getUIStringW()` 由 UTF-8 转换而来。帮助/关于页与主页/解码失败画面都改为按语言的文字排版（前两者是 ImGui，后者由 `InfoScreen` 画到画布），不再有按语言分套的资源图；`prefersChineseResources()` 现在只决定 **EXIF 标签文案**用中文还是英文（简繁→中文，其余→英文）。命令行 `--lang 0..4` 可临时指定语言。
+- `JarkViewer/include/Localization.h` 与 `src/Localization.cpp` 管界面语言（简体中文/繁體中文/English/日本語/한국어/Русский）：`UIStringTable[stringID][语言]` 与 `UIStringTableWide[stringID][语言]` 两张表（前者供画布文字、后者供 Win32 API；同 ID 文案不同是历史遗留，新增文案请追加到表尾）。`getUIString()` 按当前语言取用并在缺失时回退到英文、简体中文；`getUIStringW()` 由 UTF-8 转换而来。帮助/关于页与主页/解码失败画面都改为按语言的文字排版（前两者是 ImGui，后者由 `InfoScreen` 画到画布），不再有按语言分套的资源图；`prefersChineseResources()` 现在只决定 **EXIF 标签文案**用中文还是英文（简繁→中文，其余→英文）。命令行 `--lang 0..5` 可临时指定语言。新增语言时：`Language` 枚举、两张表每一行的新列（顺序对齐、数量断言）、`languageFromSystem()`、`languageDisplayName()`、设置页语言单选项，缺一不可。
 - 图像内文字渲染（标注文字等）在 `JarkViewer/include/TextRenderer.h` 与 `src/TextRenderer.cpp`：
   用 stb_truetype 按**真实字形度量**（进退宽度/字距/bearing）绘制 UTF-8 文本，支持多行与按宽度折行，
   字形位图按 (字号, 码位) 缓存。字体全部取系统字体（微软雅黑/等线/黑体/宋体…），工程不再内嵌 ttf。

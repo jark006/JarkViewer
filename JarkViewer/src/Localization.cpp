@@ -38,6 +38,8 @@ Language languageFromSystem() noexcept {
         return Language::Japanese;
     case LANG_KOREAN:
         return Language::Korean;
+    case LANG_RUSSIAN:
+        return Language::Russian;
     default:
         return Language::English;
     }
@@ -50,6 +52,7 @@ std::string_view languageDisplayName(Language language) noexcept {
     case Language::English:            return "English";
     case Language::Japanese:           return "日本語";
     case Language::Korean:             return "한국어";
+    case Language::Russian:            return "Русский";
     default:                           return "简体中文";
     }
 }

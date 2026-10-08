@@ -14,7 +14,8 @@ enum class Language : uint8_t {
     English = 2,
     Japanese = 3,
     Korean = 4,
-    Count = 5,
+    Russian = 5,
+    Count = 6,
 };
 
 inline constexpr size_t kLanguageCount = static_cast<size_t>(Language::Count);

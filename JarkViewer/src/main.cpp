@@ -32,8 +32,8 @@
 */
 
 std::wstring_view appName = L"JarkViewer";
-std::wstring_view appVersion = L"v1.35";
-constinit int appVersionCode = 13500; // 主版本*10000 + 次版本*100 + 修订版本
+std::wstring_view appVersion = L"v2.0";
+constinit int appVersionCode = 20000; // 主版本*10000 + 次版本*100 + 修订版本
 
 std::wstring_view jarkLink = L"https://github.com/jark006";
 std::wstring_view RepositoryLink = L"https://github.com/jark006/JarkViewer";
@@ -2510,7 +2510,7 @@ int WINAPI wWinMain(
                     continue;
                 }
                 if (argList[i] == L"--lang" && i + 1 < argList.size()) {
-                    // 临时指定界面语言：0简体 1繁體 2English 3日本語 4한국어
+                    // 临时指定界面语言：0简体 1繁體 2English 3日本語 4한국어 5Русский
                     // 记录待用：设置文件在窗口初始化时才会读入，那时才能覆盖
                     languageOverride = ::_wtoi(argList[++i].c_str());
                     continue;
