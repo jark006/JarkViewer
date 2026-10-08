@@ -193,6 +193,7 @@ HRESULT D3D11App::Initialize(HINSTANCE hInstance) {
 
     if (SUCCEEDED(hr)) {
         refreshUiScale();
+        OnWindowCreated(); // 窗口句柄已就绪：让业务层先把耗时工作派出去，与下面建资源并行
         CreateDeviceResources();
 
         jark::ui::UiHost::instance().init(m_hWnd, m_pD3DDevice, m_pD3DDeviceContext, m_pSwapChain);

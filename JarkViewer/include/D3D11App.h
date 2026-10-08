@@ -34,6 +34,10 @@ public:
     virtual void OnRequestExitOtherWindows() = 0;
     virtual void OnDestroy();
 
+    // 窗口句柄刚创建、D3D 设备尚未创建时回调：子类可把耗时工作（首图解码）
+    // 先派发出去，与随后的设备/交换链创建并行（建 D3D 设备要几十毫秒）。
+    virtual void OnWindowCreated() {}
+
     // 界面（ImGui）：每帧在 PresentFrame() 里被调用，子类在这里提交窗口与控件
     virtual void DrawUi() {}
 

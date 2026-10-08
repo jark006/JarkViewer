@@ -309,6 +309,31 @@ public:
         navigation.releaseTextures();
     }
 
+    // ---- 启动路径：首图解码与 D3D 设备创建并行 ----
+    std::wstring startupFilePath_;
+    bool startupFilePrepared_ = false;
+    std::chrono::steady_clock::time_point appStart_ = std::chrono::steady_clock::now();
+
+    long long startupMs() const {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - appStart_).count();
+    }
+
+    void setStartupFile(std::wstring path) { startupFilePath_ = std::move(path); }
+
+    // 窗口句柄刚创建、D3D 设备还没建：先把首图解码派发出去（只派发不等待），
+    // 建 D3D 设备/交换链的几十毫秒里解码在后台线程上并行跑。等待与收尾仍由 initOpenFile 完成。
+    void OnWindowCreated() override {
+        imgDB.setColorManagementWindow(m_hWnd); // 显示器 ICC 靠窗口所在显示器，派发前先设好
+        prepareFileList(startupFilePath_);
+        if (curFileIdx >= 0 && curFileIdx < static_cast<int>(imgFileList.size())) {
+            imgDB.requestPreloadBatch({ imgFileList[curFileIdx],
+                imgFileList[static_cast<size_t>(curFileIdx + 1) % imgFileList.size()] });
+        }
+        startupFilePrepared_ = true;
+        JARK_LOG("startup: decode dispatched at {} ms (before device creation)", startupMs());
+    }
+
     HRESULT InitWindow(HINSTANCE hInstance) {
         if (!SUCCEEDED(D3D11App::Initialize(hInstance)))
             return S_FALSE;
@@ -399,7 +424,10 @@ public:
         return sizeChanged ? 2 : 1;
     }
 
-    void initOpenFile(wstring filePath) {
+    // 打开图片的前半段：清缓存、扫同目录、建列表、放占位（不碰视图状态）。
+    // 启动路径在 OnWindowCreated() 里先跑这一段并派发解码，随后 initOpenFile 只消费结果；
+    // 其它时机的打开由 initOpenFile 连着后半段一起跑。
+    void prepareFileList(wstring filePath) {
         namespace fs = std::filesystem;
 
         curFileIdx = -1;
@@ -413,9 +441,6 @@ public:
             imgFileList.emplace_back(m_wndCaption);
             curFileIdx = 0;
             imgDB.put(m_wndCaption, placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
-            curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[curFileIdx]);
-            updatePlaceholderImage();
-            curPar.Init(winWidth, winHeight);
             return;
         }
 
@@ -430,7 +455,7 @@ public:
 
                 std::wstring ext = entry.path().extension().wstring();
                 if (ext.length() < 2)continue;
-                
+
                 ext = ext.substr(1);
                 std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
 
@@ -455,36 +480,46 @@ public:
             curFileIdx = -1;
         }
 
-        if (curFileIdx < 0) {
-            if (filePath.empty()) { //直接打开软件，没有传入参数
-                imgFileList.emplace_back(m_wndCaption);
-                curFileIdx = 0;
-                imgDB.put(m_wndCaption, placeholderAsset(PlaceholderKind::Home, {}, getUIString(32)));
-            }
-            else { // 文件不在支持列表里：区分"不支持的格式"和"文件根本不存在/打不开"
-                imgFileList.emplace_back(fullPath.wstring());
-                curFileIdx = (int)imgFileList.size() - 1;
+        if (curFileIdx < 0) { // 文件不在支持列表里：区分"不支持的格式"和"文件根本不存在/打不开"
+            imgFileList.emplace_back(fullPath.wstring());
+            curFileIdx = (int)imgFileList.size() - 1;
 
-                auto dotPos = filePath.rfind(L'.');
-                auto ext = wstring((dotPos != std::wstring::npos && dotPos < filePath.size() - 1) ?
-                    filePath.substr(dotPos + 1) : filePath);
-                for (auto& c : ext)	c = std::tolower(c);
+            auto dotPos = filePath.rfind(L'.');
+            auto ext = wstring((dotPos != std::wstring::npos && dotPos < filePath.size() - 1) ?
+                filePath.substr(dotPos + 1) : filePath);
+            for (auto& c : ext) c = std::tolower(c);
 
-                // 视频文件不加占位，交给加载器当动态照片处理(仅解码前 MAX_VIDEO_FRAMES 帧)
-                if (!ImageDatabase::videoExt.contains(ext)) {
-                    const bool readable = std::filesystem::exists(fullPath) &&
-                        GetFileAttributesW(fullPath.c_str()) != INVALID_FILE_ATTRIBUTES;
-                    imgDB.put(fullPath.wstring(), placeholderAsset(
-                        readable ? PlaceholderKind::UnsupportedFormat : PlaceholderKind::FileMissing,
-                        fullPath.wstring(), getUIString(33)));
-                }
+            // 视频文件不加占位，交给加载器当动态照片处理(仅解码前 MAX_VIDEO_FRAMES 帧)
+            if (!ImageDatabase::videoExt.contains(ext)) {
+                const bool readable = std::filesystem::exists(fullPath) &&
+                    GetFileAttributesW(fullPath.c_str()) != INVALID_FILE_ATTRIBUTES;
+                imgDB.put(fullPath.wstring(), placeholderAsset(
+                    readable ? PlaceholderKind::UnsupportedFormat : PlaceholderKind::FileMissing,
+                    fullPath.wstring(), getUIString(33)));
             }
         }
+    }
 
+    // 打开图片的后半段：等待（在途的）解码、刷新占位、初始化视图、更新导航目录
+    void finishOpenFile() {
         curPar.imageAssetPtr = imgDB.getSafePtr(imgFileList[curFileIdx], imgFileList[(curFileIdx + 1) % imgFileList.size()]);
         updatePlaceholderImage();
         curPar.Init(winWidth, winHeight);
         updateNavigationDirectory();
+    }
+
+    void initOpenFile(wstring filePath) {
+        if (startupFilePrepared_ && filePath == startupFilePath_) {
+            // 启动路径：OnWindowCreated() 已抢在 D3D 设备创建前扫描目录并派发解码。
+            // 这里不能再跑前半段——imgDB.clear() 会把在途解码作废——直接等结果收尾。
+            startupFilePrepared_ = false;
+            finishOpenFile();
+            JARK_LOG("startup: first frame ready at {} ms", startupMs());
+            return;
+        }
+
+        prepareFileList(std::move(filePath));
+        finishOpenFile();
     }
 
     inline void handleAnimationControl(int x, int y) {
@@ -2532,13 +2567,15 @@ int WINAPI wWinMain(
     }
 
     JarkViewerApp app;
-    if (SUCCEEDED(app.InitWindow(hInstance))) {
-        // 设置文件已在初始化时读入，此处再应用命令行指定的语言
-        if (languageOverride.has_value()) {
-            GlobalVar::settingParameter.UI_LANG =
-                static_cast<uint32_t>(jark::languageFromSetting(*languageOverride));
-        }
+    app.setStartupFile(filePath);
+    // 命令行指定的语言要在窗口创建前应用：窗口一就绪就会扫描目录、放占位并派发解码，
+    // 占位文案随 UI_LANG 走
+    if (languageOverride.has_value()) {
+        GlobalVar::settingParameter.UI_LANG =
+            static_cast<uint32_t>(jark::languageFromSetting(*languageOverride));
+    }
 
+    if (SUCCEEDED(app.InitWindow(hInstance))) {
         app.initOpenFile(filePath);
         app.Run();
     }
