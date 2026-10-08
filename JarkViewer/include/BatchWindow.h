@@ -72,9 +72,13 @@ public:
             return;
 
         const float scale = jark::ui::UiHost::instance().scale();
-        ImGui::SetNextWindowSize({ 700.0f * scale, 580.0f * scale }, ImGuiCond_FirstUseEver);
-        // 不能再缩小到藏住任务/参数/进度与底部按钮
-        ImGui::SetNextWindowSizeConstraints({ 640.0f * scale, 460.0f * scale }, { FLT_MAX, FLT_MAX });
+        // 尺寸先收敛到主视口内：装不下的窗口会被多视口模式分离成独立 OS 窗口（角外露黑底、跑到主窗口外）
+        ImGui::SetNextWindowSize(
+            jark::ui::fitWindowSizeToMainViewport({ 700.0f * scale, 580.0f * scale }), ImGuiCond_FirstUseEver);
+        // 不能再缩小到藏住任务/参数/进度与底部按钮；上限同样钳到主视口，防拖拽放大后被分离
+        ImGui::SetNextWindowSizeConstraints(
+            jark::ui::fitWindowSizeToMainViewport({ 640.0f * scale, 460.0f * scale }),
+            jark::ui::fitWindowSizeToMainViewport({ FLT_MAX, FLT_MAX }));
         if (focusRequested_) {
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
             focusRequested_ = false;

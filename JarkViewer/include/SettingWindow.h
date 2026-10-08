@@ -57,9 +57,13 @@ public:
         const float scale = jark::ui::UiHost::instance().scale();
         const std::string title = jarkUtils::wstringToUtf8(getUIStringW(39).c_str()) + "###settings";
 
-        ImGui::SetNextWindowSize({ 680.0f * scale, 640.0f * scale }, ImGuiCond_FirstUseEver);
-        // 常规页包含导航开关与缓存管理，不能缩小到藏住底部控件
-        ImGui::SetNextWindowSizeConstraints({ 640.0f * scale, 580.0f * scale }, { FLT_MAX, FLT_MAX });
+        // 尺寸先收敛到主视口内：装不下的窗口会被多视口模式分离成独立 OS 窗口（角外露黑底、跑到主窗口外）
+        ImGui::SetNextWindowSize(
+            jark::ui::fitWindowSizeToMainViewport({ 680.0f * scale, 640.0f * scale }), ImGuiCond_FirstUseEver);
+        // 常规页包含导航开关与缓存管理，不能缩小到藏住底部控件；上限同样钳到主视口，防拖拽放大后被分离
+        ImGui::SetNextWindowSizeConstraints(
+            jark::ui::fitWindowSizeToMainViewport({ 640.0f * scale, 580.0f * scale }),
+            jark::ui::fitWindowSizeToMainViewport({ FLT_MAX, FLT_MAX }));
         if (focusRequested_) {
             const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
             ImGui::SetNextWindowPos(center, ImGuiCond_Always, { 0.5f, 0.5f });

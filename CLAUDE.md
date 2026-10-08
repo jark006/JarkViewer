@@ -91,15 +91,15 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
   宽 = 1.5 倍高、悬停/按下铺系统红底 `#C42B1C` 与白色 ✕），改动在 `imgui.cpp` 的
   `RenderWindowTitleBarContents()`、`imgui_widgets.cpp` 的 `CloseButton()`（多一个 `size` 参数，
-  默认 0 即原来的 FontSize 见方，Dock 页签栏仍走原行为）与 `imgui_internal.h` 的声明处；
-  另有第四处：`imgui.cpp` 的 `Begin()`（`window->WindowRounding` 赋值处）**去掉了对
-  ViewportOwned 窗口强制零圆角的分支**——多视口模式下，比主视口还大的窗口（如小主窗口下的
-  设置/编辑窗口）会被分离成独立 OS 窗口并原本被画成直角，本地修改让它们保留主题圆角。
-  四处都有 `[JarkViewer 本地修改]` 注释；**升级 imgui 后要把这四处补回去**。
+  默认 0 即原来的 FontSize 见方，Dock 页签栏仍走原行为）与 `imgui_internal.h` 的声明处，
+  三处都有 `[JarkViewer 本地修改]` 注释；**升级 imgui 后要把这三处补回去**。
   窗口只允许从**右下角的抓手**改尺寸：`UiHost` 里设了 `io.ConfigWindowsResizeFromEdges = false`
   （ImGui 自带开关，关掉后上下左右四条边框与左下角抓手都不能拖，只剩右下角那一个），**别删这一行**，
   否则缩放后的窗口边框到处都能拖、很容易误触。
   每个窗口都用 `ImGui::SetNextWindowSizeConstraints()` 设了**最小尺寸**，别写小到把控件藏起来；
+  尺寸（`SetNextWindowSize` 与 Min/Max 约束）都要先过 `jark::ui::fitWindowSizeToMainViewport()`
+  收敛到主视口——多视口模式下主视口**装不下**的窗口会被 ImGui 分离成独立 OS 窗口：圆角外露黑底
+  （绘制面是不透明的）、窗口跑到主窗口外、还会出现在任务栏。编辑器工具栏在窄窗口下自动换行；
   底部有固定内容（说明文字 + 按钮行）的页面要按实际高度给子区域留白（设置页的文件关联页就是这样
   算的），否则整页会多出一条窗口滚动条。
   主窗口的悬停按钮/动图播放条用 `ImGui::GetForegroundDrawList()` 贴 `file/mainRes.png`

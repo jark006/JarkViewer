@@ -89,6 +89,13 @@ namespace jark::ui {
         constexpr Glyph<0xE91B> kPhoto;         // 图片
     }
 
+    // 把窗口期望尺寸收敛到"主视口装得下"的范围（含少量余量）。
+    // 多视口模式下，ImGui 只在主视口矩形**完全包含**窗口矩形时才把它并回主窗口绘制，
+    // 装不下的窗口会被分离成独立 OS 窗口：圆角/边框不再跟随主题（角外露黑底）、还会
+    // 跑到主窗口外面去。各工具窗口的 SetNextWindowSize/SetNextWindowSizeConstraints
+    // 必须用本函数钳一下，否则主窗口比窗口小一点时整个交互形态就变了。
+    ImVec2 fitWindowSizeToMainViewport(const ImVec2& desired);
+
     class UiHost {
     public:
         static UiHost& instance();

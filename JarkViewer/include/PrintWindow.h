@@ -72,9 +72,14 @@ public:
             return;
 
         const float scale = jark::ui::UiHost::instance().scale();
-        ImGui::SetNextWindowSize({ 760.0f * scale, 620.0f * scale }, ImGuiCond_FirstUseEver);
-        // 最小宽度按控件行实际占用算（见 minWidth_）：窄了会把“打印”顶到窗口边缘甚至截断
-        ImGui::SetNextWindowSizeConstraints({ 0.0f, 360.0f * scale }, { FLT_MAX, FLT_MAX },
+        // 尺寸先收敛到主视口内：装不下的窗口会被多视口模式分离成独立 OS 窗口（角外露黑底、跑到主窗口外）
+        ImGui::SetNextWindowSize(
+            jark::ui::fitWindowSizeToMainViewport({ 760.0f * scale, 620.0f * scale }), ImGuiCond_FirstUseEver);
+        // 最小宽度按控件行实际占用算（见 minWidth_）：窄了会把“打印”顶到窗口边缘甚至截断；
+        // 上限同样钳到主视口，防拖拽放大后被分离
+        ImGui::SetNextWindowSizeConstraints(
+            jark::ui::fitWindowSizeToMainViewport({ 0.0f, 360.0f * scale }),
+            jark::ui::fitWindowSizeToMainViewport({ FLT_MAX, FLT_MAX }),
             sizeConstraints, this);
         if (focusRequested_) {
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, { 0.5f, 0.5f });

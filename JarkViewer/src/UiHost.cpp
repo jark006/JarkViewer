@@ -353,6 +353,15 @@ void UiHost::applyStyleSizes() {
     ImGui::GetStyle().ScaleAllSizes(scale_);
 }
 
+ImVec2 jark::ui::fitWindowSizeToMainViewport(const ImVec2& desired) {
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    // 窗口都是相对主视口居中摆放的，size 收敛后矩形即被主视口完全包含（余量防浮点边界）。
+    const float margin = 8.0f * UiHost::instance().scale();
+    const float limitX = (std::max)(64.0f, viewport->Size.x - margin);
+    const float limitY = (std::max)(64.0f, viewport->Size.y - margin);
+    return { (std::min)(desired.x, limitX), (std::min)(desired.y, limitY) };
+}
+
 void UiHost::newFrame() {
     if (!initialized_)
         return;

@@ -56,9 +56,13 @@ public:
             return;
 
         const float scale = jark::ui::UiHost::instance().scale();
-        ImGui::SetNextWindowSize({ 1100.0f * scale, 760.0f * scale }, ImGuiCond_FirstUseEver);
-        // 不能再缩小到藏住工具栏/侧栏
-        ImGui::SetNextWindowSizeConstraints({ 840.0f * scale, 520.0f * scale }, { FLT_MAX, FLT_MAX });
+        // 尺寸先收敛到主视口内：装不下的窗口会被多视口模式分离成独立 OS 窗口（角外露黑底、跑到主窗口外）
+        ImGui::SetNextWindowSize(
+            jark::ui::fitWindowSizeToMainViewport({ 1100.0f * scale, 760.0f * scale }), ImGuiCond_FirstUseEver);
+        // 不能再缩小到藏住工具栏/侧栏；上限同样钳到主视口，防拖拽放大后被分离
+        ImGui::SetNextWindowSizeConstraints(
+            jark::ui::fitWindowSizeToMainViewport({ 840.0f * scale, 520.0f * scale }),
+            jark::ui::fitWindowSizeToMainViewport({ FLT_MAX, FLT_MAX }));
         if (focusRequested_) {
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, { 0.5f, 0.5f });
             focusRequested_ = false;
@@ -381,8 +385,13 @@ private:
         ImGui::SameLine(0.0f, 14.0f * scale);
 
         for (size_t index = 0; index < std::size(tools); ++index) {
-            if (index > 0)
-                ImGui::SameLine();
+            if (index > 0) {
+                // 主窗口比编辑器设计尺寸小时窗口会被收敛变窄，这里让工具栏自动换行、按钮不被裁掉
+                // （按钮绘制后光标已到下一行，要用上一个按钮的右边界判断）
+                const float nextRight = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + 96.0f * scale;
+                if (nextRight <= ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x)
+                    ImGui::SameLine();
+            }
 
             const bool selected = toolIndex_ == static_cast<uint32_t>(index);
             if (selected)
