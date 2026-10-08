@@ -1703,9 +1703,10 @@ public:
     }
 
 
-    int64_t delayRemain = 0;
+    int64_t delayRemain = 0; // 当前帧剩余时长（微秒）
     const std::chrono::milliseconds frameDuration{ 10 };
     std::chrono::steady_clock::time_point lastTimestamp = std::chrono::steady_clock::now();
+    bool animClockArmed = false; // 动画计时是否已启动：起播/恢复播放时重新对齐计时起点，避免把加载或暂停的时长算进第一帧
 
 
     // 标题栏：[序号/总数] 文件名 宽x高 (大小) 缩放% 旋转状态。
@@ -1905,6 +1906,7 @@ public:
 
         lastTimestamp = std::chrono::steady_clock::now();
         delayRemain = 0;
+        animClockArmed = false; // 新图重新对齐动画计时（下一帧起第一帧获得完整延迟）
 
         // 必须主动要求重画：切换可能在空闲状态发生（画面已稳定），否则主循环继续走空闲分支，
         // 屏幕停在上一张上——幻灯片播放到动图之后“就不再换图”就是这个原因
@@ -3045,19 +3047,30 @@ public:
         updateMainCanvas();
 
         if (curPar.imageAssetPtr->format == ImageFormat::Animated && curPar.isAnimationPause == false) {
-            if (delayRemain <= 0)
-                delayRemain = curPar.curFrameDelay;
+            // 起播/恢复播放时先把计时起点对齐到当下：否则加载耗时或暂停时长会被算进第一帧，
+            // 表现为第一帧长时间不动
+            if (!animClockArmed) {
+                animClockArmed = true;
+                delayRemain = (std::max)(int64_t(1), int64_t(curPar.curFrameDelay)) * 1000;
+                lastTimestamp = std::chrono::steady_clock::now();
+            }
 
             auto nowTimestamp = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(nowTimestamp - lastTimestamp);
+            auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(nowTimestamp - lastTimestamp);
             lastTimestamp = nowTimestamp;
 
             if (frameDuration > elapsed)
                 std::this_thread::sleep_for(frameDuration - elapsed);
 
+            // 余量按微秒累计：一帧要跑七八轮主循环迭代，若每轮都按整毫秒截断、每轮丢不足 1ms，
+            // 100ms 的帧会被拖成 ~103ms——动图整体越播越慢就是这么来的
             delayRemain -= elapsed.count();
-            if (delayRemain <= 0) {
-                delayRemain = curPar.curFrameDelay;
+            // 欠帧时循环推进并把“多走”的时间留给下一帧（加下一个帧延迟）。Windows 睡眠粒度
+            // 约 15.6ms，若像原来那样每帧把余量丢弃重置，超时部分会逐帧累积成慢性慢放
+            while (delayRemain <= 0) {
+                if (curPar.imageAssetPtr->frameDurations.empty())
+                    break;
+
                 curPar.curFrameIdx++;
                 if (curPar.curFrameIdx > curPar.curFrameIdxMax) {
                     curPar.curFrameIdx = 0;
@@ -3067,9 +3080,16 @@ public:
                         curPar.imageAssetPtr->format = ImageFormat::Still;
                         curPar.Init(winWidth, winHeight);
                         operateQueue.push({ ActionENUM::refresh });
+                        break;
                     }
                 }
+
+                delayRemain += (std::max)(int64_t(1),
+                    int64_t(curPar.imageAssetPtr->frameDurations[curPar.curFrameIdx])) * 1000;
             }
+        }
+        else {
+            animClockArmed = false; // 暂停或非动画状态：作废旧计时，恢复播放时重新对齐
         }
     }
 

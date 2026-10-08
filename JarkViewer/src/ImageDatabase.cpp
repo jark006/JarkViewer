@@ -3026,6 +3026,53 @@ static std::vector<uint8_t> readMotionPhotoSidecarVideoBytes(wstring_view path) 
     return {};
 }
 
+// 少数厂商导出（如 DJI）会在视频数据之后附加一小段尾部数据，视频因而不恰好结束于文件末尾：
+// 按「文件大小 - videoSize」反推会把起点挪进视频内部，MP4 里的采样偏移随之整体错位，
+// 表现为能识别出视频轨但解码全是乱码（Invalid NAL unit size）。
+// 在期望起点附近搜索合法的 MP4 首个 ftyp 盒（长度字段 8~4096 且不越界）定位真实起点，
+// 多个候选取离期望起点最近者；找不到时保持原起点（常规 Android 实况照片本就对齐）。
+static size_t locateMotionPhotoVideoStart(std::span<const uint8_t> fileBuf, size_t videoSize) {
+    const size_t expectedStart = fileBuf.size() - videoSize;
+
+    const auto isFtypBoxAt = [&fileBuf](size_t pos) -> bool {
+        if (pos + 8 > fileBuf.size())
+            return false;
+        const uint8_t* p = fileBuf.data() + pos;
+        if (p[4] != 'f' || p[5] != 't' || p[6] != 'y' || p[7] != 'p')
+            return false;
+        const uint32_t boxSize =
+            (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+        return boxSize >= 8 && boxSize <= 4096 && pos + boxSize <= fileBuf.size();
+    };
+
+    if (isFtypBoxAt(expectedStart))
+        return expectedStart;
+
+    constexpr size_t searchRange = 8192;
+    const size_t searchBegin = expectedStart > searchRange ? expectedStart - searchRange : 0;
+    const size_t searchEnd = (std::min)(expectedStart + searchRange, fileBuf.size() - 8);
+
+    size_t bestStart = std::numeric_limits<size_t>::max();
+    size_t bestDistance = std::numeric_limits<size_t>::max();
+    for (size_t pos = searchBegin; pos <= searchEnd; pos++) {
+        if (!isFtypBoxAt(pos))
+            continue;
+        const size_t distance = pos > expectedStart ? pos - expectedStart : expectedStart - pos;
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestStart = pos;
+        }
+    }
+
+    if (bestStart == std::numeric_limits<size_t>::max()) {
+        JARK_LOG("MotionPhoto: no MP4 ftyp box near expected start {}, keep size-based slice", expectedStart);
+        return expectedStart;
+    }
+
+    JARK_LOG("MotionPhoto: video start adjusted from {} to {} (videoSize: {})", expectedStart, bestStart, videoSize);
+    return bestStart;
+}
+
 // Android 实况照片 jpg/jpeg/heic/heif
 ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uint8_t> fileBuf, bool isJPG = false) {
     auto img = isJPG ? loadImageOpenCV(path, fileBuf) : loadHeic(path, fileBuf);
@@ -3052,8 +3099,10 @@ ImageAsset ImageDatabase::loadMotionPhoto(wstring_view path, std::span<const uin
     const size_t videoSize = getVideoSize(exifInfo);
     auto videoSource = std::make_shared<jark::VideoSource>();
     if (videoSize >= MIN_VIDEO_BUFF_SIZE && videoSize < fileBuf.size()) {
-        const auto* videoData = fileBuf.data() + fileBuf.size() - videoSize;
-        videoSource->data.assign(videoData, videoData + videoSize);
+        // 尾部视频不一定贴着文件末尾（DJI 等导出带尾块），先定位真实起点再切片
+        const size_t videoStart = locateMotionPhotoVideoStart(fileBuf, videoSize);
+        const size_t videoLength = (std::min)(videoSize, fileBuf.size() - videoStart);
+        videoSource->data.assign(fileBuf.data() + videoStart, fileBuf.data() + videoStart + videoLength);
     }
     else if (auto sidecar = readMotionPhotoSidecarVideoBytes(path); !sidecar.empty()) {
         videoSource->data = std::move(sidecar);
