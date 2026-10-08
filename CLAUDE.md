@@ -93,7 +93,11 @@ pwsh tools/list_windows.ps1 -ProcessId <pid>
   第二列起点 = 第一列最长项的实际文本宽 + 勾选框宽 + 列间距，随语言自适应；增减勾选项时
   记得同步这个列宽推导）。
 - 各窗口都是 ImGui 窗口（不再是独立窗口线程）：`SettingWindow.h`（常规/文件关联/帮助/关于）、
-  `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）。
+  `PrintWindow.h`（打印预览与打印）、`BatchWindow.h`（批量处理）、`EditorWindow.h`（编辑与标注）、
+  `RenameWindow.h`（重命名当前图片：Ctrl+R 或右键菜单，只编辑文件名主体、扩展名保持原样；
+  校验空名/非法字符/结尾点空格/保留设备名/过长/同名，通过后把新路径交回主窗口执行
+  `applyRename()`——改盘 + 列表自然重排 + 缩略图失效 + 缓存作废重装）。窗口一律经
+  `anyWindowVisible()/closeTopWindow()` 登记输入与 Esc 行为，新增窗口时别漏。
   **vendor/imgui 有本地改动**：标题栏关闭按钮改成了系统标题栏按钮的样式（贴右上角、铺满标题栏高度、
   宽 = 1.5 倍高、悬停/按下铺系统红底 `#C42B1C` 与白色 ✕），改动在 `imgui.cpp` 的
   `RenderWindowTitleBarContents()`、`imgui_widgets.cpp` 的 `CloseButton()`（多一个 `size` 参数，

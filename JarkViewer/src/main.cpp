@@ -14,6 +14,7 @@
 #include "TextRenderer.h"
 #include "ImageDatabase.h"
 #include "PrintWindow.h"
+#include "RenameWindow.h"
 #include "SettingWindow.h"
 
 #include "D3D11App.h"
@@ -1049,6 +1050,10 @@ public:
                 ctrlIsPressing = false;
             }break;
 
+            case 'R': { // Ctrl + R 重命名当前图片
+                operateQueue.push({ ActionENUM::renameImage });
+            }break;
+
             default: {
                 // 没绑定的组合键：顺手清掉状态。界面窗口会吃掉 CTRL 释放消息，
                 // 不清的话后续所有按键都会被当成“按住 Ctrl 的组合键”而失灵。
@@ -1293,6 +1298,10 @@ public:
 
         case ContextMenu::openContainerFloder: {
             jarkUtils::openFileLocation(imgFileList[curFileIdx]);
+        }break;
+
+        case ContextMenu::renameImage: {
+            operateQueue.push({ ActionENUM::renameImage });
         }break;
 
         case ContextMenu::deleteImage: {
@@ -1962,6 +1971,47 @@ public:
         playbackFrame = cv::Mat();
     }
 
+    // 重命名确认后执行：改磁盘、同步列表（重排后的新位置）、作废缓存并重新装载
+    void applyRename(const std::wstring& newPath) {
+        if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size())
+            return;
+
+        const std::wstring oldPath = imgFileList[curFileIdx];
+        stopMediaPlayback();
+
+        std::error_code errorCode;
+        std::filesystem::rename(oldPath, newPath, errorCode);
+        if (errorCode) {
+            auto errMsg = std::format(L"{} 0x{:08X}", getUIStringW(51).c_str(),
+                static_cast<unsigned>(errorCode.value()));
+            MessageBoxW(m_hWnd, errMsg.c_str(), getUIStringW(1), MB_OK | MB_ICONERROR);
+            return;
+        }
+
+        jark::ThumbnailService::instance().invalidate(oldPath);
+        imgFileList[curFileIdx] = newPath;
+
+        // 文件名变了，按自然排序把当前图挪到新位置（与 initOpenFile 同一排序规则）
+        std::sort(imgFileList.begin(), imgFileList.end(), [](std::wstring_view a, std::wstring_view b) -> bool {
+            return StrCmpLogicalW(a.data(), b.data()) < 0; });
+        for (size_t i = 0; i < imgFileList.size(); ++i) {
+            if (imgFileList[i] == newPath) {
+                curFileIdx = static_cast<int>(i);
+                break;
+            }
+        }
+
+        imgDB.clear();            // 旧路径的缓存（连同相邻预读）一起作废，重新装载
+        ++navigationImageVersion; // 导航里按旧坐标的换图请求作废
+        curPar.imageAssetPtr = imgDB.getSafePtr(
+            imgFileList[curFileIdx],
+            imgFileList[(curFileIdx + 1) % imgFileList.size()]);
+        updatePlaceholderImage();
+        curPar.Init(winWidth, winHeight);
+        updateNavigationDirectory();
+        operateQueue.push({ ActionENUM::refresh });
+    }
+
     // 矢量图（SVG）在缩放稳定后按需重新光栅化；返回 true 表示位图已更新、需要重绘
     bool refreshVectorRasterIfNeeded() {
         if (!curPar.imageAssetPtr || !curPar.imageAssetPtr->vectorSource)
@@ -2298,16 +2348,21 @@ public:
         return y - top;
     }
 
-    // 是否有界面窗口（设置/批量/打印/编辑）在显示
+    // 是否有界面窗口（设置/批量/打印/编辑/重命名）在显示
     static bool anyWindowVisible() {
         return SettingWindow::instance().visible() || BatchWindow::instance().visible() ||
-            PrintWindow::instance().visible() || EditorWindow::instance().visible();
+            PrintWindow::instance().visible() || EditorWindow::instance().visible() ||
+            RenameWindow::instance().visible();
     }
 
     bool hasVisibleWindows() const override { return anyWindowVisible(); }
 
     // ESC 关掉最前面的一个界面窗口（窗口失焦时 ImGui 收不到 Esc，这里兜底）；返回是否关掉了
     static bool closeTopWindow() {
+        if (RenameWindow::instance().visible()) {
+            RenameWindow::instance().close();
+            return true;
+        }
         if (EditorWindow::instance().visible()) {
             EditorWindow::instance().close();
             return true;
@@ -2339,6 +2394,11 @@ public:
         BatchWindow::instance().draw();
         PrintWindow::instance().draw();
         EditorWindow::instance().draw();
+        RenameWindow::instance().draw();
+
+        // 重命名弹窗确认后由主窗口统一执行（改名 + 列表/缓存同步）
+        if (auto renamed = RenameWindow::instance().takeConfirmedPath())
+            applyRename(*renamed);
 
         // 在窗口绘制之后取可见性：本帧被关掉的窗口立刻把输入还给画布
         const bool windowVisible = anyWindowVisible();
@@ -2671,6 +2731,11 @@ public:
 
         case ActionENUM::requestExit: {
             PostMessageW(m_hWnd, WM_DESTROY, 0, 0);
+        } break;
+
+        case ActionENUM::renameImage: {
+            if (curFileIdx >= 0 && curFileIdx < (int)imgFileList.size() && imgFileList[curFileIdx] != m_wndCaption)
+                RenameWindow::instance().open(imgFileList[curFileIdx]);
         } break;
         }
 
