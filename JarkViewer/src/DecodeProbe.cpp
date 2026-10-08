@@ -945,6 +945,39 @@ namespace {
             }
         }
 
+        // <switch> 与 foreignObject：draw.io 导出把 XHTML 文本放 foreignObject、等价的
+        // <text> 作兜底；lunasvg 画不了 foreignObject，必须落到 <text> 上，否则文字全丢
+        const std::string switchSvg = R"svg(<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60" viewBox="0 0 200 60">)svg"
+            R"svg(<rect width="200" height="60" fill="#ffffff"/>)svg"
+            R"svg(<switch>)svg"
+            R"svg(<foreignObject requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility" x="20" y="10" width="160" height="40">)svg"
+            R"svg(<div xmlns="http://www.w3.org/1999/xhtml">FOREIGN</div></foreignObject>)svg"
+            R"svg(<text x="100" y="40" font-size="30" text-anchor="middle" fill="#000000">兜底文字</text>)svg"
+            R"svg(</switch></svg>)svg";
+
+        const std::string switchFolded = SVGPreprocessor().preprocessSVG(switchSvg.data(), switchSvg.size());
+        check(!switchFolded.empty(), "<switch> 用例预处理成功");
+        check(switchFolded.find("foreignObject") == std::string::npos,
+            "<switch>：不支持 Extensibility 的 foreignObject 被丢弃");
+        check(switchFolded.find("<text") != std::string::npos,
+            "<switch>：落到等价的 <text> 兜底而不是把它一起删掉");
+        {
+            // <text> 需要先注册系统字体（lunasvg 无内置字体），与查看器走同一套
+            const bool hasFont = jark::ensureVectorFonts();
+            jark::VectorImage textImage = makeVectorImage(switchSvg, 200, 60);
+            const cv::Mat raster = jark::renderVectorImage(textImage, 200, 60);
+            int darkPixels = 0;
+            for (int y = 0; y < raster.rows; ++y)
+                for (int x = 0; x < raster.cols; ++x) {
+                    const cv::Vec4b px = raster.at<cv::Vec4b>(y, x);
+                    if (px[3] > 128 && px[0] < 96 && px[1] < 96 && px[2] < 96)
+                        ++darkPixels;
+                }
+            check(!hasFont || darkPixels > 50,
+                hasFont ? std::format("<switch>：兜底 <text> 真的画出了文字（暗像素 {}）", darkPixels)
+                        : std::string("<switch>：本机没有可注册的系统字体，跳过文字像素断言"));
+        }
+
         report = std::format("---- SVG 自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
         return report;
     }

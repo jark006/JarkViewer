@@ -55,6 +55,26 @@ namespace {
 
 } // namespace
 
+bool ensureVectorFonts() {
+    static const bool registered = [] {
+        // SVG 内文字用系统字体渲染（工程不再内嵌 ttf）
+        wchar_t windowsDir[MAX_PATH] = {};
+        const UINT length = ::GetWindowsDirectoryW(windowsDir, MAX_PATH);
+        if (length > 0 && length < MAX_PATH) {
+            const std::wstring fontDir = std::wstring(windowsDir) + L"\\Fonts\\";
+            for (const wchar_t* fileName : { L"msyh.ttc", L"Deng.ttf", L"simhei.ttf", L"segoeui.ttf" }) {
+                const std::string fontPath = jarkUtils::wstringToUtf8(fontDir + fileName);
+                if (lunasvg_add_font_face_from_file("", false, false, fontPath.c_str())) {
+                    JARK_LOG("SVG 字体：{}", fontPath);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }();
+    return registered;
+}
+
 cv::Mat renderVectorImage(const VectorImage& vectorImage, int width, int height) {
     if (!vectorImage.document || width <= 0 || height <= 0)
         return {};

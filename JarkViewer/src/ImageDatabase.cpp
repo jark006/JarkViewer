@@ -1880,25 +1880,10 @@ cv::Mat ImageDatabase::loadSTB(wstring_view path, std::span<const uint8_t> buf) 
 
 
 ImageAsset ImageDatabase::loadSVG(wstring_view path, std::span<const uint8_t> buf) {
-    // 字体只需注册一次；函数内静态的惰性初始化天然线程安全——
-    // 缩略图服务的兜底解码线程可能与界面线程同时解码 SVG。
-    static const bool isInitFont = [] {
-        // SVG 内文字用系统字体渲染（不再内嵌 ttf）
-        wchar_t windowsDir[MAX_PATH] = {};
-        const UINT length = ::GetWindowsDirectoryW(windowsDir, MAX_PATH);
-        if (length > 0 && length < MAX_PATH) {
-            const std::wstring fontDir = std::wstring(windowsDir) + L"\\Fonts\\";
-            for (const wchar_t* fileName : { L"msyh.ttc", L"Deng.ttf", L"simhei.ttf", L"segoeui.ttf" }) {
-                const std::string fontPath = jarkUtils::wstringToUtf8(fontDir + fileName);
-                if (lunasvg_add_font_face_from_file("", false, false, fontPath.c_str())) {
-                    JARK_LOG("SVG 字体：{}", fontPath);
-                    break;
-                }
-            }
-        }
-        return true;
-    }();
-    (void)isInitFont;
+    // lunasvg 没有内置字体，<text> 要先注册系统字体（见 jark::ensureVectorFonts）；
+    // 函数内静态惰性初始化，缩略图服务的兜底解码线程也会解码 SVG，天然线程安全
+    const bool hasFont = jark::ensureVectorFonts();
+    (void)hasFont;
 
     SVGPreprocessor preprocessor;
     auto SVGData = preprocessor.preprocessSVG((const char*)buf.data(), buf.size());

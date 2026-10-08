@@ -116,12 +116,18 @@ private:
                 lang.find(language.substr(0, 2)) != std::string::npos;
         }
 
+        // foreignObject 及其依赖的 SVG 1.1 Extensibility 特性 lunaSVG 都不支持。
+        // draw.io 等导出的画布是 <switch><foreignObject …/><text …/></switch>：
+        // 前者放 XHTML 文本，后者是等价的 <text> 兜底。必须在这里把前者判为不可用，
+        // 否则会选中画不出来的 foreignObject、同时把兜底 <text> 删掉——整张图的文字全丢。
+        if (std::strcmp(element->Name(), "foreignObject") == 0)
+            return false;
+
         // 检查 requiredFeatures 属性
         const char* requiredFeatures = element->Attribute("requiredFeatures");
         if (requiredFeatures) {
-            // 这里可以根据lunaSVG支持的特性进行判断
-            // 暂时返回true，表示支持所有特性
-            return true;
+            // 认得的只有 Extensibility（不支持）；其余特性暂时按支持处理
+            return std::string(requiredFeatures).find("Extensibility") == std::string::npos;
         }
 
         // 检查 requiredExtensions 属性

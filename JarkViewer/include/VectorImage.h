@@ -49,6 +49,12 @@ inline constexpr int VECTOR_RASTER_INITIAL_EDGE = 1024;
 // 避免缩放动画过程中反复渲染
 inline constexpr double VECTOR_RASTER_HYSTERESIS = 1.25;
 
+// 注册 SVG 内文字用的系统字体（微软雅黑/等线/黑体/宋体，取第一个成功的）。
+// lunasvg 没有内置字体，不注册的话 <text> 什么都画不出来；
+// 函数内静态惰性初始化，天然线程安全（缩略图兜底解码线程也会解码 SVG）。
+// 返回是否至少成功注册了一种字体。
+bool ensureVectorFonts();
+
 // 按指定像素尺寸光栅化矢量文档；失败返回空 Mat
 cv::Mat renderVectorImage(const VectorImage& vectorImage, int width, int height);
 
