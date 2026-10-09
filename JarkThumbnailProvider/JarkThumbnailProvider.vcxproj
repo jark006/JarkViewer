@@ -63,7 +63,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>windowscodecs.lib;ole32.lib;shlwapi.lib;ntdll.lib;userenv.lib;lunasvg.lib;plutovg.lib;pixman-1.lib;heif.lib;libde265.lib;x265-static.lib;avif.lib;yuv.lib;dav1d.lib;aom.lib;jxl.lib;jxl_cms.lib;jxl_extras_codec.lib;jxl_threads.lib;hwy.lib;webp2.lib;imageio.lib;DirectXTex.lib;raw_r.lib;jasper.lib;lcms2.lib;freeglut.lib;liblepton.lib;turbojpeg.lib;jpeg.lib;minizip.lib;bz2.lib;zlib.lib;brotlidec.lib;brotlicommon.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>windowscodecs.lib;ole32.lib;shlwapi.lib;ntdll.lib;userenv.lib;lunasvg.lib;plutovg.lib;heif.lib;libde265.lib;x265-static.lib;avif.lib;yuv.lib;dav1d.lib;aom.lib;jxl.lib;jxl_cms.lib;jxl_extras_codec.lib;jxl_threads.lib;hwy.lib;webp2.lib;imageio.lib;DirectXTex.lib;raw_r.lib;jasper.lib;lcms2.lib;liblepton.lib;turbojpeg.lib;jpeg.lib;minizips.lib;bz2.lib;zlib.lib;brotlidec.lib;brotlienc.lib;brotlicommon.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>JarkThumbnailProvider.def</ModuleDefinitionFile>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
@@ -84,7 +84,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>windowscodecs.lib;ole32.lib;shlwapi.lib;ntdll.lib;userenv.lib;lunasvg.lib;plutovg.lib;pixman-1.lib;heif.lib;libde265.lib;x265-static.lib;avif.lib;yuv.lib;dav1d.lib;aom.lib;jxl.lib;jxl_cms.lib;jxl_extras_codec.lib;jxl_threads.lib;hwy.lib;webp2.lib;imageio.lib;DirectXTex.lib;raw_r.lib;jasper.lib;lcms2.lib;freeglut.lib;liblepton.lib;turbojpeg.lib;jpeg.lib;minizip.lib;bz2.lib;zlib.lib;brotlidec.lib;brotlicommon.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>windowscodecs.lib;ole32.lib;shlwapi.lib;ntdll.lib;userenv.lib;lunasvg.lib;plutovg.lib;heif.lib;libde265.lib;x265-static.lib;avif.lib;yuv.lib;dav1d.lib;aom.lib;jxl.lib;jxl_cms.lib;jxl_extras_codec.lib;jxl_threads.lib;hwy.lib;webp2.lib;imageio.lib;DirectXTex.lib;raw_r.lib;jasper.lib;lcms2.lib;liblepton.lib;turbojpeg.lib;jpeg.lib;minizips.lib;bz2.lib;zlib.lib;brotlidec.lib;brotlienc.lib;brotlicommon.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>JarkThumbnailProvider.def</ModuleDefinitionFile>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>

@@ -89,9 +89,21 @@ pwsh tools/verify_source_invariant_checks.ps1
   `tools/check_source_invariants.ps1` 的第 10 项检查盯着这件事（两个工程都查：自有 `src/*.cpp`、
   `include/*.h` 全部在列、工程条目都指向存在的文件、`.vcxproj` 与 `.filters` 一一对应），
   反向验证在 `tools/verify_source_invariant_checks.ps1` 里。加文件后忘了跑生成器时，跑一次即修正。
-- `JarkViewer.vcxproj` 中 `VcpkgEnabled=false`，默认使用仓库内的静态库目录：`JarkViewer/lib*`、`JarkViewer/ffmpeg`、`JarkViewer/include`。
+- `JarkViewer.vcxproj` 中 `VcpkgEnabled=false`，默认使用仓库内的静态库目录：`JarkViewer/lib*`（含 `libffmpeg`、`libopencv`、`libjxl`、`libavif`、`libexiv2`、`libwebp2`）、`JarkViewer/include`。
 - README 说明第三方静态库需从 release 的 `static_lib` 包准备；如果改为 vcpkg，需要在项目属性中启用并补齐依赖。
-- `JarkViewer/libopencv/zlib.lib` 已换成 **zlib-ng 的 compat 构建**（大 PNG 解压约快 25%）。compat 模式不改符号名，OpenCV 是最终链接时才解析 inflate，所以是原地替换、不用重建 OpenCV；但 **include 下的 `zlib.h`/`zconf.h`/`zlib_name_mangling.h` 必须与 .lib 是同一来源**。换机器或重建静态库环境时跑一次 `pwsh tools/build-zlib-ng.ps1 -Install`（原件备份在同目录 `zlib-1.3.1.lib`；头文件回退用 git checkout）。
+- **OpenCV 不在 vcpkg 里，是源码自建**：`pwsh tools/build-opencv.ps1 [-Version 4.14.0] -Install` 一步到位（拉源码 → 打 `tools/opencv-jarkviewer.patch` → CMake 配置 → 编译 → 安装），`-Install` 再把产物复制进 `JarkViewer/libopencv/` 与 `JarkViewer/include/opencv2/`。脚本里的 CMake 参数是从 4.13.0 那版的构建树逐项对齐来的：world + opencv_contrib + nonfree + 自带 3rdparty（jpeg/png/tiff/webp/openjpeg/openexr/zlib）+ IPP/IPP-IW/ITT、`/MT` 静态 CRT、只出 Release；**关掉** dnn/objdetect/datasets（连带 aruco/face/text/wechat_qrcode 不参与编译）、CUDA、OpenGL、Vulkan、GDAL、GDCM、Jasper、AVIF、JPEG XL、OpenCV 自带的 FFmpeg/GStreamer（工程用的是自己那份 FFmpeg）。改这些参数会让产出与 README 描述的静态库包对不上，升级版本时只改 `-Version`。补丁内容：① `modules/imgcodecs/src/loadsave.cpp` 去掉图像分辨率限制（宽/高 `1<<20`、总像素 `1<<30` 三个硬上限）；② `modules/highgui/src/window_w32.cpp` 的窗口光标 `IDC_CROSS` → `IDC_ARROW`。两处代码在 4.13/4.14 里完全一致、行号相同。升级到 4.14 时 `HAVE_IPP_IW_LL` 消失（IPP 升到 2026.0.0，新版 IW 没有 LL 接口）、新 OpenCL 头多出 `HAVE_OPENCL_D3D11_NV`，都是上游版本差异，不影响本工程用到的功能（imgcodecs/imgproc/core）。
+- `JarkViewer/libopencv/zlib.lib` 已换成 **zlib-ng 的 compat 构建**（大 PNG 解压约快 25%）。compat 模式不改符号名，OpenCV 是最终链接时才解析 inflate，所以是原地替换、不用重建 OpenCV；但 **include 下的 `zlib.h`/`zconf.h`/`zlib_name_mangling.h` 必须与 .lib 是同一来源**。换机器或重建静态库环境时跑一次 `pwsh tools/build-zlib-ng.ps1 -Install`（原件备份在同目录 `zlib-1.3.1.lib`；头文件回退用 git checkout）——**必须在 `build-opencv.ps1 -Install` 之后跑**，否则会被 OpenCV 自带的那份 zlib 覆盖回去。
+- **升级静态库时会变的链接清单**（`ImageDatabase.h` 的 `#pragma comment(lib, …)` 与
+  `JarkThumbnailProvider.vcxproj` 的 `AdditionalDependencies`）：升级到 ffmpeg 9.0.2 那一轮踩到的坑——
+  QSV 改走 oneVPL 调度器，`MFXLoad`/`MFXCreateSession` 在 **`vpl.lib`** 里，且**不能同时链旧的 `libmfx.lib`**
+  （两者都带 `mfx_function_table.cpp.obj`，会撞 LNK2005）；libssh 改用 Windows CNG，要补 **`ncrypt.lib`**
+  （不再需要 OpenSSL）；ffmpeg 9 新拉进 **`SvtAv1Enc.lib`** 与 **`twolame.lib`**，而 `SvtAv1Enc` 又引用
+  **`fastfeat`** 的 `fast9_detect_nonmax`；libheif 1.23.5 带 brotli 压缩，缩略图工程也要补 `brotlienc.lib`。
+  abseil 20260107 合并掉了 6 个目标（`absl_string_view`/`absl_low_level_hash`/`absl_bad_any_cast_impl`/
+  `absl_bad_optional_access`/`absl_bad_variant_access`/`absl_random_internal_pool_urbg`），对应 pragma 已删；
+  minizip 1.3.2 的静态库改叫 **`minizips.lib`**（两个工程都已改）。另外工程里那批只有 pragma、源码零引用的
+  库（`FreeImage`/`FreeImagePlus`/`pixman-1`/`freeglut`/`yasm` 与孤儿文件 `thorvg-0.lib`）已清掉，
+  验证方式是删掉后仍能链接。
 - Release 输出程序位于 `x64/Release/JarkViewer.exe`，中间文件位于 `JarkViewer/x64/<Configuration>`。
 
 ## 高层架构

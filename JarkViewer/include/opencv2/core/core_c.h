@@ -2670,7 +2670,8 @@ Func;                                                           \
 #define CV_FUNCNAME( Name )
 #define cvFuncName ""
 #else
-#define CV_FUNCNAME( Name )  const char* const cvFuncName = Name
+#define CV_FUNCNAME( Name )  \
+static char cvFuncName[] = Name
 #endif
 
 

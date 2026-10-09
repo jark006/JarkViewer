@@ -208,7 +208,7 @@ struct MutableSliceBase : public ConstSliceBase<storage_type, data_type> {
    *
    * Now, `slice<T>` can call the `subSlice() const` method from its
    * base class, but that will return a mutable `slice<T>`! Instead we
-   * use this function to convert the ``slice<T>` into the parent of
+   * use this function to convert the `slice<T>` into the parent of
    * the appropriate `slice<const T>` and call its `subSlice() const`,
    * which returns the correct type.
    */

@@ -217,15 +217,15 @@ enum MorphTypes{
     MORPH_ERODE    = 0, //!< see #erode
     MORPH_DILATE   = 1, //!< see #dilate
     MORPH_OPEN     = 2, //!< an opening operation
-                        //!< \f[\texttt{dst} = \mathrm{open} ( \texttt{src} , \texttt{element} )= \mathrm{dilate} ( \mathrm{erode} ( \texttt{src} , \texttt{element} ))\f]
+                        //!< \f[\texttt{dst} = \mathrm{open} ( \texttt{src} , \texttt{kernel} )= \mathrm{dilate} ( \mathrm{erode} ( \texttt{src} , \texttt{kernel} ))\f]
     MORPH_CLOSE    = 3, //!< a closing operation
-                        //!< \f[\texttt{dst} = \mathrm{close} ( \texttt{src} , \texttt{element} )= \mathrm{erode} ( \mathrm{dilate} ( \texttt{src} , \texttt{element} ))\f]
+                        //!< \f[\texttt{dst} = \mathrm{close} ( \texttt{src} , \texttt{kernel} )= \mathrm{erode} ( \mathrm{dilate} ( \texttt{src} , \texttt{kernel} ))\f]
     MORPH_GRADIENT = 4, //!< a morphological gradient
-                        //!< \f[\texttt{dst} = \mathrm{morph\_grad} ( \texttt{src} , \texttt{element} )= \mathrm{dilate} ( \texttt{src} , \texttt{element} )- \mathrm{erode} ( \texttt{src} , \texttt{element} )\f]
+                        //!< \f[\texttt{dst} = \mathrm{morph\_grad} ( \texttt{src} , \texttt{kernel} )= \mathrm{dilate} ( \texttt{src} , \texttt{kernel} )- \mathrm{erode} ( \texttt{src} , \texttt{kernel} )\f]
     MORPH_TOPHAT   = 5, //!< "top hat"
-                        //!< \f[\texttt{dst} = \mathrm{tophat} ( \texttt{src} , \texttt{element} )= \texttt{src} - \mathrm{open} ( \texttt{src} , \texttt{element} )\f]
+                        //!< \f[\texttt{dst} = \mathrm{tophat} ( \texttt{src} , \texttt{kernel} )= \texttt{src} - \mathrm{open} ( \texttt{src} , \texttt{kernel} )\f]
     MORPH_BLACKHAT = 6, //!< "black hat"
-                        //!< \f[\texttt{dst} = \mathrm{blackhat} ( \texttt{src} , \texttt{element} )= \mathrm{close} ( \texttt{src} , \texttt{element} )- \texttt{src}\f]
+                        //!< \f[\texttt{dst} = \mathrm{blackhat} ( \texttt{src} , \texttt{kernel} )= \mathrm{close} ( \texttt{src} , \texttt{kernel} )- \texttt{src}\f]
     MORPH_HITMISS  = 7  //!< "hit or miss"
                         //!<   .- Only supported for CV_8UC1 binary images. A tutorial can be found in the documentation
 };
@@ -2327,7 +2327,7 @@ Check @ref tutorial_opening_closing_hats "the corresponding tutorial" for more d
 The function erodes the source image using the specified structuring element that determines the
 shape of a pixel neighborhood over which the minimum is taken:
 
-\f[\texttt{dst} (x,y) =  \min _{(x',y'):  \, \texttt{element} (x',y') \ne0 } \texttt{src} (x+x',y+y')\f]
+\f[\texttt{dst} (x,y) =  \min _{(x',y'):  \, \texttt{kernel} (x',y') \ne0 } \texttt{src} (x+x',y+y')\f]
 
 The function supports the in-place mode. Erosion can be applied several ( iterations ) times. In
 case of multi-channel images, each channel is processed independently.
@@ -2335,7 +2335,7 @@ case of multi-channel images, each channel is processed independently.
 @param src input image; the number of channels can be arbitrary, but the depth should be one of
 CV_8U, CV_16U, CV_16S, CV_32F or CV_64F.
 @param dst output image of the same size and type as src.
-@param kernel structuring element used for erosion; if `element=Mat()`, a `3 x 3` rectangular
+@param kernel structuring element used for erosion; if `kernel=Mat()`, a `3 x 3` rectangular
 structuring element is used. Kernel can be created using #getStructuringElement.
 @param anchor position of the anchor within the element; default value (-1, -1) means that the
 anchor is at the element center.
@@ -2359,7 +2359,7 @@ Check @ref tutorial_erosion_dilatation "the corresponding tutorial" for more det
 
 The function dilates the source image using the specified structuring element that determines the
 shape of a pixel neighborhood over which the maximum is taken:
-\f[\texttt{dst} (x,y) =  \max _{(x',y'):  \, \texttt{element} (x',y') \ne0 } \texttt{src} (x+x',y+y')\f]
+\f[\texttt{dst} (x,y) =  \max _{(x',y'):  \, \texttt{kernel} (x',y') \ne0 } \texttt{src} (x+x',y+y')\f]
 
 The function supports the in-place mode. Dilation can be applied several ( iterations ) times. In
 case of multi-channel images, each channel is processed independently.
@@ -2367,12 +2367,12 @@ case of multi-channel images, each channel is processed independently.
 @param src input image; the number of channels can be arbitrary, but the depth should be one of
 CV_8U, CV_16U, CV_16S, CV_32F or CV_64F.
 @param dst output image of the same size and type as src.
-@param kernel structuring element used for dilation; if element=Mat(), a 3 x 3 rectangular
+@param kernel structuring element used for dilation; if `kernel=Mat()`, a `3 x 3` rectangular
 structuring element is used. Kernel can be created using #getStructuringElement
 @param anchor position of the anchor within the element; default value (-1, -1) means that the
 anchor is at the element center.
 @param iterations number of times dilation is applied.
-@param borderType pixel extrapolation method, see #BorderTypes. #BORDER_WRAP is not suported.
+@param borderType pixel extrapolation method, see #BorderTypes. #BORDER_WRAP is not supported.
 @param borderValue border value in case of a constant border
 @sa  erode, morphologyEx, getStructuringElement
  */
@@ -2529,9 +2529,11 @@ with the WARP_RELATIVE_MAP flag :
 where values of pixels with non-integer coordinates are computed using one of available
 interpolation methods. \f$map_x\f$ and \f$map_y\f$ can be encoded as separate floating-point maps
 in \f$map_1\f$ and \f$map_2\f$ respectively, or interleaved floating-point maps of \f$(x,y)\f$ in
-\f$map_1\f$, or fixed-point maps created by using #convertMaps. The reason you might want to
-convert from floating to fixed-point representations of a map is that they can yield much faster
-(\~2x) remapping operations. In the converted case, \f$map_1\f$ contains pairs (cvFloor(x),
+\f$map_1\f$, or fixed-point maps created by using #convertMaps. Fixed-point maps
+use a more compact representation, which can reduce memory bandwidth and benefit
+repeated remap calls that reuse the same map. Performance gains vary by hardware
+and are typically modest; measure before converting. In the converted case,
+\f$map_1\f$ contains pairs (cvFloor(x),
 cvFloor(y)) and \f$map_2\f$ contains indices in a table of interpolation coefficients.
 
 This function cannot operate in-place.
@@ -2540,7 +2542,7 @@ This function cannot operate in-place.
 @param dst Destination image. It has the same size as map1 and the same type as src .
 @param map1 The first map of either (x,y) points or just x values having the type CV_16SC2 ,
 CV_32FC1, or CV_32FC2. See #convertMaps for details on converting a floating point
-representation to fixed-point for speed.
+representation to fixed-point.
 @param map2 The second map of y values having the type CV_16UC1, CV_32FC1, or none (empty map
 if map1 is (x,y) points), respectively.
 @param interpolation Interpolation method (see #InterpolationFlags). The methods #INTER_AREA
@@ -3867,7 +3869,7 @@ CV_EXPORTS_W void demosaicing(InputArray src, OutputArray dst, int code, int dst
 The function computes moments, up to the 3rd order, of a vector shape or a rasterized shape. The
 results are returned in the structure cv::Moments.
 
-@param array Single chanel raster image (CV_8U, CV_16U, CV_16S, CV_32F, CV_64F) or an array (
+@param array Single channel raster image (CV_8U, CV_16U, CV_16S, CV_32F, CV_64F) or an array (
 \f$1 \times N\f$ or \f$N \times 1\f$ ) of 2D points (Point or Point2f).
 @param binaryImage If it is true, all non-zero image pixels are treated as 1's. The parameter is
 used for images only.
@@ -4084,9 +4086,14 @@ CV_EXPORTS_W int connectedComponentsWithStats(InputArray image, OutputArray labe
 
 /** @brief Finds contours in a binary image.
 
-The function retrieves contours from the binary image using the algorithm @cite Suzuki85 . The contours
+The function retrieves contours from the binary image. The contours
 are a useful tool for shape analysis and object detection and recognition. See squares.cpp in the
 OpenCV sample directory.
+
+@note Since OpenCV 4.14, when mode is #RETR_LIST and no hierarchy is requested, this function
+automatically uses the TRUCO parallel algorithm @cite TRUCO2026, a scalable lock-free method for
+contour extraction. In all other cases, the sequential @cite Suzuki85 algorithm is used.
+
 @note Since opencv 3.2 source image is not modified by this function.
 
 @param image Source, an 8-bit single-channel image. Non-zero pixels are treated as 1's. Zero
@@ -4116,6 +4123,7 @@ CV_EXPORTS_W void findContours( InputArray image, OutputArrayOfArrays contours,
 CV_EXPORTS void findContours( InputArray image, OutputArrayOfArrays contours,
                               int mode, int method, Point offset = Point());
 
+
 //! @brief Find contours using link runs algorithm
 //!
 //! This function implements an algorithm different from cv::findContours:
@@ -4128,6 +4136,7 @@ CV_EXPORTS_W void findContoursLinkRuns(InputArray image, OutputArrayOfArrays con
 
 //! @overload
 CV_EXPORTS_W void findContoursLinkRuns(InputArray image, OutputArrayOfArrays contours);
+
 
 /** @brief Approximates a polygonal curve(s) with the specified precision.
 

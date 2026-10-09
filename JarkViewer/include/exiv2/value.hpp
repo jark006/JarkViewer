@@ -298,6 +298,7 @@ class EXIV2API DataValue : public Value {
   //! Internal virtual copy constructor.
   DataValue* clone_() const override;
 
+ public:
   //! Type used to store the data.
   using ValueType = std::vector<byte>;
   // DATA
@@ -1145,8 +1146,6 @@ class ValueType : public Value {
   explicit ValueType(const T& val, TypeId typeId = getType<T>());
   //! Copy constructor
   ValueType(const ValueType<T>& rhs);
-  //! Virtual destructor.
-  ~ValueType() override;
   //@}
 
   //! @name Manipulators
@@ -1289,9 +1288,7 @@ class ValueType : public Value {
 
   // DATA
   //! Pointer to the buffer, nullptr if none has been allocated
-  byte* pDataArea_{nullptr};
-  //! The current size of the buffer
-  size_t sizeDataArea_{0};
+  Blob pDataArea_;
 };  // class ValueType
 
 //! Unsigned short value type
@@ -1462,21 +1459,9 @@ ValueType<T>::ValueType(const T& val, TypeId typeId) : Value(typeId) {
 }
 
 template <typename T>
-ValueType<T>::ValueType(const ValueType<T>& rhs) :
-    Value(rhs.typeId()),
-    value_(rhs.value_)
-
-{
-  if (rhs.sizeDataArea_ > 0) {
-    pDataArea_ = new byte[rhs.sizeDataArea_];
-    std::memcpy(pDataArea_, rhs.pDataArea_, rhs.sizeDataArea_);
-    sizeDataArea_ = rhs.sizeDataArea_;
-  }
-}
-
-template <typename T>
-ValueType<T>::~ValueType() {
-  delete[] pDataArea_;
+ValueType<T>::ValueType(const ValueType<T>& rhs) : Value(rhs.typeId()), value_(rhs.value_) {
+  if (!rhs.pDataArea_.empty())
+    pDataArea_ = rhs.pDataArea_;
 }
 
 template <typename T>
@@ -1486,14 +1471,10 @@ ValueType<T>& ValueType<T>::operator=(const ValueType<T>& rhs) {
   Value::operator=(rhs);
   value_ = rhs.value_;
 
-  byte* tmp = nullptr;
-  if (rhs.sizeDataArea_ > 0) {
-    tmp = new byte[rhs.sizeDataArea_];
-    std::memcpy(tmp, rhs.pDataArea_, rhs.sizeDataArea_);
-  }
-  delete[] pDataArea_;
-  pDataArea_ = tmp;
-  sizeDataArea_ = rhs.sizeDataArea_;
+  if (!rhs.pDataArea_.empty())
+    pDataArea_ = rhs.pDataArea_;
+  else
+    pDataArea_.clear();
 
   return *this;
 }
@@ -1674,24 +1655,20 @@ inline Rational ValueType<double>::toRational(size_t n) const {
 
 template <typename T>
 size_t ValueType<T>::sizeDataArea() const {
-  return sizeDataArea_;
+  return pDataArea_.size();
 }
 
 template <typename T>
 DataBuf ValueType<T>::dataArea() const {
-  return {pDataArea_, sizeDataArea_};
+  return {pDataArea_.data(), pDataArea_.size()};
 }
 
 template <typename T>
 int ValueType<T>::setDataArea(const byte* buf, size_t len) {
-  byte* tmp = nullptr;
-  if (len > 0) {
-    tmp = new byte[len];
-    std::memcpy(tmp, buf, len);
-  }
-  delete[] pDataArea_;
-  pDataArea_ = tmp;
-  sizeDataArea_ = len;
+  if (len > 0)
+    pDataArea_ = Blob(buf, buf + len);
+  else
+    pDataArea_.clear();
   return 0;
 }
 }  // namespace Exiv2

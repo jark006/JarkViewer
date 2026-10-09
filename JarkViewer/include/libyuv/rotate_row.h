@@ -12,38 +12,15 @@
 #define INCLUDE_LIBYUV_ROTATE_ROW_H_
 
 #include "libyuv/basic_types.h"
+#include "libyuv/cpu_support.h"
 
 #ifdef __cplusplus
 namespace libyuv {
 extern "C" {
 #endif
 
-#if defined(__pnacl__) || defined(__CLR_VER) ||            \
-    (defined(__native_client__) && defined(__x86_64__)) || \
-    (defined(__i386__) && !defined(__SSE__) && !defined(__clang__))
-#define LIBYUV_DISABLE_X86
-#endif
-#if defined(__native_client__)
-#define LIBYUV_DISABLE_NEON
-#endif
-
-// clang >= 19.0.0 required for SME
-#if !defined(LIBYUV_DISABLE_SME) && defined(__clang__) && defined(__aarch64__)
-#if __clang_major__ < 19
-#define LIBYUV_DISABLE_SME
-#endif
-#endif
-
-// MemorySanitizer does not support assembly code yet. http://crbug.com/344505
-#if defined(__has_feature)
-#if __has_feature(memory_sanitizer) && !defined(LIBYUV_DISABLE_NEON)
-#define LIBYUV_DISABLE_NEON
-#endif
-#if __has_feature(memory_sanitizer) && !defined(LIBYUV_DISABLE_X86)
-#define LIBYUV_DISABLE_X86
-#endif
-#endif
 // The following are available for Visual C 32 bit:
+// TODO - port to clangcl on rotate_win
 #if !defined(LIBYUV_DISABLE_X86) && defined(_M_IX86) && defined(_MSC_VER) && \
     !defined(__clang__)
 #define HAS_TRANSPOSEWX8_SSSE3
@@ -51,14 +28,17 @@ extern "C" {
 #endif
 
 // The following are available for GCC 32 or 64 bit:
-#if !defined(LIBYUV_DISABLE_X86) && (defined(__i386__) || defined(__x86_64__))
+#if !defined(LIBYUV_DISABLE_X86) &&               \
+    (defined(__i386__) || defined(__x86_64__)) && \
+    !defined(LIBYUV_ENABLE_ROWWIN)
 #define HAS_TRANSPOSEWX8_SSSE3
 #define HAS_TRANSPOSE4X4_32_SSE2
 #define HAS_TRANSPOSE4X4_32_AVX2
 #endif
 
 // The following are available for 64 bit GCC:
-#if !defined(LIBYUV_DISABLE_X86) && defined(__x86_64__)
+#if !defined(LIBYUV_DISABLE_X86) && defined(__x86_64__) && \
+    !defined(LIBYUV_ENABLE_ROWWIN)
 #define HAS_TRANSPOSEWX8_FAST_SSSE3
 #define HAS_TRANSPOSEUVWX8_SSE2
 #endif
@@ -74,7 +54,8 @@ extern "C" {
 #define HAS_TRANSPOSE4X4_32_NEON
 #endif
 
-#if !defined(LIBYUV_DISABLE_SME) && defined(__aarch64__)
+#if !defined(LIBYUV_DISABLE_SME) && defined(CLANG_HAS_SME) && \
+    defined(__aarch64__)
 #define HAS_TRANSPOSEWXH_SME
 #define HAS_TRANSPOSEUVWXH_SME
 #endif

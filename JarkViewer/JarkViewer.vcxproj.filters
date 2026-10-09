@@ -608,6 +608,9 @@
     <ClInclude Include="include\aom\aom_encoder.h">
       <Filter>ThirdParty\aom</Filter>
     </ClInclude>
+    <ClInclude Include="include\aom\aom_ext_ratectrl.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
     <ClInclude Include="include\aom\aom_external_partition.h">
       <Filter>ThirdParty\aom</Filter>
     </ClInclude>
@@ -618,6 +621,9 @@
       <Filter>ThirdParty\aom</Filter>
     </ClInclude>
     <ClInclude Include="include\aom\aom_integer.h">
+      <Filter>ThirdParty\aom</Filter>
+    </ClInclude>
+    <ClInclude Include="include\aom\aom_tpl.h">
       <Filter>ThirdParty\aom</Filter>
     </ClInclude>
     <ClInclude Include="include\aom\aomcx.h">
@@ -797,9 +803,6 @@
     <ClInclude Include="include\ffmpeg\libavcodec\avdct.h">
       <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
     </ClInclude>
-    <ClInclude Include="include\ffmpeg\libavcodec\avfft.h">
-      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
-    </ClInclude>
     <ClInclude Include="include\ffmpeg\libavcodec\bsf.h">
       <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
     </ClInclude>
@@ -830,7 +833,13 @@
     <ClInclude Include="include\ffmpeg\libavcodec\dxva2.h">
       <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
     </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\exif.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
     <ClInclude Include="include\ffmpeg\libavcodec\packet.h">
+      <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavcodec\smpte_436m.h">
       <Filter>ThirdParty\ffmpeg\libavcodec</Filter>
     </ClInclude>
     <ClInclude Include="include\ffmpeg\libavcodec\version.h">
@@ -935,6 +944,9 @@
     <ClInclude Include="include\ffmpeg\libavutil\common.h">
       <Filter>ThirdParty\ffmpeg\libavutil</Filter>
     </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\container_fifo.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
     <ClInclude Include="include\ffmpeg\libavutil\cpu.h">
       <Filter>ThirdParty\ffmpeg\libavutil</Filter>
     </ClInclude>
@@ -1004,7 +1016,13 @@
     <ClInclude Include="include\ffmpeg\libavutil\hwcontext.h">
       <Filter>ThirdParty\ffmpeg\libavutil</Filter>
     </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\hwcontext_amf.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
     <ClInclude Include="include\ffmpeg\libavutil\hwcontext_dxva2.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\hwcontext_oh.h">
       <Filter>ThirdParty\ffmpeg\libavutil</Filter>
     </ClInclude>
     <ClInclude Include="include\ffmpeg\libavutil\iamf.h">
@@ -1070,7 +1088,13 @@
     <ClInclude Include="include\ffmpeg\libavutil\rational.h">
       <Filter>ThirdParty\ffmpeg\libavutil</Filter>
     </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\raw_color_params.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
     <ClInclude Include="include\ffmpeg\libavutil\rc4.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\refstruct.h">
       <Filter>ThirdParty\ffmpeg\libavutil</Filter>
     </ClInclude>
     <ClInclude Include="include\ffmpeg\libavutil\replaygain.h">
@@ -1092,6 +1116,9 @@
       <Filter>ThirdParty\ffmpeg\libavutil</Filter>
     </ClInclude>
     <ClInclude Include="include\ffmpeg\libavutil\stereo3d.h">
+      <Filter>ThirdParty\ffmpeg\libavutil</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ffmpeg\libavutil\tdrdi.h">
       <Filter>ThirdParty\ffmpeg\libavutil</Filter>
     </ClInclude>
     <ClInclude Include="include\ffmpeg\libavutil\tea.h">
@@ -1679,6 +1706,9 @@
     <ClInclude Include="include\libyuv\cpu_id.h">
       <Filter>ThirdParty\libyuv</Filter>
     </ClInclude>
+    <ClInclude Include="include\libyuv\cpu_support.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
     <ClInclude Include="include\libyuv\loongson_intrinsics.h">
       <Filter>ThirdParty\libyuv</Filter>
     </ClInclude>
@@ -1701,6 +1731,9 @@
       <Filter>ThirdParty\libyuv</Filter>
     </ClInclude>
     <ClInclude Include="include\libyuv\row.h">
+      <Filter>ThirdParty\libyuv</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libyuv\row_sve.h">
       <Filter>ThirdParty\libyuv</Filter>
     </ClInclude>
     <ClInclude Include="include\libyuv\scale.h">
@@ -1730,10 +1763,10 @@
     <ClInclude Include="include\minizip\crypt.h">
       <Filter>ThirdParty\minizip</Filter>
     </ClInclude>
-    <ClInclude Include="include\minizip\ioapi.h">
+    <ClInclude Include="include\minizip\ints.h">
       <Filter>ThirdParty\minizip</Filter>
     </ClInclude>
-    <ClInclude Include="include\minizip\iowin32.h">
+    <ClInclude Include="include\minizip\ioapi.h">
       <Filter>ThirdParty\minizip</Filter>
     </ClInclude>
     <ClInclude Include="include\minizip\mztools.h">

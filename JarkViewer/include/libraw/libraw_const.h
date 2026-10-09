@@ -1,6 +1,6 @@
 /* -*- C++ -*-
  * File: libraw_const.h
- * Copyright 2008-2021 LibRaw LLC (info@libraw.org)
+ * Copyright 2008-2025 LibRaw LLC (info@libraw.org)
  * Created: Sat Mar  8 , 2008
  * LibRaw error codes
 LibRaw is free software; you can redistribute it and/or modify
@@ -29,14 +29,18 @@ it under the terms of the one of two licenses as you choose:
 #endif
 
 #ifndef LIBRAW_MAX_NONDNG_RAW_FILE_SIZE
-#define LIBRAW_MAX_NONDNG_RAW_FILE_SIZE 2147483647ULL
+#define LIBRAW_MAX_NONDNG_RAW_FILE_SIZE 2147483647LL
+#endif
+
+#ifndef LIBRAW_MAX_CR3_RAW_FILE_SIZE
+#define LIBRAW_MAX_CR3_RAW_FILE_SIZE LIBRAW_MAX_NONDNG_RAW_FILE_SIZE
 #endif
 
 #ifndef LIBRAW_MAX_DNG_RAW_FILE_SIZE
 #ifdef USE_DNGSDK
-#define LIBRAW_MAX_DNG_RAW_FILE_SIZE 4294967295ULL
+#define LIBRAW_MAX_DNG_RAW_FILE_SIZE 4294967295LL
 #else
-#define LIBRAW_MAX_DNG_RAW_FILE_SIZE 2147483647ULL
+#define LIBRAW_MAX_DNG_RAW_FILE_SIZE 2147483647LL
 #endif
 #endif
 
@@ -54,7 +58,19 @@ it under the terms of the one of two licenses as you choose:
 #define LIBRAW_CR3_MEMPOOL
 #endif
 
+/* max data size for known foveon cameras: 30mpix * 3 channels * 2 bytes = 180Mb, so 512Mb is OK for everything until/if new cameras will arrive */
+#ifndef LIBRAW_X3F_ALLOC_LIMIT_MB
+#define LIBRAW_X3F_ALLOC_LIMIT_MB 512ULL
+#endif
 
+/* Windows or Mac: swab() known to work*/
+#if defined (__APPLE__) || defined(WIN32) || defined(_WIN32)
+/* nothing ?*/
+#else /* all other systems */
+#if !defined(LIBRAW_SYSTEM_SWAB)
+#define LIBRAW_OWN_SWAB
+#endif
+#endif
 
 /* LibRaw uses own memory pool management, with LIBRAW_MSIZE (512)
 entries. It is enough for parsing/decoding non-damaged files, but
@@ -110,7 +126,7 @@ enum LibRaw_dngfields_marks
   LIBRAW_DNGFM_LINEARRESPONSELIMIT = 1 << 14,
   LIBRAW_DNGFM_USERCROP = 1 << 15,
   LIBRAW_DNGFM_OPCODE1 = 1 << 16,
-  LIBRAW_DNGFM_OPCODE3 = 1 << 17,
+  LIBRAW_DNGFM_OPCODE3 = 1 << 17
 };
 
 enum LibRaw_As_Shot_WB_Applied_codes
@@ -119,7 +135,8 @@ enum LibRaw_As_Shot_WB_Applied_codes
   LIBRAW_ASWB_CANON = 2,
   LIBRAW_ASWB_NIKON = 4,
   LIBRAW_ASWB_NIKON_SRAW = 8,
-  LIBRAW_ASWB_PENTAX = 16
+  LIBRAW_ASWB_PENTAX = 16,
+  LIBRAW_ASWB_SONY = 32
 };
 
 #define tagtypeIs(typex) (type == typex)
@@ -288,6 +305,7 @@ enum LibRaw_colorspace {
   LIBRAW_COLORSPACE_CameraGamma,
   LIBRAW_COLORSPACE_MonochromeLinear,
   LIBRAW_COLORSPACE_MonochromeGamma,
+  LIBRAW_COLORSPACE_Rec2020,
   LIBRAW_COLORSPACE_Unknown = 255
 };
 
@@ -472,6 +490,37 @@ enum LibRawImageAspects
   LIBRAW_IMAGE_ASPECT_7to5 = (1000 * 7) / 5
 };
 
+/*
+inch-based ID (diameter) -> diagonal, mm
+ID	diagonal	aspect
+1/4"	4.00	4:3
+1/3.6"	5.00	4:3
+1/3.4"	5.29	4:3
+1/3.2"	5.62	4:3
+1/3"	6.00	4:3
+1/2.9"	6.20	4:3
+1/2.7"	6.66	4:3
+1/2.5"	7.19	4:3
+1/2.4"	7.38	4:3
+1/2.35"	7.54	4:3
+1/2.33"	7.60	4:3
+1/2.3"	7.70	4:3
+1/2"	8.00	4:3
+1/1.9"	8.42	4:3
+1/1.8"	8.89	4:3
+1/1.76"	9.09	4:3
+1/1.75"	9.14	4:3
+1/1.72"	9.30	4:3
+1/1.7"	9.41	4:3
+1/1.65"	9.69	4:3
+1/1.63"	9.81	4:3
+1/1.6"	10.00	4:3
+2/3"	11.00	4:3
+1"	15.86	3:2
+4/3"	21.64	4:3
+1.5"	23.36	4:3
+*/
+
 enum LibRaw_lens_focal_types
 {
   LIBRAW_FT_UNDEFINED = 0,
@@ -540,7 +589,8 @@ enum LibRaw_Sony_0x9050_Type {
   LIBRAW_SONY_Tag9050None = 0,
   LIBRAW_SONY_Tag9050a,
   LIBRAW_SONY_Tag9050b,
-  LIBRAW_SONY_Tag9050c
+  LIBRAW_SONY_Tag9050c,
+  LIBRAW_SONY_Tag9050d
 };
 
 enum LIBRAW_SONY_FOCUSMODEmodes
@@ -611,7 +661,7 @@ enum LibRaw_rawspeed_bits_t
     /*  bits 3-7 are reserved*/
     LIBRAW_RAWSPEEDV3_USE = 1 << 8,
     LIBRAW_RAWSPEEDV3_FAILONUNKNOWN = 1 << 9,
-    LIBRAW_RAWSPEEDV3_IGNOREERRORS = 1 << 10,
+    LIBRAW_RAWSPEEDV3_IGNOREERRORS = 1 << 10
 };
 
 enum LibRaw_processing_options
@@ -620,7 +670,6 @@ enum LibRaw_processing_options
   LIBRAW_RAWOPTIONS_CONVERTFLOAT_TO_INT = 1 << 1,
   LIBRAW_RAWOPTIONS_ARQ_SKIP_CHANNEL_SWAP = 1 << 2,
   LIBRAW_RAWOPTIONS_NO_ROTATE_FOR_KODAK_THUMBNAILS = 1 << 3,
-//  LIBRAW_RAWOPTIONS_USE_DNG_DEFAULT_CROP = 1 << 4,
   LIBRAW_RAWOPTIONS_USE_PPM16_THUMBS = 1 << 5,
   LIBRAW_RAWOPTIONS_DONT_CHECK_DNG_ILLUMINANT = 1 << 6,
   LIBRAW_RAWOPTIONS_DNGSDK_ZEROCOPY = 1 << 7,
@@ -639,7 +688,10 @@ enum LibRaw_processing_options
   LIBRAW_RAWOPTIONS_DNG_STAGE2_IFPRESENT = 1 << 20,
   LIBRAW_RAWOPTIONS_DNG_STAGE3_IFPRESENT = 1 << 21,
   LIBRAW_RAWOPTIONS_DNG_ADD_MASKS = 1 << 22,
-  LIBRAW_RAWOPTIONS_CANON_IGNORE_MAKERNOTES_ROTATION = 1 << 23
+  LIBRAW_RAWOPTIONS_CANON_IGNORE_MAKERNOTES_ROTATION = 1 << 23,
+  LIBRAW_RAWOPTIONS_ALLOW_JPEGXL_PREVIEWS = 1 << 24,
+  LIBRAW_RAWOPTIONS_CANON_CHECK_CAMERA_AUTO_ROTATION_MODE = 1 << 26,
+  LIBRAW_RAWOPTIONS_DNG_STAGE23_IFPRESENT_JPGJXL = 1 << 27
 };
 
 enum LibRaw_decoder_flags
@@ -657,7 +709,7 @@ enum LibRaw_decoder_flags
   LIBRAW_DECODER_FLAT_BG2_SWAPPED = 1<<13,
   LIBRAW_DECODER_UNSUPPORTED_FORMAT = 1 << 14,
   LIBRAW_DECODER_NOTSET = 1 << 15,
-  LIBRAW_DECODER_TRYRAWSPEED3 = 1 << 16
+  LIBRAW_DECODER_TRYRAWSPEED3 = 1 << 16,
 };
 
 #define LIBRAW_XTRANS 9
@@ -682,9 +734,6 @@ enum LibRaw_warnings
   LIBRAW_WARN_NO_BADPIXELMAP = 1 << 8,
   LIBRAW_WARN_BAD_DARKFRAME_FILE = 1 << 9,
   LIBRAW_WARN_BAD_DARKFRAME_DIM = 1 << 10,
-#ifdef LIBRAW_OLD_VIDEO_SUPPORT
-  LIBRAW_WARN_NO_JASPER = 1 << 11,
-#endif
   LIBRAW_WARN_RAWSPEED_PROBLEM = 1 << 12,
   LIBRAW_WARN_RAWSPEED_UNSUPPORTED = 1 << 13,
   LIBRAW_WARN_RAWSPEED_PROCESSED = 1 << 14,
@@ -697,7 +746,10 @@ enum LibRaw_warnings
   LIBRAW_WARN_RAWSPEED3_PROBLEM = 1 << 21,
   LIBRAW_WARN_RAWSPEED3_UNSUPPORTED = 1 << 22,
   LIBRAW_WARN_RAWSPEED3_PROCESSED = 1 << 23,
-  LIBRAW_WARN_RAWSPEED3_NOTLISTED = 1 << 24
+  LIBRAW_WARN_RAWSPEED3_NOTLISTED = 1 << 24,
+  LIBRAW_WARN_VENDOR_CROP_SUGGESTED = 1 << 25,
+  LIBRAW_WARN_DNG_NOT_PROCESSED = 1 << 26,
+  LIBRAW_WARN_DNG_NOT_PARSED = 1 << 27
 };
 
 enum LibRaw_exceptions
@@ -791,6 +843,8 @@ enum LibRaw_internal_thumbnail_formats
     LIBRAW_INTERNAL_THUMBNAIL_PPM,
     LIBRAW_INTERNAL_THUMBNAIL_PPM16,
     LIBRAW_INTERNAL_THUMBNAIL_X3F,
+	LIBRAW_INTERNAL_THUMBNAIL_DNG_YCBCR,
+	LIBRAW_INTERNAL_THUMBNAIL_JPEGXL
 };
 
 
@@ -802,13 +856,16 @@ enum LibRaw_thumbnail_formats
   LIBRAW_THUMBNAIL_BITMAP16 = 3,
   LIBRAW_THUMBNAIL_LAYER = 4,
   LIBRAW_THUMBNAIL_ROLLEI = 5,
-  LIBRAW_THUMBNAIL_H265 = 6
+  LIBRAW_THUMBNAIL_H265 = 6,
+  LIBRAW_THUMBNAIL_JPEGXL = 7
 };
 
 enum LibRaw_image_formats
 {
   LIBRAW_IMAGE_JPEG = 1,
-  LIBRAW_IMAGE_BITMAP = 2
+  LIBRAW_IMAGE_BITMAP = 2,
+  LIBRAW_IMAGE_JPEGXL = 3,
+  LIBRAW_IMAGE_H265 = 4
 };
 
 #endif

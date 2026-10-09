@@ -1,0 +1,49 @@
+JarkViewer 对 OpenCV 源码的两处改动（README「静态库」一节有说明）。
+适用 OpenCV 4.13.0 / 4.14.0（两版这段代码完全一致，行号相同），在源码根目录 `git apply -p1`。
+
+1. modules/imgcodecs/src/loadsave.cpp #67-79：去掉图像分辨率限制。
+   OpenCV 默认把 imread 的宽/高限制在 1<<20、总像素限制在 1<<30（超过就抛
+   CV_Assert，表现为"这张大图打不开"）。这里把三个上限放到类型最大值并注释掉
+   三条断言，只保留 > 0 的检查。后面 imwrite 路径上那两处
+   `pixels > CV_IO_MAX_IMAGE_PIXELS` 的告警也随之失效（上限已是 LLONG_MAX）。
+
+2. modules/highgui/src/window_w32.cpp #337：`IDC_CROSS` → `IDC_ARROW`。
+   cv::imshow() 的窗口不再用十字光标。
+
+--- a/modules/imgcodecs/src/loadsave.cpp
++++ b/modules/imgcodecs/src/loadsave.cpp
+@@ -67,15 +67,15 @@
+-static const size_t CV_IO_MAX_IMAGE_PARAMS = cv::utils::getConfigurationParameterSizeT("OPENCV_IO_MAX_IMAGE_PARAMS", 50);
+-static const size_t CV_IO_MAX_IMAGE_WIDTH = utils::getConfigurationParameterSizeT("OPENCV_IO_MAX_IMAGE_WIDTH", 1 << 20);
+-static const size_t CV_IO_MAX_IMAGE_HEIGHT = utils::getConfigurationParameterSizeT("OPENCV_IO_MAX_IMAGE_HEIGHT", 1 << 20);
+-static const size_t CV_IO_MAX_IMAGE_PIXELS = utils::getConfigurationParameterSizeT("OPENCV_IO_MAX_IMAGE_PIXELS", 1 << 30);
++static const size_t CV_IO_MAX_IMAGE_PARAMS = 50; // cv::utils::getConfigurationParameterSizeT("OPENCV_IO_MAX_IMAGE_PARAMS", 50);
++static const size_t CV_IO_MAX_IMAGE_WIDTH = UINT_MAX; // utils::getConfigurationParameterSizeT("OPENCV_IO_MAX_IMAGE_WIDTH", 1 << 20);
++static const size_t CV_IO_MAX_IMAGE_HEIGHT = UINT_MAX; // utils::getConfigurationParameterSizeT("OPENCV_IO_MAX_IMAGE_HEIGHT", 1 << 20);
++static const size_t CV_IO_MAX_IMAGE_PIXELS = LLONG_MAX; // utils::getConfigurationParameterSizeT("OPENCV_IO_MAX_IMAGE_PIXELS", 1 << 30);
+
+ static Size validateInputImageSize(const Size& size)
+ {
+     CV_Assert(size.width > 0);
+-    CV_Assert(static_cast<size_t>(size.width) <= CV_IO_MAX_IMAGE_WIDTH);
++    //CV_Assert(static_cast<size_t>(size.width) <= CV_IO_MAX_IMAGE_WIDTH);
+     CV_Assert(size.height > 0);
+-    CV_Assert(static_cast<size_t>(size.height) <= CV_IO_MAX_IMAGE_HEIGHT);
+-    uint64 pixels = (uint64)size.width * (uint64)size.height;
+-    CV_Assert(pixels <= CV_IO_MAX_IMAGE_PIXELS);
++    //CV_Assert(static_cast<size_t>(size.height) <= CV_IO_MAX_IMAGE_HEIGHT);
++    //uint64 pixels = (uint64)size.width * (uint64)size.height;
++    //CV_Assert(pixels <= CV_IO_MAX_IMAGE_PIXELS);
+     return size;
+ }
+--- a/modules/highgui/src/window_w32.cpp
++++ b/modules/highgui/src/window_w32.cpp
+@@ -334,7 +334,7 @@
+         wndc.lpszClassName = highGUIclassName;
+         wndc.lpszMenuName = highGUIclassName;
+         wndc.hIcon = LoadIcon(0, IDI_APPLICATION);
+-        wndc.hCursor = (HCURSOR)LoadCursor(0, (LPSTR)(size_t)IDC_CROSS);
++        wndc.hCursor = (HCURSOR)LoadCursor(0, (LPSTR)(size_t)IDC_ARROW);
+         wndc.hbrBackground = (HBRUSH)GetStockObject(DKGRAY_BRUSH);
+
+         RegisterClass(&wndc);

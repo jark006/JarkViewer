@@ -33,7 +33,7 @@ it under the terms of the one of two licenses as you choose:
 #define LIBRAW_USE_LCMS 1
 
 /* Define to 1 if LibRaw have been compiled with RedCine codec support */
-#define LIBRAW_USE_REDCINECODEC 1
+/* #undef LIBRAW_USE_REDCINECODEC */
 
 /* Define to 1 if LibRaw have been compiled with RawSpeed codec support */
 /* #undef LIBRAW_USE_RAWSPEED */

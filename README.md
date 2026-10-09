@@ -111,30 +111,30 @@ git clone git@github.com:jark006/JarkViewer.git --depth=50
 
 静态库下载： [https://github.com/jark006/JarkViewer/releases/tag/static_lib](https://github.com/jark006/JarkViewer/releases/tag/static_lib)
 
-以上静态库除 `OpenCV` 外，均使用vcpkg安装的静态库复制而来。OpenCV有以下2个修改：
-1. 在源码 `opencv-4.13.0\modules\imgcodecs\src\loadsave.cpp` #68-79 移除图像分辨率限制。
-2. 在源码 `opencv-4.13.0\modules\highgui\src\window_w32.cpp` #337 将 `IDC_CROSS` 改为 `IDC_ARROW`，即在 `cv::imshow()` 窗口内不使用十字光标。
+以上静态库除 `OpenCV` 外，均使用 vcpkg 安装的静态库（triplet `x64-windows-static`）复制而来。`OpenCV` 是源码自建（vcpkg 里没有），整套构建参数固化在 `tools/build-opencv.ps1` 里（`pwsh tools/build-opencv.ps1 -Install` 一步到位），并对源码有 2 处修改，补丁见 `tools/opencv-jarkviewer.patch`（4.13.0 / 4.14.0 通用，在源码根目录 `git apply -p1` 应用）：
+1. `modules/imgcodecs/src/loadsave.cpp`：移除图像分辨率限制（宽/高 `1<<20`、总像素 `1<<30` 三个硬上限）。
+2. `modules/highgui/src/window_w32.cpp`：将 `IDC_CROSS` 改为 `IDC_ARROW`，即在 `cv::imshow()` 窗口内不使用十字光标。
 
-另外，`libopencv/zlib.lib` 已替换为 **zlib-ng** 的 compat 构建（大 PNG 解压约快 25%），`include` 下的 zlib 头文件与之配套。自行准备静态库时，运行一次 `pwsh tools/build-zlib-ng.ps1 -Install` 即可完成替换（compat 模式不改符号名，无需重建 OpenCV）。
+另外，`libopencv/zlib.lib` 已替换为 **zlib-ng** 的 compat 构建（大 PNG 解压约快 25%），`include` 下的 zlib 头文件与之配套。自行准备静态库时，在装好 OpenCV 之后运行一次 `pwsh tools/build-zlib-ng.ps1 -Install` 即可完成替换（compat 模式不改符号名，无需重建 OpenCV）；**顺序不能反**——`build-opencv.ps1 -Install` 会把 `libopencv/zlib.lib` 覆盖回 OpenCV 自带的那份。
 
 ⚠️ **libheif / libde265 必须用修复版本**：`lib/heif.lib` 与 `lib/libde265.lib` 需来自 **libheif ≥ 1.22.0**、**libde265 ≥ 1.0.17**（本项目当前使用 1.23.5 / 1.1.3）。旧版本存在 **CVE-2026-32741**（libheif 掩码图解码时以 `iloc` 长度直接 `memcpy` 到按图像尺寸分配的缓冲区，堆溢出，7.1 高危）与 **CVE-2026-33165**（libde265 在 SPS 变更后越界写 2 字节），只需一个恶意文件即可触发。注意**只改头文件没有意义**：有漏洞的代码在预编译的 `.lib` 里，且会造成头/库版本不一致。
 
 若不要以上静态库，可在项目属性页开启`vcpkg`支持，然后手动安装第三方库 (后续若有新增，此列表可能更新不及时，需开发者自行根据编译缺失信息补充安装)
 
 ```sh
-vcpkg install x265:x64-windows-static
-vcpkg install zlib:x64-windows-static
-vcpkg install libyuv:x64-windows-static
-vcpkg install exiv2[core,bmff,png,xmp]:x64-windows-static
-vcpkg install libavif[core,aom,dav1d]:x64-windows-static
-vcpkg install libjxl:x64-windows-static
-vcpkg install libheif[core,hevc]:x64-windows-static
-vcpkg install libraw[core,dng-lossy,openmp]:x64-windows-static
-vcpkg install lunasvg:x64-windows-static
-vcpkg install directxtex:x64-windows-static
-vcpkg install ffmpeg:x64-windows-static
-vcpkg install opencv4[core,contrib,freetype,ipp,jasper,jpeg,jpegxl,nonfree,openexr,opengl,openjpeg,png,tiff,webp,world]:x64-windows-static
+vcpkg install --triplet x64-windows-static ^
+    x265 zlib libyuv minizip[core,bzip2] ^
+    exiv2[core,bmff,png,xmp] libavif[core,aom,dav1d] libjxl libheif[core,hevc] ^
+    libraw[core,dng-lossy,openmp] lunasvg directxtex ^
+    "ffmpeg[all,amf,aom,ass,avcodec,avdevice,avfilter,avformat,bzip2,dav1d,fontconfig,freetype,fribidi,iconv,ilbc,lzma,modplug,mp3lame,nvcodec,opencl,opengl,openh264,openjpeg,openmpt,opus,qsv,sdl2,snappy,soxr,speex,srt,ssh,swresample,swscale,theora,vorbis,vpx,vulkan,webp,xml2,zlib]"
 ```
+
+`ffmpeg` 必须带上面这串特性（默认特性会少掉 H.264/HEVC/VP8/VP9/AV1/Opus/Vorbis 等一大半编解码器——实况照片与手机视频就播不动了）。
+```
+
+`OpenCV` **不在**这个列表里：工程用的那份是源码自建（见上），用 `pwsh tools/build-opencv.ps1 -Install` 准备。
+
+⚠️ 经典模式下 `vcpkg install` **不会升级已装过的包**（同名的旧版本会直接报 "already installed" 跳过），要升级得显式跑 `vcpkg upgrade --no-dry-run --triplet x64-windows-static`。
 
 ---
 

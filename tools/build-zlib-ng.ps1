@@ -28,9 +28,9 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $appRoot = Join-Path $repoRoot "JarkViewer"
-$version = "2.2.4"
+$version = "2.3.3"
 $archiveUrl = "https://github.com/zlib-ng/zlib-ng/archive/refs/tags/$version.tar.gz"
-$archiveSha256 = "A73343C3093E5CDC50D9377997C3815B878FD110BF6511C2C7759F2AFB90F5A3"
+$archiveSha256 = "F9C65AA9C852EB8255B636FD9F07CE1C406F061EC19A2E7D508B318CA0C907D1"
 
 $srcDir = Join-Path $WorkDir "src"
 $buildDir = Join-Path $WorkDir "build"

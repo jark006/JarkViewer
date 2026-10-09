@@ -4,6 +4,7 @@
 
 // The original implementation is contributed by HAN Liutong.
 // Copyright (C) 2022, Institute of Software, Chinese Academy of Sciences.
+// Copyright (C) 2026, Advanced Micro Devices, Inc., all rights reserved.
 
 #ifndef OPENCV_HAL_INTRIN_RVV_SCALABLE_HPP
 #define OPENCV_HAL_INTRIN_RVV_SCALABLE_HPP
@@ -534,6 +535,13 @@ inline void v_lut_deinterleave(const double* tab, const v_int32& vidx, v_float64
 inline v_uint8 v_lut(const uchar* tab, const int* idx) { return v_reinterpret_as_u8(v_lut((schar*)tab, idx)); }
 inline v_uint8 v_lut_pairs(const uchar* tab, const int* idx) { return v_reinterpret_as_u8(v_lut_pairs((schar*)tab, idx)); }
 inline v_uint8 v_lut_quads(const uchar* tab, const int* idx) { return v_reinterpret_as_u8(v_lut_quads((schar*)tab, idx)); }
+
+// Byte-indexed LUT: vector byte indices -> looked-up bytes (uses RVV indexed load)
+inline v_uint8 v_lut(const uchar* tab, const v_uint8& idx)
+{ return __riscv_vluxei8_v_u8m2(tab, idx, VTraits<v_uint8>::vlanes()); }
+inline v_int8 v_lut(const schar* tab, const v_uint8& idx)
+{ return v_reinterpret_as_s8(v_lut((const uchar*)tab, idx)); }
+
 inline v_uint16 v_lut(const ushort* tab, const int* idx) { return v_reinterpret_as_u16(v_lut((short*)tab, idx)); }
 inline v_uint16 v_lut_pairs(const ushort* tab, const int* idx) { return v_reinterpret_as_u16(v_lut_pairs((short*)tab, idx)); }
 inline v_uint16 v_lut_quads(const ushort* tab, const int* idx) { return v_reinterpret_as_u16(v_lut_quads((short*)tab, idx)); }
@@ -931,7 +939,7 @@ inline scalartype v_reduce_sum(const _Tpvec& a)  \
 }
 OPENCV_HAL_IMPL_RVV_REDUCE_SUM_FP(v_float32, v_float32, vfloat32m1_t, float, f32, VTraits<v_float32>::vlanes())
 #if CV_SIMD_SCALABLE_64F
-OPENCV_HAL_IMPL_RVV_REDUCE_SUM_FP(v_float64, v_float64, vfloat64m1_t, float, f64, VTraits<v_float64>::vlanes())
+OPENCV_HAL_IMPL_RVV_REDUCE_SUM_FP(v_float64, v_float64, vfloat64m1_t, double, f64, VTraits<v_float64>::vlanes())
 #endif
 
 #define OPENCV_HAL_IMPL_RVV_REDUCE(_Tpvec, _nTpvec, func, scalartype, suffix, vl, red) \
@@ -2145,28 +2153,29 @@ inline v_float64 v_dotprod_expand_fast(const v_int32& a, const v_int32& b, const
 { return v_add(v_dotprod_expand_fast(a, b) , c); }
 #endif
 
-// TODO: only 128 bit now.
 inline v_float32 v_matmul(const v_float32& v, const v_float32& mat0,
                             const v_float32& mat1, const v_float32& mat2,
                             const v_float32& mat3)
 {
-    vfloat32m2_t res;
-    res = __riscv_vfmul_vf_f32m2(mat0, v_extract_n(v, 0), VTraits<v_float32>::vlanes());
-    res = __riscv_vfmacc_vf_f32m2(res, v_extract_n(v, 1), mat1, VTraits<v_float32>::vlanes());
-    res = __riscv_vfmacc_vf_f32m2(res, v_extract_n(v, 2), mat2, VTraits<v_float32>::vlanes());
-    res = __riscv_vfmacc_vf_f32m2(res, v_extract_n(v, 3), mat3, VTraits<v_float32>::vlanes());
-    return res;
+    const int vl = VTraits<v_float32>::vlanes();
+    vuint32m2_t idx = __riscv_vand(__riscv_vid_v_u32m2(vl), 0xfffffffc, vl);
+    v_float32 v0 = __riscv_vrgather(v, idx, vl);
+    v_float32 v1 = __riscv_vrgather(v, __riscv_vadd(idx, 1, vl), vl);
+    v_float32 v2 = __riscv_vrgather(v, __riscv_vadd(idx, 2, vl), vl);
+    v_float32 v3 = __riscv_vrgather(v, __riscv_vadd(idx, 3, vl), vl);
+    return v_fma(v0, mat0, v_fma(v1, mat1, v_fma(v2, mat2, v_mul(v3, mat3))));
 }
 
-// TODO: only 128 bit now.
 inline v_float32 v_matmuladd(const v_float32& v, const v_float32& mat0,
                                const v_float32& mat1, const v_float32& mat2,
                                const v_float32& a)
 {
-    vfloat32m2_t res = __riscv_vfmul_vf_f32m2(mat0, v_extract_n(v,0), VTraits<v_float32>::vlanes());
-    res = __riscv_vfmacc_vf_f32m2(res, v_extract_n(v,1), mat1, VTraits<v_float32>::vlanes());
-    res = __riscv_vfmacc_vf_f32m2(res, v_extract_n(v,2), mat2, VTraits<v_float32>::vlanes());
-    return __riscv_vfadd(res, a, VTraits<v_float32>::vlanes());
+    const int vl = VTraits<v_float32>::vlanes();
+    vuint32m2_t idx = __riscv_vand(__riscv_vid_v_u32m2(vl), 0xfffffffc, vl);
+    v_float32 v0 = __riscv_vrgather(v, idx, vl);
+    v_float32 v1 = __riscv_vrgather(v, __riscv_vadd(idx, 1, vl), vl);
+    v_float32 v2 = __riscv_vrgather(v, __riscv_vadd(idx, 2, vl), vl);
+    return v_fma(v0, mat0, v_fma(v1, mat1, v_fma(v2, mat2, a)));
 }
 
 inline void v_cleanup() {}

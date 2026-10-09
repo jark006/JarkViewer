@@ -66,7 +66,7 @@
 #define HAVE_IPP
 #define HAVE_IPP_ICV
 #define HAVE_IPP_IW
-#define HAVE_IPP_IW_LL
+/* #undef HAVE_IPP_IW_LL */
 
 /* JPEG-2000 codec */
 #define HAVE_OPENJPEG
@@ -98,7 +98,7 @@
 /* #undef HAVE_OPENCL_SVM */
 
 /* NVIDIA OpenCL D3D Extensions support */
-/* #undef HAVE_OPENCL_D3D11_NV */
+#define HAVE_OPENCL_D3D11_NV
 
 /* OpenEXR codec */
 #define HAVE_OPENEXR

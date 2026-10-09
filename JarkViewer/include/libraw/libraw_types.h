@@ -1,6 +1,6 @@
 /* -*- C++ -*-
  * File: libraw_types.h
- * Copyright 2008-2021 LibRaw LLC (info@libraw.org)
+ * Copyright 2008-2025 LibRaw LLC (info@libraw.org)
  * Created: Sat Mar  8 , 2008
  *
  * LibRaw C data structures
@@ -89,8 +89,18 @@ extern "C"
 #define NO_LCMS
 #endif
 
+#ifdef __cplusplus
+} /* extern C */
+#endif
+
+/* This cannot be in the extern C setting... */
 #include "libraw_const.h"
 #include "libraw_version.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 #ifdef _WIN32
   typedef __int64 INT64;
@@ -138,10 +148,10 @@ typedef unsigned long long UINT64;
                                        int len, unsigned int ord, void *ifp,
                                        INT64 base);
 
-  typedef void (*data_callback)(void *data, const char *file, const int offset);
+  typedef void (*data_callback)(void *data, const char *file, const INT64 offset);
 
   DllDef void default_data_callback(void *data, const char *file,
-                                    const int offset);
+                                    const INT64 offset);
 
   typedef int (*progress_callback)(void *data, enum LibRaw_progress stage,
                                    int iteration, int expected);
@@ -157,8 +167,8 @@ typedef unsigned long long UINT64;
     progress_callback progress_cb;
     void *progresscb_data;
 
-    exif_parser_callback exif_cb;
-    void *exifparser_data;
+    exif_parser_callback exif_cb,makernotes_cb;
+    void *exifparser_data, *makernotesparser_data;
     pre_identify_callback pre_identify_cb;
     post_identify_callback post_identify_cb;
     process_step_callback pre_subtractblack_cb, pre_scalecolors_cb,
@@ -237,6 +247,12 @@ typedef unsigned long long UINT64;
 
   typedef struct
   {
+	  unsigned len;
+	  void *data;
+  } libraw_dng_rawopcode_t;
+
+  typedef struct
+  {
     unsigned parsedfields;
     unsigned dng_cblack[LIBRAW_CBLACK_SIZE];
     unsigned dng_black;
@@ -250,6 +266,7 @@ typedef unsigned long long UINT64;
     float asshotneutral[4];
     float baseline_exposure;
     float LinearResponseLimit;
+	libraw_dng_rawopcode_t rawopcodes[3];
   } libraw_dng_levels_t;
 
   typedef struct
@@ -292,6 +309,7 @@ typedef unsigned long long UINT64;
     int   AFMicroAdjMode;
     float AFMicroAdjValue;
     short MakernotesFlip;
+    short AutoRotateMode;
     short RecordMode;
     short SRAWQuality;
     unsigned wbi;
@@ -370,6 +388,8 @@ typedef unsigned long long UINT64;
     ushort DRangePriority;
     ushort DRangePriorityAuto;
     ushort DRangePriorityFixed;
+    char   FujiModel[32 + 1];
+    char   FujiModel2[32 + 1];
 
     /*
     tag 0x9200, converted to BrightnessCompensation
@@ -509,7 +529,18 @@ typedef unsigned long long UINT64;
     ushort SensorWidth;
     ushort SensorHeight;
     ushort Active_D_Lighting;
+    unsigned PictureControlVersion;
+    char PictureControlName [20];
+    char PictureControlBase [20];
     unsigned ShotInfoVersion;
+    char ShotInfoFirmware [9];
+
+    unsigned BurstTable_0x0056_len;
+    uchar *BurstTable_0x0056;
+    ushort BurstTable_0x0056_ver;
+    ushort BurstTable_0x0056_gid;
+    uchar BurstTable_0x0056_fnum;
+
     short MakernotesFlip;
     double RollAngle;  // positive is clockwise, CW
     double PitchAngle; // positive is upwords
@@ -520,6 +551,10 @@ typedef unsigned long long UINT64;
   {
     char     CameraType2[6];
     ushort   ValidBits;
+	// decoder data
+	unsigned tagX640, tagX641, tagX642, tagX643, tagX644, tagX645, tagX646, tagX647,
+		tagX648, tagX649, tagX650, tagX651, tagX652, tagX653;
+	//
     int      SensorCalibration[2];
     ushort   DriveMode[5];
     ushort   ColorSpace;
@@ -575,6 +610,7 @@ typedef unsigned long long UINT64;
     int      AFPointsInFocus_version;
     unsigned AFPointsInFocus;
     ushort   FocusPosition;
+    uchar    DynamicRangeExpansion[4]; /* if (DynamicRangeExpansion[1] > 0) BLE+=DynamicRangeExpansion[0] */
     short    AFAdjustment;
     uchar    AFPointMode;
     uchar    MultiExposure; /* last bit is not "1" if ME is not used */
@@ -675,6 +711,9 @@ typedef unsigned long long UINT64;
     ushort   HDR[2];
     ushort   group2010;
     ushort   group9050;
+    
+    ushort   len_group9050; // currently, for debugging only
+    
     ushort   real_iso_offset;                 // init in 0xffff
     ushort   MeteringMode_offset;
     ushort   ExposureProgram_offset;
@@ -731,8 +770,11 @@ typedef unsigned long long UINT64;
                                 3330 ARW 2.3.3
                                 3350 ARW 2.3.5
                                 4000 ARW 4.0
+                                4010 ARW 4.0.1
+                                5000 ARW 5.0
                              */
     char MetaVersion [16];
+    float AspectRatio;
   } libraw_sony_info_t;
 
   typedef struct
@@ -757,7 +799,7 @@ typedef unsigned long long UINT64;
 // Sony
 // and aliases of the above
 // DNG
-    long linear_max[4];
+    unsigned linear_max[4];
 
     float fmaximum;
     float fnorm;
@@ -915,6 +957,7 @@ typedef unsigned long long UINT64;
     float adjust_maximum_thr;
     int no_auto_bright;    /* -W */
     int use_fuji_rotate;   /* -j */
+	int use_p1_correction;
     int green_matching;
     /* DCB parameters */
     int dcb_iterations;
@@ -976,11 +1019,11 @@ typedef unsigned long long UINT64;
 
   typedef struct
   {
-    unsigned long long LensID;
+    UINT64 LensID;
     char Lens[128];
     ushort LensFormat; /* to characterize the image circle the lens covers */
     ushort LensMount;  /* 'male', lens itself */
-    unsigned long long CamID;
+    UINT64 CamID;
     ushort CameraFormat; /* some of the sensor formats */
     ushort CameraMount;  /* 'female', body throat */
     char   body[64];
@@ -994,11 +1037,11 @@ typedef unsigned long long UINT64;
     float  MinFocusDistance;
     float  FocusRangeIndex;
     float  LensFStops;
-    unsigned long long TeleconverterID;
+    UINT64 TeleconverterID;
     char Teleconverter[128];
-    unsigned long long AdapterID;
+    UINT64 AdapterID;
     char Adapter[128];
-    unsigned long long AttachmentID;
+    UINT64 AttachmentID;
     char   Attachment[128];
     ushort FocalUnits;
     float  FocalLengthIn35mmFormat;
@@ -1141,7 +1184,19 @@ private:
 
 
 /* Byte order */
-#if defined(__POWERPC__)
+#if defined(__LITTLE_ENDIAN__)
+#define LibRawBigEndian 0
+
+#elif defined(__BIG_ENDIAN__)
+#define LibRawBigEndian 1
+
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define LibRawBigEndian 0
+
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define LibRawBigEndian 1
+
+#elif defined(__POWERPC__)
 #define LibRawBigEndian 1
 
 #elif defined(__INTEL__)
@@ -1153,19 +1208,9 @@ private:
 #elif defined(_M_X64) || defined(__amd64__) || defined(__x86_64__)
 #define LibRawBigEndian 0
 
-#elif defined(__LITTLE_ENDIAN__)
-#define LibRawBigEndian 0
-
-#elif defined(__BIG_ENDIAN__)
-#define LibRawBigEndian 1
 #elif defined(_ARM_)
 #define LibRawBigEndian 0
 
-#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-#define LibRawBigEndian 0
-
-#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define LibRawBigEndian 1
 #else
 #ifndef qXCodeRez
 #error Unable to figure out byte order.

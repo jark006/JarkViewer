@@ -198,7 +198,7 @@ struct EXIV2API DataBuf {
   }
 
  private:
-  std::vector<byte> pData_;
+  Blob pData_;
 };
 
 /*!

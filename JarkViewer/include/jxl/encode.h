@@ -44,7 +44,7 @@ JXL_EXPORT uint32_t JxlEncoderVersion(void);
  * Allocated and initialized with @ref JxlEncoderCreate().
  * Cleaned up and deallocated with @ref JxlEncoderDestroy().
  */
-typedef struct JxlEncoderStruct JxlEncoder;
+typedef struct JxlEncoder JxlEncoder;
 
 /**
  * Settings and metadata for a single image frame. This includes encoder options
@@ -54,7 +54,7 @@ typedef struct JxlEncoderStruct JxlEncoder;
  * Cleaned up and deallocated when the encoder is destroyed with
  * @ref JxlEncoderDestroy().
  */
-typedef struct JxlEncoderFrameSettingsStruct JxlEncoderFrameSettings;
+typedef struct JxlEncoderFrameSettings JxlEncoderFrameSettings;
 
 /**
  * Return value for multiple encoder functions.
@@ -340,19 +340,18 @@ typedef enum {
    */
   JXL_ENC_FRAME_SETTING_JPEG_COMPRESS_BOXES = 33,
 
-  /** Control what kind of buffering is used, when using chunked image frames.
+  /** Control what kind of input buffering is used, when using chunked image frames.
+   * When using streaming input the encoder minimizes memory usage, potentially at
+   * a cost in compression density (though not necessarily).
    * -1 = default (let the encoder decide)
    * 0 = buffers everything, basically the same as non-streamed code path
    (mainly for testing)
-   * 1 = buffers everything for images that are smaller than 2048 x 2048, and
-   *     uses streaming input and output for larger images
-   * 2 = uses streaming input and output for all images that are larger than
-   *     one group, i.e. 256 x 256 pixels by default
-   * 3 = currently same as 2
+   * 1 = buffers everything for images that are 2048 x 2048 or smaller, and
+   *     uses streaming input and buffered output for larger images
+   * 2 = same as 1, but the threshold to use streaming input is lower
+   * 3 = deprecated; same as 2, but also sets output mode to 1.
    *
-   * When using streaming input and output the encoder minimizes memory usage at
-   * the cost of compression density. Also note that images produced with
-   * streaming mode might not be progressively decodeable.
+   * Output buffering is controlled via @ref JXL_ENC_FRAME_SETTING_OUTPUT_MODE.
    */
   JXL_ENC_FRAME_SETTING_BUFFERING = 34,
 
@@ -392,6 +391,31 @@ typedef enum {
    * optimizations disabled.
    */
   JXL_ENC_FRAME_SETTING_DISABLE_PERCEPTUAL_HEURISTICS = 39,
+
+  /** Control how codestream bytes are written to the output. Unlike
+   * @ref JXL_ENC_FRAME_SETTING_BUFFERING (which controls input buffering),
+   * this setting controls the output ordering and memory trade-offs.
+   *
+   * Modes 1 and 2 reduce peak memory usage by avoiding buffering the output
+   * bitstream, but produce codestreams in an order not suitable for
+   * progressive decoding.
+   *
+   * -1 = default (let the encoder decide).
+   * 0 = buffer the output bitstream internally; write frames in normal order.
+   *     No seeking required. The codestream can be decoded progressively.
+   *     This is the most compatible mode.
+   * 1 = seek-based streaming: write group data first, then seek back to write
+   *     the frame header and TOC. Reduces peak memory for large images.
+   *     Requires a seekable output stream. Produces maximally compatible files.
+   * 2 = out-of-order jxlp streaming: each codestream section is a separate
+   *     jxlp box written in encoding order; jxlp counters reflect codestream
+   *     order so a decoder can reassemble a standard, progressively decodable
+   *     codestream by sorting the boxes. Reduces peak memory without requiring
+   *     output seeking. Requires ftyp version 1, which is not supported by
+   *     older decoders. If mode 2 is used for any frame, it must also be used
+   *     for the first frame (the ftyp version cannot be changed once written).
+   */
+  JXL_ENC_FRAME_SETTING_OUTPUT_MODE = 40,
 
   /** Enum value not to be used as an option. This value is added to force the
    * C compiler to have the enum to take a known size.
@@ -1004,8 +1028,9 @@ JXL_EXPORT JxlEncoderStatus JxlEncoderSetExtraChannelBuffer(
  * case metadata cannot be added.
  *
  * Each box generally has the following byte structure in the file:
- * - 4 bytes: box size including box header (Big endian. If set to 0, an
- *   8-byte 64-bit size follows instead).
+ * - 4 bytes: box size including box header (Big endian. If set to 1, an
+ *   8-byte 64-bit size follows instead. If set to 0, the box extends to the
+ *   end of the file.)
  * - 4 bytes: type, e.g. "JXL " for the signature box, "jxlc" for a codestream
  *   box.
  * - N bytes: box contents.
@@ -1505,6 +1530,8 @@ JXL_EXPORT float JxlEncoderDistanceFromQuality(float quality);
  * functions taking both a @ref JxlEncoder and a @ref JxlEncoderFrameSettings,
  * only @ref JxlEncoderFrameSettings created with this function for the same
  * encoder instance can be used.
+ *
+ * The returned value could be NULL in case of out of memory situatiton.
  *
  * @param enc encoder object.
  * @param source source options to copy initial values from, or NULL to get

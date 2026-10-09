@@ -15,7 +15,7 @@
 // QOI v2025.4.29  https://github.com/phoboslab/qoi
 #include "qoi.h"
 
-// opencv 4.13.0  https://github.com/opencv/opencv
+// opencv 4.14.0  https://github.com/opencv/opencv
 #pragma comment(lib, "IlmImf.lib")
 #pragma comment(lib, "ipphal.lib")
 #pragma comment(lib, "ippicvmt.lib")
@@ -25,7 +25,7 @@
 #pragma comment(lib, "libopenjp2.lib")
 #pragma comment(lib, "libpng.lib")
 #pragma comment(lib, "libtiff.lib")
-#pragma comment(lib, "opencv_world4130.lib")
+#pragma comment(lib, "opencv_world4140.lib")
 #pragma comment(lib, "zlib.lib")
 #pragma comment(lib, "libwebp.lib")
 
@@ -43,21 +43,20 @@
 #pragma comment(lib, "libde265.lib")
 #pragma comment(lib, "x265-static.lib")
 
-// avif v1.3.0  https://github.com/AOMediaCodec/libavif
+// avif v1.4.2  https://github.com/AOMediaCodec/libavif
 #include "avif/avif.h"
 #pragma comment(lib, "avif.lib")
 #pragma comment(lib, "yuv.lib")
 #pragma comment(lib, "dav1d.lib")
 #pragma comment(lib, "aom.lib")
 
-// libraw  v0.21.4  https://www.libraw.org/
+// libraw  v0.22.2  https://www.libraw.org/
 #include "libraw/libraw.h"
 #pragma comment(lib, "raw_r.lib")
-#pragma comment(lib, "freeglut.lib")
 #pragma comment(lib, "jasper.lib")
 #pragma comment(lib, "lcms2.lib")
 
-// exiv2  v0.28.5  https://exiv2.org/download.html
+// exiv2  v0.28.9  https://exiv2.org/download.html
 #include "exifParse.h"
 #pragma comment(lib, "exiv2.lib")
 #pragma comment(lib, "charset.lib")
@@ -70,7 +69,7 @@
 #pragma comment(lib, "brotlidec.lib")
 #pragma comment(lib, "brotlienc.lib")
 
-// libjxl v0.11.1  https://github.com/libjxl/libjxl
+// libjxl v0.12.0  https://github.com/libjxl/libjxl
 #include "jxl/decode_cxx.h"
 #include "jxl/resizable_parallel_runner_cxx.h"
 #include "jxl/types.h"
@@ -80,9 +79,6 @@
 #pragma comment(lib, "jxl_threads.lib")
 
 #pragma comment(lib, "hwy.lib")
-#pragma comment(lib, "FreeImage.lib")
-#pragma comment(lib, "FreeImagePlus.lib")
-#pragma comment(lib, "pixman-1.lib")
 #pragma comment(lib, "fontconfig.lib")
 
 // psdsdk  https://github.com/MolecularMatters/psd_sdk
@@ -94,9 +90,9 @@
 #pragma comment(lib, "lunasvg.lib")
 #pragma comment(lib, "plutovg.lib")
 
-// minizip  1.3.1#1
+// minizip  1.3.2
 #include "minizip/unzip.h"
-#pragma comment(lib, "minizip.lib")
+#pragma comment(lib, "minizips.lib")
 #pragma comment(lib, "bz2.lib")
 
 // lepton  https://github.com/jark006/liblepton
@@ -107,7 +103,7 @@
 #include "DirectXTex.h"
 #pragma comment(lib, "DirectXTex.lib")
 
-// ffmpeg
+// ffmpeg 9.0.2  https://ffmpeg.org/
 #pragma comment(lib, "swscale.lib")
 #pragma comment(lib, "avcodec.lib")
 #pragma comment(lib, "avdevice.lib")
@@ -129,7 +125,15 @@
 #pragma comment(lib, "OpenCLUtilsCpp.lib")
 #pragma comment(lib, "libmp3lame-static.lib")
 #pragma comment(lib, "libmpghip-static.lib")
-#pragma comment(lib, "libmfx.lib")
+// ffmpeg 9 的 QSV 走 oneVPL 调度器：MFXLoad/MFXCreateSession 在 vpl.lib 里。
+// 不能连 libmfx.lib（mfx-dispatch 的旧调度器）——两者都带 mfx_function_table.cpp.obj，会撞 LNK2005。
+#pragma comment(lib, "vpl.lib")
+// libssh 改用 Windows CNG，不再走 OpenSSL
+#pragma comment(lib, "ncrypt.lib")
+// svt-av1 与 twolame 是 ffmpeg 9 新拉进来的编解码器；SvtAv1Enc 又引用 fastfeat 的 fast9_detect_nonmax
+#pragma comment(lib, "SvtAv1Enc.lib")
+#pragma comment(lib, "twolame.lib")
+#pragma comment(lib, "fastfeat.lib")
 #pragma comment(lib, "libxml2.lib")
 #pragma comment(lib, "vpx.lib")
 #pragma comment(lib, "theora.lib")
@@ -143,7 +147,6 @@
 #pragma comment(lib, "mpg123.lib")
 #pragma comment(lib, "out123.lib")
 #pragma comment(lib, "syn123.lib")
-#pragma comment(lib, "yasm.lib")
 #pragma comment(lib, "vorbis.lib")
 #pragma comment(lib, "vorbisenc.lib")
 #pragma comment(lib, "vorbisfile.lib")
@@ -164,7 +167,6 @@
 #pragma comment(lib, "absl_statusor.lib")
 #pragma comment(lib, "absl_str_format_internal.lib")
 #pragma comment(lib, "absl_strerror.lib")
-#pragma comment(lib, "absl_string_view.lib")
 #pragma comment(lib, "absl_strings.lib")
 #pragma comment(lib, "absl_strings_internal.lib")
 #pragma comment(lib, "absl_symbolize.lib")
@@ -175,9 +177,6 @@
 #pragma comment(lib, "absl_tracing_internal.lib")
 #pragma comment(lib, "absl_utf8_for_code_point.lib")
 #pragma comment(lib, "absl_vlog_config_internal.lib")
-#pragma comment(lib, "absl_bad_any_cast_impl.lib")
-#pragma comment(lib, "absl_bad_optional_access.lib")
-#pragma comment(lib, "absl_bad_variant_access.lib")
 #pragma comment(lib, "absl_base.lib")
 #pragma comment(lib, "absl_city.lib")
 #pragma comment(lib, "absl_civil_time.lib")
@@ -232,14 +231,12 @@
 #pragma comment(lib, "absl_log_internal_structured_proto.lib")
 #pragma comment(lib, "absl_log_severity.lib")
 #pragma comment(lib, "absl_log_sink.lib")
-#pragma comment(lib, "absl_low_level_hash.lib")
 #pragma comment(lib, "absl_malloc_internal.lib")
 #pragma comment(lib, "absl_periodic_sampler.lib")
 #pragma comment(lib, "absl_poison.lib")
 #pragma comment(lib, "absl_random_distributions.lib")
 #pragma comment(lib, "absl_random_internal_distribution_test_util.lib")
 #pragma comment(lib, "absl_random_internal_platform.lib")
-#pragma comment(lib, "absl_random_internal_pool_urbg.lib")
 #pragma comment(lib, "absl_random_internal_randen.lib")
 #pragma comment(lib, "absl_random_internal_randen_hwaes.lib")
 #pragma comment(lib, "absl_random_internal_randen_hwaes_impl.lib")

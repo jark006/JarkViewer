@@ -1,6 +1,6 @@
 /* -*- C++ -*-
  * File: libraw_internal.h
- * Copyright 2008-2021 LibRaw LLC (info@libraw.org)
+ * Copyright 2008-2025 LibRaw LLC (info@libraw.org)
  * Created: Sat Mar  8 , 2008
  *
  * LibRaw internal data structures (not visible outside)
@@ -150,6 +150,22 @@ typedef struct
   INT64  *chunk_offsets;
 } crx_data_header_t;
 
+typedef struct 
+{
+	uint32_t tag39[6];
+	uint16_t tag3A[6];
+	uint16_t tag3B;
+	uint16_t initial[4];
+	uint16_t tag40a[17], tag40b[17], tag41[17];
+	uint16_t stripe_count; // 0x42
+	uint16_t tag43;
+	INT64	 stripe_offsets[5]; //0x44
+	uint16_t stripe_left[5]; // 0x45
+	uint32_t stripe_compressed_size[5]; //0x46
+	uint16_t stripe_width[5]; //0x47
+	uint16_t stripe_height[5];
+} pana8_tags_t;
+
 typedef struct
 {
   short order;
@@ -158,7 +174,7 @@ typedef struct
   INT64 strip_offset, data_offset;
   INT64 meta_offset;
   INT64 exif_offset, exif_subdir_offset, ifd0_offset;
-  unsigned data_size;
+  INT64 data_size;
   unsigned meta_length;
   unsigned cr3_exif_length, cr3_ifd0_length;
   unsigned thumb_misc;
@@ -177,6 +193,7 @@ typedef struct
   int fuji_total_lines, fuji_total_blocks, fuji_block_width, fuji_bits,
       fuji_raw_type, fuji_lossless;
   int pana_encoding, pana_bpp;
+  pana8_tags_t pana8;
   crx_data_header_t crx_header[LIBRAW_CRXTRACKS_MAXCOUNT];
   int crx_track_selected;
   int crx_track_count;
@@ -211,11 +228,14 @@ struct decode
 
 struct tiff_ifd_t
 {
-  int t_width, t_height, bps, comp, phint, offset, t_flip, samples, bytes, extrasamples;
+  int t_width, t_height, bps, comp, phint, t_flip, samples, extrasamples;
+  INT64 offset, bytes;
   int t_tile_width, t_tile_length, sample_format, predictor;
   int rows_per_strip;
-  int *strip_offsets, strip_offsets_count;
-  int *strip_byte_counts, strip_byte_counts_count;
+  INT64 *strip_offsets;
+  int strip_offsets_count;
+  INT64 *strip_byte_counts;
+  int strip_byte_counts_count;
   unsigned t_filters;
   int t_vwidth, t_vheight, t_lm,t_tm;
   int t_fuji_width;

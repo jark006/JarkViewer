@@ -237,10 +237,12 @@
     <ClInclude Include="include\aom\aom_codec.h" />
     <ClInclude Include="include\aom\aom_decoder.h" />
     <ClInclude Include="include\aom\aom_encoder.h" />
+    <ClInclude Include="include\aom\aom_ext_ratectrl.h" />
     <ClInclude Include="include\aom\aom_external_partition.h" />
     <ClInclude Include="include\aom\aom_frame_buffer.h" />
     <ClInclude Include="include\aom\aom_image.h" />
     <ClInclude Include="include\aom\aom_integer.h" />
+    <ClInclude Include="include\aom\aom_tpl.h" />
     <ClInclude Include="include\aom\aomcx.h" />
     <ClInclude Include="include\aom\aomdx.h" />
     <ClInclude Include="include\avif\avif.h" />
@@ -300,7 +302,6 @@
     <ClInclude Include="include\ffmpeg\libavcodec\adts_parser.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\avcodec.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\avdct.h" />
-    <ClInclude Include="include\ffmpeg\libavcodec\avfft.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\bsf.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\codec.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\codec_desc.h" />
@@ -311,7 +312,9 @@
     <ClInclude Include="include\ffmpeg\libavcodec\dirac.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\dv_profile.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\dxva2.h" />
+    <ClInclude Include="include\ffmpeg\libavcodec\exif.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\packet.h" />
+    <ClInclude Include="include\ffmpeg\libavcodec\smpte_436m.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\version.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\version_major.h" />
     <ClInclude Include="include\ffmpeg\libavcodec\vorbis_parser.h" />
@@ -346,6 +349,7 @@
     <ClInclude Include="include\ffmpeg\libavutil\cast5.h" />
     <ClInclude Include="include\ffmpeg\libavutil\channel_layout.h" />
     <ClInclude Include="include\ffmpeg\libavutil\common.h" />
+    <ClInclude Include="include\ffmpeg\libavutil\container_fifo.h" />
     <ClInclude Include="include\ffmpeg\libavutil\cpu.h" />
     <ClInclude Include="include\ffmpeg\libavutil\crc.h" />
     <ClInclude Include="include\ffmpeg\libavutil\csp.h" />
@@ -369,7 +373,9 @@
     <ClInclude Include="include\ffmpeg\libavutil\hdr_dynamic_vivid_metadata.h" />
     <ClInclude Include="include\ffmpeg\libavutil\hmac.h" />
     <ClInclude Include="include\ffmpeg\libavutil\hwcontext.h" />
+    <ClInclude Include="include\ffmpeg\libavutil\hwcontext_amf.h" />
     <ClInclude Include="include\ffmpeg\libavutil\hwcontext_dxva2.h" />
+    <ClInclude Include="include\ffmpeg\libavutil\hwcontext_oh.h" />
     <ClInclude Include="include\ffmpeg\libavutil\iamf.h" />
     <ClInclude Include="include\ffmpeg\libavutil\imgutils.h" />
     <ClInclude Include="include\ffmpeg\libavutil\intfloat.h" />
@@ -391,7 +397,9 @@
     <ClInclude Include="include\ffmpeg\libavutil\pixfmt.h" />
     <ClInclude Include="include\ffmpeg\libavutil\random_seed.h" />
     <ClInclude Include="include\ffmpeg\libavutil\rational.h" />
+    <ClInclude Include="include\ffmpeg\libavutil\raw_color_params.h" />
     <ClInclude Include="include\ffmpeg\libavutil\rc4.h" />
+    <ClInclude Include="include\ffmpeg\libavutil\refstruct.h" />
     <ClInclude Include="include\ffmpeg\libavutil\replaygain.h" />
     <ClInclude Include="include\ffmpeg\libavutil\ripemd.h" />
     <ClInclude Include="include\ffmpeg\libavutil\samplefmt.h" />
@@ -399,6 +407,7 @@
     <ClInclude Include="include\ffmpeg\libavutil\sha512.h" />
     <ClInclude Include="include\ffmpeg\libavutil\spherical.h" />
     <ClInclude Include="include\ffmpeg\libavutil\stereo3d.h" />
+    <ClInclude Include="include\ffmpeg\libavutil\tdrdi.h" />
     <ClInclude Include="include\ffmpeg\libavutil\tea.h" />
     <ClInclude Include="include\ffmpeg\libavutil\threadmessage.h" />
     <ClInclude Include="include\ffmpeg\libavutil\time.h" />
@@ -594,6 +603,7 @@
     <ClInclude Include="include\libyuv\convert_from.h" />
     <ClInclude Include="include\libyuv\convert_from_argb.h" />
     <ClInclude Include="include\libyuv\cpu_id.h" />
+    <ClInclude Include="include\libyuv\cpu_support.h" />
     <ClInclude Include="include\libyuv\loongson_intrinsics.h" />
     <ClInclude Include="include\libyuv\macros_msa.h" />
     <ClInclude Include="include\libyuv\mjpeg_decoder.h" />
@@ -602,6 +612,7 @@
     <ClInclude Include="include\libyuv\rotate_argb.h" />
     <ClInclude Include="include\libyuv\rotate_row.h" />
     <ClInclude Include="include\libyuv\row.h" />
+    <ClInclude Include="include\libyuv\row_sve.h" />
     <ClInclude Include="include\libyuv\scale.h" />
     <ClInclude Include="include\libyuv\scale_argb.h" />
     <ClInclude Include="include\libyuv\scale_rgb.h" />
@@ -611,8 +622,8 @@
     <ClInclude Include="include\libyuv\video_common.h" />
     <ClInclude Include="include\lunasvg.h" />
     <ClInclude Include="include\minizip\crypt.h" />
+    <ClInclude Include="include\minizip\ints.h" />
     <ClInclude Include="include\minizip\ioapi.h" />
-    <ClInclude Include="include\minizip\iowin32.h" />
     <ClInclude Include="include\minizip\mztools.h" />
     <ClInclude Include="include\minizip\unzip.h" />
     <ClInclude Include="include\minizip\zip.h" />

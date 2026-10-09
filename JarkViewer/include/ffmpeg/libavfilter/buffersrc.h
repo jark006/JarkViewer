@@ -38,19 +38,19 @@ enum {
     /**
      * Do not check for format changes.
      */
-    AV_BUFFERSRC_FLAG_NO_CHECK_FORMAT = 1,
+    AV_BUFFERSRC_FLAG_NO_CHECK_FORMAT = 1 << 0,
 
     /**
      * Immediately push the frame to the output.
      */
-    AV_BUFFERSRC_FLAG_PUSH = 4,
+    AV_BUFFERSRC_FLAG_PUSH = 1 << 2,
 
     /**
      * Keep a reference to the frame.
      * If the frame if reference-counted, create a new reference; otherwise
      * copy the frame data.
      */
-    AV_BUFFERSRC_FLAG_KEEP_REF = 8,
+    AV_BUFFERSRC_FLAG_KEEP_REF = 1 << 3,
 
 };
 
@@ -120,6 +120,14 @@ typedef struct AVBufferSrcParameters {
      */
     enum AVColorSpace color_space;
     enum AVColorRange color_range;
+
+    AVFrameSideData **side_data;
+    int nb_side_data;
+
+    /**
+     * Video only, the alpha mode.
+     */
+    enum AVAlphaMode alpha_mode;
 } AVBufferSrcParameters;
 
 /**
@@ -207,6 +215,14 @@ int av_buffersrc_add_frame_flags(AVFilterContext *buffer_src,
  * of the last frame.
  */
 int av_buffersrc_close(AVFilterContext *ctx, int64_t pts, unsigned flags);
+
+/**
+ * Returns 0 or a negative AVERROR code. Currently, this will only ever
+ * return AVERROR(EOF), to indicate that the buffer source has been closed,
+ * either as a result of av_buffersrc_close(), or because the downstream
+ * filter is no longer accepting new data.
+ */
+int av_buffersrc_get_status(AVFilterContext *ctx);
 
 /**
  * @}
