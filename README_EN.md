@@ -133,7 +133,7 @@ vcpkg install --triplet x64-windows-static ^
 
 `ffmpeg` must carry that feature list (the default features are missing more than half of the codecs — H.264/HEVC/VP8/VP9/AV1/Opus/Vorbis and so on — and Live Photos and phone videos simply will not play).
 
-On top of that, the FFmpeg static libraries shipped in this repository's release packages have **all encoders disabled** (`--disable-encoders`, keeping only `opus` and `adpcm_g722` — their x86 assembly is shared with the decoding path, see `CLAUDE.md`): an image viewer never encodes, and this makes the executable about 10 MiB smaller while **losing no decoding capability at all** (all 531 decoders and 363 demuxers are kept, Live Photos and every supported video still play). A full-featured library installed from vcpkg links fine and behaves identically, it is just larger.
+On top of that, the FFmpeg static libraries shipped in this repository's release packages have **all encoders disabled** (`--disable-encoders`, keeping only `opus` and `adpcm_g722` — their x86 assembly is shared with the decoding path, see `AGENTS.md`): an image viewer never encodes, and this makes the executable about 10 MiB smaller while **losing no decoding capability at all** (all 531 decoders and 363 demuxers are kept, Live Photos and every supported video still play). A full-featured library installed from vcpkg links fine and behaves identically, it is just larger.
 
 `OpenCV` is **not** in this list: the copy used by the project is built from source (see above), prepared with `pwsh tools/build-opencv.ps1 -Install`.
 
