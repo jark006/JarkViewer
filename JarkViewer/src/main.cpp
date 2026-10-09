@@ -2825,7 +2825,7 @@ public:
 
         // 头部：直方图与内嵌 ICC 的名字、JPEG 质量（都是"当前这张图"的附加信息）
         if (histogramReady_) {
-            drawHistogram(drawList, contentLeft, contentTop, contentRight, dp(56));
+            drawHistogram(drawList, contentLeft, contentTop, contentRight, static_cast<float>(dp(56)));
             contentTop += dp(56) + dp(6);
         }
         if (!panelColorSpace_.empty()) {

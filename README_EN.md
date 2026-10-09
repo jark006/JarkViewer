@@ -64,9 +64,10 @@ You can also select color modes: `Color`, `Gray`, `Document`, `Dithering`.
 
 ## 📂 Format Support
 
--   **Static**: `apng avif avifs blp bmp dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr livp pbm pfm pgm pic png pnm ppm psd pxm qoi ras sr svg tga tif tiff webp wp2`
+-   **Static**: `apng avif avifs blp bmp dds dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr lep livp pbm pcx pfm pgm pic png pnm ppm psd psdt pxm qoi ras sr svg tga tif tiff webm webp wp2`
 -   **Animated**: `gif webp png apng jxl avif`
 -   **Live**: `livp (IOS LivePhoto) jpg/heic/heif (Android MicroVideo/MotionPhoto)`
+-   **Video** (opened directly and treated as a motion photo; does not appear in the page-through list of its folder): `3gp avi evo flv m2ts m4v mkv mov mp4 mts mxf ts vob wmv`
 -   **RAW**: `3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
 
 ## 👋 Quick Start
@@ -110,26 +111,33 @@ This project is developed using `Visual Studio 2026`, with all third-party libra
 
 Static Library Download: [https://github.com/jark006/JarkViewer/releases/tag/static_lib](https://github.com/jark006/JarkViewer/releases/tag/static_lib)
 
-With the exception of `OpenCV`, the static libraries above were copied from libraries installed via vcpkg. The following 2 modifications were made to OpenCV:
-1.  In source file `opencv-4.13.0\modules\imgcodecs\src\loadsave.cpp` lines #68-79, removed the image resolution limit.
-2.  In source file `opencv-4.13.0\modules\highgui\src\window_w32.cpp` line #337, changed `IDC_CROSS` to `IDC_ARROW`, i.e., not using a crosshair cursor inside `cv::imshow()` windows.
+Except for `OpenCV`, all the static libraries above were copied from libraries installed via vcpkg (triplet `x64-windows-static`). `OpenCV` is built from source (it is not in vcpkg); the whole build recipe is pinned down in `tools/build-opencv.ps1` (`pwsh tools/build-opencv.ps1 -Install` does everything in one go), and it carries 2 source modifications, kept as a patch in `tools/opencv-jarkviewer.patch` (works for 4.13.0 / 4.14.0; apply with `git apply -p1` from the source root):
+1.  `modules/imgcodecs/src/loadsave.cpp`: remove the image resolution limits (the three hard caps of width/height `1<<20` and total pixels `1<<30`).
+2.  `modules/highgui/src/window_w32.cpp`: change `IDC_CROSS` to `IDC_ARROW`, i.e., not using a crosshair cursor inside `cv::imshow()` windows.
 
-If you prefer not to use the above static libraries, you can enable `vcpkg` support in the project properties and manually install the third-party libraries. (This list may not be updated promptly if new dependencies are added later; developers may need to install additional packages based on compilation error messages.)
+**The OpenCV build has Intel IPP / IPP-IW / ITT turned off** (it used to be on): the IPP static blob alone accounts for roughly 25 MiB of the executable, while in OpenCV 4.14 IPP no longer covers the main path of an image viewer at all — there is not a single `ippi*` call in the sources of `resize`/`warpAffine`/`cvtColor`/`imdecode`. A/B-ing the same `opencv_world` with `OPENCV_IPP=disabled` over 21 operations (4000x3000, 12 threads) confirms it: the display path takes exactly the same time, and `copyTo` / `morphologyEx` / `moments` actually get 1.8~2.4x faster with IPP off. The rationale and the measurements are in the comments of `tools/build-opencv.ps1`.
+
+In addition, `libopencv/zlib.lib` has been replaced with a **zlib-ng** compat build (about 25% faster at decompressing large PNGs), and the zlib headers under `include` match it. When preparing the static libraries yourself, run `pwsh tools/build-zlib-ng.ps1 -Install` once after OpenCV is installed (compat mode does not change symbol names, so OpenCV does not need to be rebuilt); **the order cannot be reversed** — `build-opencv.ps1 -Install` will overwrite `libopencv/zlib.lib` with the copy bundled with OpenCV.
+
+⚠️ **libheif / libde265 must be the fixed versions**: `lib/heif.lib` and `lib/libde265.lib` need to come from **libheif >= 1.22.0** and **libde265 >= 1.0.17** (this project currently uses 1.23.5 / 1.1.3). Older versions carry **CVE-2026-32741** (libheif copies `iloc` lengths straight into a buffer sized by the image dimensions when decoding mask images — heap overflow, 7.1 high) and **CVE-2026-33165** (libde265 writes 2 bytes out of bounds after an SPS change); a single malicious file is enough to trigger them. Note that **changing only the headers is useless**: the vulnerable code lives in the prebuilt `.lib`, and doing so would also make headers and library inconsistent.
+
+If you would rather not use the static libraries above, you can enable `vcpkg` support on the project property page and install the third-party libraries manually. (This list may not be updated promptly if new dependencies are added later; developers may need to install additional packages based on compilation error messages.)
 
 ```sh
-vcpkg install x265:x64-windows-static
-vcpkg install zlib:x64-windows-static
-vcpkg install libyuv:x64-windows-static
-vcpkg install exiv2[core,bmff,png,xmp]:x64-windows-static
-vcpkg install libavif[core,aom,dav1d]:x64-windows-static
-vcpkg install libjxl:x64-windows-static
-vcpkg install libheif[core,hevc]:x64-windows-static
-vcpkg install libraw[core,dng-lossy,openmp]:x64-windows-static
-vcpkg install lunasvg:x64-windows-static
-vcpkg install directxtex:x64-windows-static
-vcpkg install ffmpeg:x64-windows-static
-vcpkg install opencv4[core,contrib,freetype,ipp,jasper,jpeg,jpegxl,nonfree,openexr,opengl,openjpeg,png,tiff,webp,world]:x64-windows-static
+vcpkg install --triplet x64-windows-static ^
+    x265 zlib libyuv minizip[core,bzip2] ^
+    exiv2[core,bmff,png,xmp] libavif[core,aom,dav1d] libjxl libheif[core,hevc] ^
+    libraw[core,dng-lossy,openmp] lunasvg directxtex ^
+    "ffmpeg[all,amf,aom,ass,avcodec,avdevice,avfilter,avformat,bzip2,dav1d,fontconfig,freetype,fribidi,iconv,ilbc,lzma,modplug,mp3lame,nvcodec,opencl,opengl,openh264,openjpeg,openmpt,opus,qsv,sdl2,snappy,soxr,speex,srt,ssh,swresample,swscale,theora,vorbis,vpx,vulkan,webp,xml2,zlib]"
 ```
+
+`ffmpeg` must carry that feature list (the default features are missing more than half of the codecs — H.264/HEVC/VP8/VP9/AV1/Opus/Vorbis and so on — and Live Photos and phone videos simply will not play).
+
+On top of that, the FFmpeg static libraries shipped in this repository's release packages have **all encoders disabled** (`--disable-encoders`, keeping only `opus` and `adpcm_g722` — their x86 assembly is shared with the decoding path, see `CLAUDE.md`): an image viewer never encodes, and this makes the executable about 10 MiB smaller while **losing no decoding capability at all** (all 531 decoders and 363 demuxers are kept, Live Photos and every supported video still play). A full-featured library installed from vcpkg links fine and behaves identically, it is just larger.
+
+`OpenCV` is **not** in this list: the copy used by the project is built from source (see above), prepared with `pwsh tools/build-opencv.ps1 -Install`.
+
+⚠️ In classic mode `vcpkg install` **does not upgrade already installed packages** (an older package of the same name is skipped with "already installed"); to upgrade you have to run `vcpkg upgrade --no-dry-run --triplet x64-windows-static` explicitly.
 
 ---
 

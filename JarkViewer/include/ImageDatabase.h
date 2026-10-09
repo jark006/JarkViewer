@@ -16,11 +16,9 @@
 #include "qoi.h"
 
 // opencv 4.14.0  https://github.com/opencv/opencv
+// IPP / IPP-IW / ITT 已关闭（build-opencv.ps1 里有实测数据：本工程的主路径本来就不走 IPP，
+// 关掉省下约 25 MiB，且 copyTo 等操作反而更快）
 #pragma comment(lib, "IlmImf.lib")
-#pragma comment(lib, "ipphal.lib")
-#pragma comment(lib, "ippicvmt.lib")
-#pragma comment(lib, "ippiw.lib")
-#pragma comment(lib, "ittnotify.lib")
 #pragma comment(lib, "libjpeg-turbo.lib")
 #pragma comment(lib, "libopenjp2.lib")
 #pragma comment(lib, "libpng.lib")
@@ -123,22 +121,19 @@
 #pragma comment(lib, "OpenCLExt.lib")
 #pragma comment(lib, "OpenCLUtils.lib")
 #pragma comment(lib, "OpenCLUtilsCpp.lib")
-#pragma comment(lib, "libmp3lame-static.lib")
 #pragma comment(lib, "libmpghip-static.lib")
 // ffmpeg 9 的 QSV 走 oneVPL 调度器：MFXLoad/MFXCreateSession 在 vpl.lib 里。
 // 不能连 libmfx.lib（mfx-dispatch 的旧调度器）——两者都带 mfx_function_table.cpp.obj，会撞 LNK2005。
 #pragma comment(lib, "vpl.lib")
 // libssh 改用 Windows CNG，不再走 OpenSSL
 #pragma comment(lib, "ncrypt.lib")
-// svt-av1 与 twolame 是 ffmpeg 9 新拉进来的编解码器；SvtAv1Enc 又引用 fastfeat 的 fast9_detect_nonmax
-#pragma comment(lib, "SvtAv1Enc.lib")
-#pragma comment(lib, "twolame.lib")
-#pragma comment(lib, "fastfeat.lib")
+// 已删：SvtAv1Enc / twolame / fastfeat。三者原先是被 ffmpeg 的 libsvtav1、libtwolame
+// **编码器**拉进来的（SvtAv1Enc 又引用 fastfeat 的 fast9_detect_nonmax）；工程用的是
+// 「只解不编」的 ffmpeg 构建，已无人引用。同理去掉 libmp3lame-static 与 theoraenc。
 #pragma comment(lib, "libxml2.lib")
 #pragma comment(lib, "vpx.lib")
 #pragma comment(lib, "theora.lib")
 #pragma comment(lib, "theoradec.lib")
-#pragma comment(lib, "theoraenc.lib")
 #pragma comment(lib, "ssh.lib")
 #pragma comment(lib, "srt.lib")
 #pragma comment(lib, "libcrypto.lib")

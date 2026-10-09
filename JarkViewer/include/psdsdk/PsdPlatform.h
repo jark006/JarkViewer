@@ -40,7 +40,10 @@
 #define NOMB
 #define NOMEMMGR
 #define NOMETAFILE
-#define NOMINMAX
+// [JarkViewer 本地修改] 本工程在工程属性里已全局定义 NOMINMAX，这里无条件重定义会报 C4005
+#ifndef NOMINMAX
+#	define NOMINMAX
+#endif
 #define NOMSG
 #define NOOPENFILE
 #define NOSCROLL

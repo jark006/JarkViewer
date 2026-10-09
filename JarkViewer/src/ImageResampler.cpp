@@ -104,7 +104,9 @@ ResampledView resampleVisibleRegion(const cv::Mat& source, const ViewState& view
         const cv::Point2d stepX = toSource(ex + dx, ey);
         const cv::Point2d stepY = toSource(ex, ey + dy);
 
-        const cv::Mat matrix = (cv::Mat_<double>(2, 3) <<
+        // 不用 cv::Mat_ 的逗号初始化：Mat/Mat_ 从 MatCommaInitializer_ 构造已被标记弃用（C4996），
+        // Matx 一样能直接喂给 warpAffine（_InputArray 有 Matx 重载）
+        const cv::Matx23d matrix(
             stepX.x - origin.x, stepY.x - origin.x, origin.x,
             stepX.y - origin.y, stepY.y - origin.y, origin.y);
         cv::warpAffine(source, block, matrix, cv::Size(blockW, blockH),

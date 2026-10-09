@@ -115,6 +115,8 @@ git clone git@github.com:jark006/JarkViewer.git --depth=50
 1. `modules/imgcodecs/src/loadsave.cpp`：移除图像分辨率限制（宽/高 `1<<20`、总像素 `1<<30` 三个硬上限）。
 2. `modules/highgui/src/window_w32.cpp`：将 `IDC_CROSS` 改为 `IDC_ARROW`，即在 `cv::imshow()` 窗口内不使用十字光标。
 
+**OpenCV 构建已关闭 Intel IPP / IPP-IW / ITT**（原先是开着的）：IPP 的静态二进制块一项就占可执行文件约 25 MiB，而 OpenCV 4.14 里 IPP 早已不覆盖看图软件的主路径——`resize`/`warpAffine`/`cvtColor`/`imdecode` 的源码里没有任何一处 `ippi*` 调用。用同一份 `opencv_world` 以 `OPENCV_IPP=disabled` 对拍 21 项操作（4000×3000、12 线程）确认：显示主路径耗时完全一致，`copyTo` / `morphologyEx` / `moments` 关掉反而快 1.8~2.4 倍。理由与实测数据见 `tools/build-opencv.ps1` 的脚本注释。
+
 另外，`libopencv/zlib.lib` 已替换为 **zlib-ng** 的 compat 构建（大 PNG 解压约快 25%），`include` 下的 zlib 头文件与之配套。自行准备静态库时，在装好 OpenCV 之后运行一次 `pwsh tools/build-zlib-ng.ps1 -Install` 即可完成替换（compat 模式不改符号名，无需重建 OpenCV）；**顺序不能反**——`build-opencv.ps1 -Install` 会把 `libopencv/zlib.lib` 覆盖回 OpenCV 自带的那份。
 
 ⚠️ **libheif / libde265 必须用修复版本**：`lib/heif.lib` 与 `lib/libde265.lib` 需来自 **libheif ≥ 1.22.0**、**libde265 ≥ 1.0.17**（本项目当前使用 1.23.5 / 1.1.3）。旧版本存在 **CVE-2026-32741**（libheif 掩码图解码时以 `iloc` 长度直接 `memcpy` 到按图像尺寸分配的缓冲区，堆溢出，7.1 高危）与 **CVE-2026-33165**（libde265 在 SPS 变更后越界写 2 字节），只需一个恶意文件即可触发。注意**只改头文件没有意义**：有漏洞的代码在预编译的 `.lib` 里，且会造成头/库版本不一致。
@@ -130,7 +132,8 @@ vcpkg install --triplet x64-windows-static ^
 ```
 
 `ffmpeg` 必须带上面这串特性（默认特性会少掉 H.264/HEVC/VP8/VP9/AV1/Opus/Vorbis 等一大半编解码器——实况照片与手机视频就播不动了）。
-```
+
+本仓库发布包里的 FFmpeg 静态库在此基础上**再关掉了全部编码器**（`--disable-encoders`，只留 `opus` 与 `adpcm_g722` 两个——它们的 x86 汇编同时被解码路径使用，详见 `CLAUDE.md`）：看图软件不需要编码，这样可执行文件能小约 10 MiB，**解码能力一点没少**（解码器 531 个、解复用器 363 个全部保留，实况照片与各类视频照样播放）。用 vcpkg 装出来的全功能库能正常链接、功能无差异，只是体积大一些。
 
 `OpenCV` **不在**这个列表里：工程用的那份是源码自建（见上），用 `pwsh tools/build-opencv.ps1 -Install` 准备。
 

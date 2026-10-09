@@ -10,12 +10,27 @@
     关键配置（4.13.0 那版是怎么配的，这里就怎么配，逐项对齐）：
       * 静态库、/MT（BUILD_WITH_STATIC_CRT=ON）、只出 Release；
       * world + opencv_contrib + nonfree；
-      * 自带 3rdparty：jpeg/png/tiff/webp/openjpeg/openexr/zlib，外加 IPP + IPP IW + ITT；
+      * 自带 3rdparty：jpeg/png/tiff/webp/openjpeg/openexr/zlib；
+      * IPP / IPP IW / ITT 一律关闭（见下）；
       * Windows 后端：DirectX(D3D9/10/11)、DirectShow、MSMF；OpenCL 打开；
       * 关掉：dnn/objdetect/datasets（连带 aruco、face、text、wechat_qrcode 等不参与编译）、
         CUDA、OpenGL、Vulkan、GDAL、GDCM、Jasper、AVIF、JPEG XL、FFmpeg、GStreamer；
       * CPU_BASELINE=SSE3、CPU_DISPATCH=SSE4_1;SSE4_2;AVX;FP16;AVX2;AVX512_SKX
         （不抬高基线，其余按运行时派发）。
+
+    为什么关掉 IPP（Intel Integrated Performance Primitives）：
+      * 体积：IPP 的静态 blob 一项就占 exe 约 25 MiB（ippicvmt.lib 单独 67 MB）。
+      * 覆盖：4.14 里 IPP 早就不管看图软件的主路径了——resize / warpAffine / cvtColor /
+        imdecode / imencode 的源码里一个 ippi* 调用都没有（ippiResize、ippiWarpAffine、
+        ippiColorToGray 全为 0 处），imgcodecs 整个模块也是 0 处。Mat::convertTo 的 IPP
+        调用被上游注释掉了（/* [TODO] Recover IPP calls */）。
+      * 实测：用同一份 opencv_world 编基准、以 OPENCV_IPP=disabled 对拍 21 项操作
+        （4000x3000、12 线程），显示主路径全部无差异；关掉 IPP 反而更快的有多项
+        （copyTo 2.4 倍、moments 1.9 倍、morphologyEx 1.8 倍）；只有 bilateralFilter
+        与 Sobel 是 IPP 真的更快，而本工程一次都没调用。
+      * 另外：ippicv 是 Intel 的闭源预编译二进制（构建时从 opencv_3rdparty 下载），
+        关掉之后整套 OpenCV 只依赖一个官方源码 tarball，构建可复现。
+      改回开启只需把下面三行改回 ON 并重新构建，但先看一遍上面这段实测数据。
 
     用 -Install 时把产物复制进工程：静态库进 JarkViewer/libopencv/，
     头文件整目录替换 JarkViewer/include/opencv2/。
@@ -79,7 +94,7 @@ else {
 }
 
 # 3. 配置
-#    下载缓存放在源码目录的 .cache 下（IPP、ade、xfeatures2d 的测试数据），
+#    下载缓存放在源码目录的 .cache 下（ade、xfeatures2d 的测试数据），
 #    换版本时若缓存里的版本对不上，CMake 会自己重新下载。
 $options = @(
     "-DCMAKE_INSTALL_PREFIX=$installDir",
@@ -93,8 +108,8 @@ $options = @(
     "-DOPENCV_GENERATE_SETUPVARS=ON", "-DOPENCV_MSVC_PARALLEL=ON",
     "-DOPENCV_DOWNLOAD_PATH=$srcDir/.cache",
 
-    "-DWITH_IPP=ON", "-DBUILD_IPP_IW=ON",
-    "-DWITH_ITT=ON", "-DBUILD_ITT=ON",
+    "-DWITH_IPP=OFF", "-DBUILD_IPP_IW=OFF",
+    "-DWITH_ITT=OFF", "-DBUILD_ITT=OFF",
     "-DWITH_DIRECTX=ON", "-DWITH_DIRECTML=OFF",
     "-DWITH_MSMF=ON", "-DWITH_DSHOW=ON", "-DWITH_OBSENSOR=OFF",
     "-DWITH_OPENCL=ON",
@@ -149,8 +164,9 @@ if (-not $Install) {
 }
 
 # 4. 复制进工程。只搬工程真正链接的那些（与 ImageDatabase.h 的 #pragma 清单对应）：
-#    world 本体 + 它自带的 3rdparty + IPP。ade / libprotobuf / opencv_img_hash 用不到，不搬。
-$libNames = @("IlmImf", "ipphal", "ippicvmt", "ippiw", "ittnotify", "libjpeg-turbo",
+#    world 本体 + 它自带的 3rdparty。ade / libprotobuf / opencv_img_hash 用不到，不搬；
+#    ipphal / ippicvmt / ippiw / ittnotify 随 WITH_IPP / WITH_ITT 关闭而不再产生。
+$libNames = @("IlmImf", "libjpeg-turbo",
     "libopenjp2", "libpng", "libtiff", "libwebp", "zlib", $worldLib.BaseName)
 $targetLibDir = Join-Path $appRoot "libopencv"
 foreach ($name in $libNames) {
