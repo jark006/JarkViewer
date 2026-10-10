@@ -295,7 +295,7 @@ namespace {
     // 语言自检：逐一切换语言并打印若干条文案，验证字符串表与回退逻辑
     std::string runLanguageTest() {
         std::string report;
-        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 156, 165, 190 }; // 含新增导航/缓存/占位界面/音频画面文案
+        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 156, 165, 190, 191, 192, 193 }; // 含新增导航/缓存/占位界面/音频画面/信息面板文案
         const uint32_t wideIds[] = { 1, 13, 30, 49 };            // 窗口标题/窗口创建失败/删除到回收站/批量无图提示
 
         const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;
@@ -1023,6 +1023,32 @@ namespace {
             player->getVideoSize(videoWidth, videoHeight);
             const int64_t duration = player->durationMs();
             const int64_t frameMs = static_cast<int64_t>(std::lround(player->frameDurationMs()));
+
+            // 信息面板（播放器按 I / Tab）的文本：标签来自多语言表、值来自解码器。
+            // 这里钉住"该有的字段在、不存在的轨道不出现"——面板上少一行/多一行都只能靠眼睛看
+            {
+                auto infoDecoder = MediaDecoder::open(mediaBytes, MediaDecoder::StreamFilter::Both);
+                const std::string infoText = infoDecoder ? mediaInfoText(path, infoDecoder->info()) : std::string();
+                const std::string fileName = utf8(std::filesystem::path(path).filename().wstring());
+
+                check(!infoText.empty(), "信息面板：文本非空");
+                check(infoText.find(fileName) != std::string::npos,
+                    std::format("信息面板：含文件名 {}", fileName));
+                check(infoText.find(getUIString(191)) != std::string::npos, "信息面板：含时长行");
+                check(infoText.find(getUIString(192)) != std::string::npos, "信息面板：含格式行");
+                const bool hasVideoLine = infoText.find(getUIString(164)) != std::string::npos;
+                report += "            | 信息面板: " +
+                    infoText.substr(0, infoText.find_last_not_of('\n') + 1) + "\n";
+                const bool hasAudioLine = infoText.find(getUIString(190)) != std::string::npos;
+                check(hasVideoLine == player->hasVideo(),
+                    player->hasVideo() ? "信息面板：有视频轨时有视频行" : "信息面板：没有视频轨就没有视频行");
+                check(hasAudioLine == player->hasAudio(),
+                    player->hasAudio() ? "信息面板：有音频轨时有音频行" : "信息面板：没有音频轨就没有音频行");
+                if (player->hasAudio())
+                    check(infoText.find("Hz") != std::string::npos, "信息面板：音频行带采样率");
+                if (player->hasVideo())
+                    check(infoText.find("fps") != std::string::npos, "信息面板：视频行带帧率");
+            }
 
             // —— 纯音频文件（mp3/flac/wav…）：没有视频轨，一帧都取不到 ——
             // 下面那套视频断言（落点帧、单帧步进、拖动预览只交一帧）在这里无从谈起，

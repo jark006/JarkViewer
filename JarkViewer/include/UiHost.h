@@ -89,6 +89,15 @@ namespace jark::ui {
         constexpr Glyph<0xE91B> kPhoto;         // 图片
     }
 
+    // 按宽度折行画一段文本（CJK 逐字断行即可；拉丁文尽量在空格处断开）。
+    // draw=false 只测量总高（返回占用高度，不画）；draw=true 从 top 起画，
+    // clipTop/clipBottom 之外的行跳过（y 仍推进），配合滚动使用。
+    // left/right/top 等都是**客户区坐标**，origin 传主视口左上角（多视口模式下
+    // 画在前景列表上要换算，见各窗口里的 uiPos）；color 是已转好的 ImU32。
+    // 看图窗口的 EXIF 面板与播放器的媒体信息面板共用这一份（别各写一套折行）。
+    float drawWrappedText(ImDrawList* drawList, ImVec2 origin, float left, float top, float right,
+        float clipTop, float clipBottom, const std::string& text, ImU32 color, bool draw);
+
     // 把窗口期望尺寸收敛到"主视口装得下"的范围（含少量余量）。
     // 多视口模式下，ImGui 只在主视口矩形**完全包含**窗口矩形时才把它并回主窗口绘制，
     // 装不下的窗口会被分离成独立 OS 窗口：圆角/边框不再跟随主题（角外露黑底）、还会

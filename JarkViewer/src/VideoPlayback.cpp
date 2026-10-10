@@ -1,6 +1,7 @@
 #include "VideoPlayback.h"
 
 #include "MappedFileReader.h"
+#include "MediaDecoder.h"
 #include "MediaPlayer.h"
 #include "jarkUtils.h"
 
@@ -60,6 +61,7 @@ bool VideoPlayback::open(const std::wstring& path) {
     hasVideo_ = player_->hasVideo();
     // 只有纯音频画面才需要实时频谱（视频画面被帧占着），别让视频/实况那条路白算 FFT
     player_->setSpectrumEnabled(!hasVideo_);
+    infoText_ = buildInfoText();
     atEnd_ = false;
     landingMinPtsMs_ = -1;
     resumeAfterScrub_ = false;
@@ -80,6 +82,7 @@ void VideoPlayback::close() {
 
     path_.clear();
     fileName_.clear();
+    infoText_.clear();
     error_ = Error::None;
     durationMs_ = 0;
     videoWidth_ = 0;
@@ -292,6 +295,19 @@ int64_t VideoPlayback::framePtsMs() const noexcept {
 
 bool VideoPlayback::readSpectrum(std::span<float> out) const noexcept {
     return player_ && player_->readSpectrum(out);
+}
+
+// 信息面板的文本：用**一次性**的 Both 解码器读一遍容器与两条流的信息
+// （正在播的那两个实例各只解一路，拿不到另一路；Both 只解复用不切换播的那一份）
+std::string VideoPlayback::buildInfoText() const {
+    if (!mapping_)
+        return {};
+
+    auto decoder = MediaDecoder::open(mapping_->view(), MediaDecoder::StreamFilter::Both);
+    if (!decoder)
+        return {};
+
+    return mediaInfoText(path_, decoder->info());
 }
 
 } // namespace jark

@@ -2891,59 +2891,11 @@ public:
 
     // 按宽度折行（CJK 逐字断行即可；拉丁文尽量在空格处断开）。draw=false 时只测量总高；
     // draw=true 时从 top 起画、clipTop/clipBottom 之外的行跳过（y 仍推进），配合滚动使用。
+    // 实现在 jark::ui（播放器的媒体信息面板共用同一份），这里只是补上主视口原点换算。
     float drawWrappedText(ImDrawList* drawList, float left, float top, float right,
         float clipTop, float clipBottom, const std::string& text, ImU32 color, bool draw) {
-        const float lineHeight = ImGui::GetTextLineHeight();
-        const float wrapWidth = right - left;
-        if (wrapWidth <= 8.0f)
-            return 0.0f;
-
-        float y = top;
-        size_t index = 0;
-        std::string line;
-
-        auto flushLine = [&](const std::string& value) {
-            if (value.empty())
-                return;
-            if (draw && y + lineHeight >= clipTop && y <= clipBottom)
-                drawList->AddText(uiPos(left, y), color, value.c_str());
-            y += lineHeight;
-        };
-
-        while (index < text.size()) {
-            const size_t charStart = index;
-            const unsigned char byte = static_cast<unsigned char>(text[index]);
-
-            size_t charLength = 1;
-            if ((byte & 0xE0) == 0xC0) charLength = 2;
-            else if ((byte & 0xF0) == 0xE0) charLength = 3;
-            else if ((byte & 0xF8) == 0xF0) charLength = 4;
-            charLength = (std::min)(charLength, text.size() - index);
-
-            const std::string character = text.substr(charStart, charLength);
-            const int codePoint = charLength == 1 ? byte : -1;
-
-            if (codePoint == '\n') {
-                flushLine(line);
-                line.clear();
-                index += charLength;
-                continue;
-            }
-
-            line += character;
-
-            if (ImGui::CalcTextSize(line.c_str()).x > wrapWidth) {
-                // 超宽：退掉最后一个字符，输出当前行，把它挪到下一行
-                line.resize(line.size() - character.size());
-                flushLine(line);
-                line = character;
-            }
-
-            index += charLength;
-        }
-
-        flushLine(line);
-        return y - top;
+        return jark::ui::drawWrappedText(drawList, ImGui::GetMainViewport()->Pos, left, top, right,
+            clipTop, clipBottom, text, color, draw);
     }
 
     // 是否有界面窗口（设置/批量/打印/编辑/重命名）在显示

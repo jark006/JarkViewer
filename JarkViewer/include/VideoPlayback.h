@@ -47,6 +47,11 @@ public:
     Error error() const noexcept { return error_; }
     const std::wstring& fileName() const noexcept { return fileName_; }
 
+    // —— 信息面板（界面按 I / Tab 打开）——
+    // 打开文件时就用一个一次性解码器把容器/流信息读出来，纯文本交给界面画；
+    // 打不开时为空串（失败占位画面没有信息可给）
+    const std::string& infoText() const noexcept { return infoText_; }
+
     // —— 取画面 ——
     // 每帧调用一次；返回 true 表示这一帧与上一帧不同（调用方需要重绘）。
     // 纯音频文件永远返回 false（没有帧可取），但它同时还负责补发拖动预览、恢复播放、
@@ -108,9 +113,11 @@ private:
     static constexpr int64_t kPreviewIntervalMs = 60;
 
     void updateAtEnd();
+    std::string buildInfoText() const;
 
     std::wstring path_;
     std::wstring fileName_;
+    std::string infoText_;
     std::shared_ptr<MappedFileReader> mapping_;   // 必须活得比 player_ 久（解码器只持指针）
     std::unique_ptr<MediaPlayer> player_;
     Error error_ = Error::None;

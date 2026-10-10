@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <opencv2/opencv.hpp>
@@ -25,6 +26,14 @@ struct MediaInfo {
     int64_t durationMs = 0;
     int audioSampleRate = 0;
     int audioChannels = 0;
+
+    // —— 信息面板（播放器按 I / Tab）用的补充信息 ——
+    // 名字都是 FFmpeg 的短名（"h264"/"aac"），语言无关，不占多语言文案
+    std::string formatName;      // 容器（解复用器名，如 "mov,mp4,m4a,3gp,3g2,mj2"）
+    std::string videoCodec;      // 视频编码
+    std::string audioCodec;      // 音频编码
+    int64_t bitRate = 0;         // 容器总码率（bit/s，0 = 未知）
+    int64_t audioBitRate = 0;    // 音轨码率（bit/s，0 = 未知）
 
     // 交给播放端的帧是**按 rotationDegrees 旋转过**的（见 MediaDecoder 里对 Chunk::video
     // 的 cv::rotate），所以"播放端看到的尺寸"要跟着换：手机竖拍视频的编码尺寸是横的，
@@ -89,5 +98,9 @@ private:
     std::unique_ptr<Impl> impl_;
     MediaInfo info_;
 };
+
+// 播放器信息面板（按 I / Tab 打开）的文本：文件属性 + 容器/流信息，多行 "标签: 值"。
+// 纯函数（只读 MediaInfo 与文件属性），所以 --probe 也能拿它做断言。
+std::string mediaInfoText(const std::wstring& path, const MediaInfo& info);
 
 } // namespace jark

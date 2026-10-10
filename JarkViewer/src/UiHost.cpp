@@ -375,6 +375,64 @@ ImVec2 jark::ui::fitWindowSizeToMainViewport(const ImVec2& desired) {
     return { (std::min)(desired.x, limitX), (std::min)(desired.y, limitY) };
 }
 
+float jark::ui::drawWrappedText(ImDrawList* drawList, ImVec2 origin, float left, float top, float right,
+    float clipTop, float clipBottom, const std::string& text, ImU32 color, bool draw) {
+    const float lineHeight = ImGui::GetTextLineHeight();
+    const float wrapWidth = right - left;
+    if (wrapWidth <= 8.0f)
+        return 0.0f;
+
+    // 客户区坐标 → 前景绘制列表的坐标
+    const auto at = [&](float x, float y) { return ImVec2(origin.x + x, origin.y + y); };
+
+    float y = top;
+    size_t index = 0;
+    std::string line;
+
+    const auto flushLine = [&](const std::string& value) {
+        if (value.empty())
+            return;
+        if (draw && y + lineHeight >= clipTop && y <= clipBottom)
+            drawList->AddText(at(left, y), color, value.c_str());
+        y += lineHeight;
+    };
+
+    while (index < text.size()) {
+        const size_t charStart = index;
+        const unsigned char byte = static_cast<unsigned char>(text[index]);
+
+        size_t charLength = 1;
+        if ((byte & 0xE0) == 0xC0) charLength = 2;
+        else if ((byte & 0xF0) == 0xE0) charLength = 3;
+        else if ((byte & 0xF8) == 0xF0) charLength = 4;
+        charLength = (std::min)(charLength, text.size() - index);
+
+        const std::string character = text.substr(charStart, charLength);
+        const int codePoint = charLength == 1 ? byte : -1;
+
+        if (codePoint == '\n') {
+            flushLine(line);
+            line.clear();
+            index += charLength;
+            continue;
+        }
+
+        line += character;
+
+        if (ImGui::CalcTextSize(line.c_str()).x > wrapWidth) {
+            // 超宽：退掉最后一个字符，输出当前行，把它挪到下一行
+            line.resize(line.size() - character.size());
+            flushLine(line);
+            line = character;
+        }
+
+        index += charLength;
+    }
+
+    flushLine(line);
+    return y - top;
+}
+
 void UiHost::newFrame() {
     if (!initialized_)
         return;

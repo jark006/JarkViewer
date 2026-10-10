@@ -1,10 +1,13 @@
 #include "MediaDecoder.h"
 
+#include "Localization.h"
 #include "jarkUtils.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <format>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -320,14 +323,26 @@ std::unique_ptr<MediaDecoder> MediaDecoder::open(std::span<const uint8_t> data, 
         info.frameRate = av_q2d(stream->avg_frame_rate);
         if (info.frameRate <= 0.0)
             info.frameRate = av_q2d(stream->r_frame_rate);
+        if (const char* name = avcodec_get_name(stream->codecpar->codec_id))
+            info.videoCodec = name;
     }
 
     if (impl.audioStreamIndex >= 0) {
+        AVStream* stream = impl.formatContext->streams[impl.audioStreamIndex];
         AVCodecContext* codec = impl.audioCodec.get();
         info.hasAudio = true;
         info.audioSampleRate = codec->sample_rate;
         info.audioChannels = codec->ch_layout.nb_channels;
+        if (const char* name = avcodec_get_name(stream->codecpar->codec_id))
+            info.audioCodec = name;
+        info.audioBitRate = (std::max)(int64_t{ 0 },
+            stream->codecpar->bit_rate > 0 ? stream->codecpar->bit_rate : codec->bit_rate);
     }
+
+    // 容器名与总码率（信息面板用；解复用器名形如 "mov,mp4,m4a,3gp,3g2,mj2"，够一眼看出封装）
+    if (impl.formatContext->iformat && impl.formatContext->iformat->name)
+        info.formatName = impl.formatContext->iformat->name;
+    info.bitRate = (std::max)(int64_t{ 0 }, impl.formatContext->bit_rate);
 
     if (impl.formatContext->duration != AV_NOPTS_VALUE)
         info.durationMs = impl.formatContext->duration * 1000 / AV_TIME_BASE;
@@ -609,6 +624,69 @@ bool MediaDecoder::seek(int64_t ms) {
     impl.audioFlushSent = false;
     impl.lastAudioPtsMs.reset();
     return true;
+}
+
+namespace {
+
+    // 信息面板的时长：带上毫秒（短的实况视频/音频只在毫秒上分得出差别）
+    std::string formatDurationMs(int64_t ms) {
+        if (ms < 0)
+            ms = 0;
+
+        const int64_t hours = ms / 3600000;
+        const int64_t minutes = (ms / 60000) % 60;
+        const int64_t seconds = (ms / 1000) % 60;
+        const int64_t millis = ms % 1000;
+
+        return hours > 0
+            ? std::format("{}:{:02d}:{:02d}.{:03d}", hours, minutes, seconds, millis)
+            : std::format("{:02d}:{:02d}.{:03d}", minutes, seconds, millis);
+    }
+
+    std::string formatBitRate(int64_t bitsPerSecond) {
+        return std::format("{} kb/s", (bitsPerSecond + 500) / 1000);
+    }
+
+} // namespace
+
+std::string mediaInfoText(const std::wstring& path, const MediaInfo& info) {
+    std::error_code errorCode;
+    const auto fileSize = std::filesystem::file_size(path, errorCode);
+
+    // 与看图那条 EXIF 面板同一个排版：每行 "标签: 值"。标签取现有文案
+    // （39 路径 / 40 大小 / 164 视频 / 190 音频），流参数用 FFmpeg 的短名与单位，
+    // 语言无关，不占多语言表
+    std::string text = std::format("{}: {}\n{}: {}\n{}: {}\n",
+        getUIString(39), jarkUtils::wstringToUtf8(path),
+        getUIString(40), errorCode ? std::string("-") : jarkUtils::size2Str(fileSize),
+        getUIString(191), formatDurationMs(info.durationMs));
+
+    if (!info.formatName.empty())
+        text += std::format("{}: {}\n", getUIString(192), info.formatName);
+    if (info.bitRate > 0)
+        text += std::format("{}: {}\n", getUIString(193), formatBitRate(info.bitRate));
+
+    if (info.hasVideo) {
+        text += std::format("{}: {} {}x{}", getUIString(164),
+            info.videoCodec.empty() ? "?" : info.videoCodec, info.width, info.height);
+        if (info.displayWidth() != info.width || info.displayHeight() != info.height)
+            text += std::format(" → {}x{}", info.displayWidth(), info.displayHeight());
+        if (info.rotationDegrees != 0)
+            text += std::format(" rot={}", info.rotationDegrees);
+        if (info.frameRate > 0.0)
+            text += std::format(" {:.2f}fps", info.frameRate);
+        text += '\n';
+    }
+
+    if (info.hasAudio) {
+        text += std::format("{}: {} {}Hz {}ch", getUIString(190),
+            info.audioCodec.empty() ? "?" : info.audioCodec, info.audioSampleRate, info.audioChannels);
+        if (info.audioBitRate > 0)
+            text += std::format(" {}", formatBitRate(info.audioBitRate));
+        text += '\n';
+    }
+
+    return text;
 }
 
 } // namespace jark

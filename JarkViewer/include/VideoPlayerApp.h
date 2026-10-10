@@ -67,6 +67,10 @@ private:
     void updateWindowCaption();
     // 静态画面：打开失败时的失败占位，或没有视频轨时的音频画面（播视频时什么都不画）
     void updatePlaceholder();
+    // 媒体信息面板（I / Tab 切换；样式与看图那边的 EXIF 面板一致，折行与滚动共用 jark::ui）
+    bool infoPanelVisible() const;
+    bool infoPanelHit(int x, int y) const;
+    void drawInfoPanel();
     // 当前是不是"纯音频画面"（打开了但没有视频轨）：条带是否常驻也看它
     bool showsAudioScreen() const;
     void updateFitView();
@@ -99,6 +103,12 @@ private:
     cv::Size viewFrameSize_{};       // 视图是按这个帧尺寸算的（换片/窗口变化要重算）
     int viewWinWidth_ = 0;
     int viewWinHeight_ = 0;
+
+    // 媒体信息面板：是否打开、面板矩形（客户区坐标，不画时清空）与滚动位置
+    bool showInfo_ = false;
+    cv::Rect2f infoPanelRect_{};
+    float infoPanelScroll_ = 0.0f;
+    float infoPanelMaxScroll_ = 0.0f;
 
     bool mouseInside_ = false;
     bool draggingBar_ = false;

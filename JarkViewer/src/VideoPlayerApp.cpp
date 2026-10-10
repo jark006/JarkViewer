@@ -26,6 +26,12 @@ int64_t steadyNowMs() {
         std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
+// 主题色（0xAARRGGBB）→ ImU32，alphaScale 用来做半透明（与看图那边的 imColor 同一个语义）
+ImU32 themeColor(uint32_t argb, float alphaScale = 1.0f) {
+    const int alpha = static_cast<int>(((argb >> 24) & 0xFF) * alphaScale);
+    return IM_COL32((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, alpha);
+}
+
 // mm:ss（超过一小时 h:mm:ss）
 std::string formatTime(int64_t ms) {
     const int64_t totalSeconds = (std::max)(int64_t{ 0 }, ms) / 1000;
@@ -68,6 +74,7 @@ void VideoPlayerApp::startFile(const std::wstring& path) {
     playback_.open(path);
     placeholder_ = cv::Mat(); // 上一片的静态画面不能留：换新片那一瞬间会露出来
     placeholderStamp_ = 0;    // 指纹里没有文件名，换片一律重画（失败占位 / 纯音频画面）
+    infoPanelScroll_ = 0.0f;  // 信息面板换成新文件的内容：滚回顶部（开关状态保留）
 
     updateWindowCaption();
     updateFitView();
@@ -304,6 +311,10 @@ void VideoPlayerApp::DrawUi() {
         accent.y + (1.0f - accent.y) * 0.55f,
         accent.z + (1.0f - accent.z) * 0.55f, kTrackAlpha));
 
+    // —— 媒体信息面板（I / Tab）：先画，条带再压在上面 ——
+    // 条带在播放器里是唯一的操作入口，不能被面板盖住
+    drawInfoPanel();
+
     // —— 音量提示：手绘小喇叭 + 百分数字（不新增多语言文案）——
     if (volumeOsdUntilMs_ != 0) {
         const float w = 132.0f * scale;
@@ -413,6 +424,73 @@ void VideoPlayerApp::DrawUi() {
         ImVec2(textPos.x + textSize.x + padX, textPos.y + textSize.y + padY),
         IM_COL32(0, 0, 0, 140), 3.0f * scale);
     draw->AddText(textPos, IM_COL32(255, 255, 255, 235), timeText.c_str());
+}
+
+// —— 媒体信息面板 ——
+//
+// 样式照看图那边那个 EXIF 面板：左侧四分之一宽的圆角面板、文本按宽度折行、滚轮滚动、
+// 折行与滚动条那套算法直接复用 `jark::ui::drawWrappedText`。内容由 VideoPlayback::
+// infoText()（文件属性 + 容器/流信息）给出，这里只负责排版。
+//
+// 底部给条带留出高度：条带是播放器唯一的操作入口，压住文字就没法一边看信息一边拖进度
+bool VideoPlayerApp::infoPanelVisible() const {
+    return showInfo_ && playback_.isOpen() && !playback_.infoText().empty();
+}
+
+bool VideoPlayerApp::infoPanelHit(int x, int y) const {
+    return infoPanelVisible() && !infoPanelRect_.empty() &&
+        static_cast<float>(x) >= infoPanelRect_.x &&
+        static_cast<float>(x) < infoPanelRect_.x + infoPanelRect_.width &&
+        static_cast<float>(y) >= infoPanelRect_.y &&
+        static_cast<float>(y) < infoPanelRect_.y + infoPanelRect_.height;
+}
+
+void VideoPlayerApp::drawInfoPanel() {
+    if (!infoPanelVisible()) {
+        infoPanelRect_ = {}; // 不画时也要清掉矩形，否则滚轮还会落到"看不见的面板"上
+        return;
+    }
+
+    ImDrawList* drawList = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
+    const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+    const auto pos = [&](float x, float y) { return ImVec2(origin.x + x, origin.y + y); };
+    const float scale = uiScale();
+    const float padding = static_cast<float>(dp(12));
+    const float panelWidth = (winWidth - padding * 2.0f) / 4.0f;
+    const float panelHeight = winHeight - padding * 2.0f - barHeight();
+    infoPanelRect_ = { padding, padding, panelWidth, panelHeight };
+
+    drawList->AddRectFilled(pos(padding, padding), pos(padding + panelWidth, padding + panelHeight),
+        themeColor(GlobalVar::currentTheme.BG_DEEP, 0.82f), 8.0f * scale);
+
+    const float contentLeft = padding + dp(10);
+    const float contentRight = padding + panelWidth - dp(10);
+    const float contentTop = padding + dp(8);
+    const float textBottom = padding + panelHeight - dp(8);
+    const float textViewHeight = textBottom - contentTop;
+    const auto& text = playback_.infoText();
+
+    // 先量总高（draw=false）再按滚动偏移画，屏外的行直接跳过
+    const float totalHeight = jark::ui::drawWrappedText(nullptr, origin, contentLeft, 0.0f, contentRight,
+        0.0f, 0.0f, text, 0, false);
+    infoPanelMaxScroll_ = (std::max)(0.0f, totalHeight - textViewHeight);
+    infoPanelScroll_ = (std::clamp)(infoPanelScroll_, 0.0f, infoPanelMaxScroll_);
+
+    drawList->PushClipRect(pos(contentLeft, contentTop), pos(contentRight, textBottom), true);
+    jark::ui::drawWrappedText(drawList, origin, contentLeft, contentTop - infoPanelScroll_, contentRight,
+        contentTop, textBottom, text, themeColor(GlobalVar::currentTheme.FG), true);
+    drawList->PopClipRect();
+
+    // 滚动条：贴在面板右缘（与 EXIF 面板同一套画法）
+    if (infoPanelMaxScroll_ > 0.5f) {
+        const float thumbHeight = (std::max)(static_cast<float>(dp(24)),
+            textViewHeight * textViewHeight / totalHeight);
+        const float thumbTop = contentTop + (textViewHeight - thumbHeight) * (infoPanelScroll_ / infoPanelMaxScroll_);
+        drawList->AddRectFilled(pos(contentRight + dp(2), contentTop), pos(contentRight + dp(4), textBottom),
+            themeColor(GlobalVar::currentTheme.FG, 0.15f));
+        drawList->AddRectFilled(pos(contentRight + dp(2), thumbTop), pos(contentRight + dp(4), thumbTop + thumbHeight),
+            themeColor(GlobalVar::currentTheme.FG, 0.45f));
+    }
 }
 
 // —— 条带几何 ——
@@ -568,8 +646,14 @@ void VideoPlayerApp::OnMouseLeave() {
 
 void VideoPlayerApp::OnMouseWheel(UINT nFlags, short zDelta, int x, int y) {
     (void)nFlags;
-    (void)x;
-    (void)y;
+
+    // 信息面板内的滚轮只滚面板内容，不穿透成音量（与看图那边 EXIF 面板同一套规则）
+    if (infoPanelHit(x, y)) {
+        infoPanelScroll_ -= zDelta / static_cast<float>(WHEEL_DELTA) * dp(66);
+        infoPanelScroll_ = (std::clamp)(infoPanelScroll_, 0.0f, infoPanelMaxScroll_);
+        markPresentRequested();
+        return;
+    }
 
     // 滚轮调音量，与 W/S 同一个步进（5%）
     const int notches = zDelta == 0 ? 0 : (zDelta > 0 ? 1 : -1) * (std::max)(1, std::abs(zDelta) / WHEEL_DELTA);
@@ -620,6 +704,12 @@ void VideoPlayerApp::OnKeyDown(WPARAM keyValue) {
             playback_.stepFrame(1);
         else
             playback_.nudge(jark::VideoPlayback::kNudgeMs);
+        markPresentRequested();
+        break;
+
+    case VK_TAB:
+    case 'I': // 媒体信息面板（与看图窗口的 EXIF 面板同一个键）
+        showInfo_ = !showInfo_;
         markPresentRequested();
         break;
 
