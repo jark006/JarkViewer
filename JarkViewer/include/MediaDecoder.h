@@ -60,6 +60,21 @@ public:
     // 取下一个解码结果；返回 false 表示已结束（chunk.type == End）
     bool readNext(Chunk& chunk);
 
+    // 跳到指定位置（毫秒）：解复用器退到不晚于目标的关键帧，并冲掉解码器内部缓冲。
+    // 只负责"定位到关键帧"——**精确落点由调用方丢弃 PTS 早于目标的帧完成**
+    // （见 MediaPlayer 的落点过滤：从关键帧向前解码到目标，画面才真落在松手的位置上）。
+    // 必须由持有该解码器的那一个线程调用（解码器内部状态不是线程安全的）。
+    bool seek(int64_t ms);
+
+    // 精确落点用：丢弃时间戳早于该值的视频帧与音频样本（< 0 表示不过滤）。
+    // 视频侧关键是**在缩放与拷贝之前**就丢掉：从关键帧向前解码到目标要解上百帧，
+    // 每帧 sws_scale + clone 就是几毫秒，那是落点耗时的大头（实测长 GOP 1080p
+    // 一次精确落点 1.5s，其中绝大部分花在把要丢掉的帧也转换了一遍）。
+    // 音频侧相反，必须**在 resample 之后**才裁（swr 的历史要连续喂着走），
+    // 并把裁过的批的 ptsMs 一起往前推——播放端用它判断"到目标了没有"。
+    // 只能由持有该解码器的那一个线程调用。
+    void setSkipBeforeMs(int64_t ms) noexcept;
+
     // 音频统一转换到的输出格式
     static constexpr int kOutputSampleRate = 48000;
     static constexpr int kOutputChannels = 2;

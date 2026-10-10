@@ -195,23 +195,27 @@ void D3D11App::loadSettings() {
 }
 
 void D3D11App::saveSettings() const {
-    WINDOWPLACEMENT wp{ .length = sizeof(WINDOWPLACEMENT) };
+    // 窗口几何只在"这就是记几何的那个窗口"时才回写：视频播放器与看图窗口是同一个进程里
+    // 二选一的顶层窗口，都写同一个 rect 的话会互相覆盖（下次开图变成播放器窗口的大小）
+    if (persistsWindowPlacement()) {
+        WINDOWPLACEMENT wp{ .length = sizeof(WINDOWPLACEMENT) };
 
-    if (GetWindowPlacement(m_hWnd, &wp) && wp.showCmd == SW_NORMAL) {
-        GlobalVar::settingParameter.showCmd = SW_NORMAL;
-        GlobalVar::settingParameter.rect = wp.rcNormalPosition;
-    }
-    else {
-        GlobalVar::settingParameter.showCmd = SW_MAXIMIZE;
-        GlobalVar::settingParameter.rect = {};
-    }
+        if (GetWindowPlacement(m_hWnd, &wp) && wp.showCmd == SW_NORMAL) {
+            GlobalVar::settingParameter.showCmd = SW_NORMAL;
+            GlobalVar::settingParameter.rect = wp.rcNormalPosition;
+        }
+        else {
+            GlobalVar::settingParameter.showCmd = SW_MAXIMIZE;
+            GlobalVar::settingParameter.rect = {};
+        }
 
-    // 记住窗口所在显示器（最大化/全屏也记）：下次启动优先回到这块屏
-    if (HMONITOR monitor = ::MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST)) {
-        MONITORINFOEXW info{};
-        info.cbSize = sizeof(MONITORINFOEXW);
-        if (::GetMonitorInfoW(monitor, &info))
-            wcscpy_s(GlobalVar::settingParameter.monitorDevice, info.szDevice);
+        // 记住窗口所在显示器（最大化/全屏也记）：下次启动优先回到这块屏
+        if (HMONITOR monitor = ::MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST)) {
+            MONITORINFOEXW info{};
+            info.cbSize = sizeof(MONITORINFOEXW);
+            if (::GetMonitorInfoW(monitor, &info))
+                wcscpy_s(GlobalVar::settingParameter.monitorDevice, info.szDevice);
+        }
     }
 
     memcpy(GlobalVar::settingParameter.header, GlobalVar::settingHeader.data(), GlobalVar::settingHeader.length());
@@ -478,8 +482,26 @@ void D3D11App::Run() {
 }
 
 void D3D11App::OnDestroy() {
+    if (m_destroying)
+        return; // DestroyWindow 会同步送回一条 WM_DESTROY：别再存一次设置（那时窗口正在拆）
+
+    m_destroying = true;
     saveSettings();
     m_fRunning = FALSE;
+
+    // ImGui 必须在**窗口还活着**的时候拆掉：后端 Shutdown 会把窗口过程换回去，
+    // 此时句柄若已经被系统回收给了下一个窗口（同一个进程里换窗口时很常见），
+    // 就会把新窗口的窗口过程改坏、它再也收不到任何消息。
+    jark::ui::UiHost::instance().shutdown();
+
+    // 窗口必须**真的**销毁：退出走的是 PostMessage(WM_DESTROY)，那只调到这里，
+    // 窗口本身还活着。对象随后就被析构，于是下一条鼠标/DPI/输入法消息打在这个窗口上
+    // 就会调到已析构对象的纯虚函数（实测 `_purecall` → abort，退出码 0xC0000409）。
+    // 进程直接退出时看不出来，一旦首尾相接（看图窗口 ↔ 视频播放器窗口交换）就必然撞上。
+    // 真正的 WM_DESTROY（DestroyWindow 触发）走到这里时 DestroyWindow 会直接失败返回，
+    // 不会重入成无限递归。
+    if (IsWindow(m_hWnd))
+        DestroyWindow(m_hWnd);
 }
 
 
@@ -515,6 +537,9 @@ LRESULT D3D11App::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         return S_OK;
     }
     case WM_CONTEXTMENU: {
+        if (inputApp && !inputApp->showsContextMenu())
+            return S_OK;
+
         if (lParam == -1) {
             RECT rc;
             GetClientRect(hwnd, &rc);

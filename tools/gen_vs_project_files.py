@@ -30,17 +30,19 @@ FILTERS = os.path.join(PROJECT_DIR, "JarkViewer.vcxproj.filters")
 
 # 自有代码的模块划分：文件名（不含扩展名）-> 筛选器
 OWN_GROUPS = {
-    "App": {"main", "D3D11App", "UiHost", "InfoScreen", "DecodeProbe"},
+    # App 是程序宿主与顶层窗口（视频播放器窗口整轮接管，和看图窗口互不构造）
+    "App": {"main", "D3D11App", "UiHost", "InfoScreen", "DecodeProbe", "VideoPlayerApp"},
     "Ui": {"NavigationOverlay", "SettingWindow", "PrintWindow", "BatchWindow",
            "EditorWindow", "RenameWindow"},
     "Image": {"ImageDatabase", "FormatSniffer", "VectorImage", "SVGPreprocessor",
               "CanvasRenderer", "ImageResampler", "TextRenderer", "ImageAnnotator",
               "ImageAdjust", "ColorManager", "blpDecoder", "videoDecoder"},
-    "Media": {"MediaDecoder", "MediaPlayer", "AudioOutput"},
+    "Media": {"MediaDecoder", "MediaPlayer", "AudioOutput", "VideoPlayback"},
     "Metadata": {"exifParse", "AiPrompt"},
     "Core": {"jarkUtils", "Localization", "stringRes", "LRU", "ThumbnailService",
              "FileAssociationManager", "FileAssociationNaming", "ThumbnailRegistrar",
-             "ThumbnailProviderGuids", "framework", "targetver", "BatchProcessor"},
+             "ThumbnailProviderGuids", "framework", "targetver", "BatchProcessor",
+             "MappedFileReader"},
     "ThirdParty\\tinyxml2": {"tinyxml2"},
 }
 OWN_BY_STEM = {stem: group for group, stems in OWN_GROUPS.items() for stem in stems}

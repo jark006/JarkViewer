@@ -17,6 +17,7 @@
 #include "MediaDecoder.h"
 #include "MediaPlayer.h"
 #include "VectorImage.h"
+#include "VideoPlayback.h"
 #include "jarkUtils.h"
 
 #include <algorithm>
@@ -30,6 +31,9 @@
 #include <span>
 #include <string>
 #include <windows.h>
+#include <dbghelp.h>
+
+#pragma comment(lib, "dbghelp.lib")
 
 namespace jark {
 namespace {
@@ -55,6 +59,42 @@ namespace {
 
     std::string utf8(std::wstring_view text) {
         return jarkUtils::wstringToUtf8(text);
+    }
+
+    // 进程内抓崩溃现场：异常时自己写一份完整内存 dump。
+    // 为什么不用工具 attach：这里的崩溃都是时序竞态（正常跑约五次一崩，attach cdb 之后
+    // 基本不复现），让进程自己在异常处理里落盘才不会把竞态关掉。
+    // 用 JARKVIEWER_CRASH_DUMP=<文件路径> 打开；只在 --probe 里装，不影响正常使用。
+    std::wstring crashDumpPath;
+
+    LONG WINAPI crashDumpFilter(EXCEPTION_POINTERS* exceptionPointers) {
+        if (crashDumpPath.empty())
+            return EXCEPTION_CONTINUE_SEARCH;
+
+        HANDLE file = CreateFileW(crashDumpPath.c_str(), GENERIC_WRITE, 0, nullptr,
+            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            return EXCEPTION_CONTINUE_SEARCH;
+
+        MINIDUMP_EXCEPTION_INFORMATION exceptionInfo{};
+        exceptionInfo.ThreadId = GetCurrentThreadId();
+        exceptionInfo.ExceptionPointers = exceptionPointers;
+        exceptionInfo.ClientPointers = FALSE;
+
+        MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file,
+            static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemory | MiniDumpWithUnloadedModules),
+            &exceptionInfo, nullptr, nullptr);
+        CloseHandle(file);
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+
+    void installCrashDumpHandler() {
+        wchar_t buffer[MAX_PATH * 2] = {};
+        if (GetEnvironmentVariableW(L"JARKVIEWER_CRASH_DUMP", buffer, static_cast<DWORD>(std::size(buffer))) == 0)
+            return;
+
+        crashDumpPath = buffer;
+        SetUnhandledExceptionFilter(crashDumpFilter);
     }
 
     std::span<const uint8_t> readHead(const std::wstring& path, std::vector<uint8_t>& storage, size_t maxBytes) {
@@ -935,6 +975,340 @@ namespace {
         return report;
     }
 
+    // 独立视频播放器自检：暂停、精确 seek、单帧步进、播完停在最后一帧。
+    // 这些语义在界面上只能靠眼睛看"顺不顺"，看不出落点对不对、时钟有没有偷跑：
+    // 暂停后再读一次位置才知道时钟是不是真停了，seek 之后才知道落点偏了几帧。
+    // 断言直接打在 MediaPlayer 上（播放器界面只是它的状态机 + 绘制），所以这里过的
+    // 就是界面里跑的那一份逻辑。
+    std::string runVideoTest(const std::vector<std::wstring>& targets) {
+        std::string report;
+        int passed = 0, failed = 0, skipped = 0;
+        const auto check = [&](bool ok, const std::string& name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+        const auto abs64 = [](int64_t value) { return value < 0 ? -value : value; };
+        const auto elapsedMsSince = [](std::chrono::steady_clock::time_point begin) {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - begin).count();
+        };
+
+        for (const auto& path : targets) {
+            report += std::format("---- {} ----\n", utf8(std::filesystem::path(path).filename().wstring()));
+
+            std::vector<uint8_t> mediaBytes;
+            {
+                std::ifstream file(path, std::ios::binary | std::ios::ate);
+                if (!file.is_open()) {
+                    report += "无法读取该文件\n";
+                    ++failed;
+                    continue;
+                }
+                const auto size = static_cast<size_t>(file.tellg());
+                file.seekg(0);
+                mediaBytes.resize(size);
+                file.read(reinterpret_cast<char*>(mediaBytes.data()), static_cast<std::streamsize>(size));
+            }
+
+            auto player = MediaPlayer::create();
+            if (!player || !player->start(mediaBytes, 0.0f)) {
+                report += "启动失败：没有可播放的视频流\n";
+                ++skipped;
+                continue;
+            }
+
+            int videoWidth = 0;
+            int videoHeight = 0;
+            player->getVideoSize(videoWidth, videoHeight);
+            const int64_t duration = player->durationMs();
+            const int64_t frameMs = static_cast<int64_t>(std::lround(player->frameDurationMs()));
+            report += std::format("媒体: 显示 {}x{} 时长={}ms 单帧={}ms 音频={}\n",
+                videoWidth, videoHeight, duration, frameMs, player->hasAudio());
+
+            check(player->hasVideo(), "取到视频轨");
+            check(videoWidth > 0 && videoHeight > 0, "显示尺寸有效");
+            check(frameMs > 0, std::format("单帧时长 {}ms 有效", frameMs));
+
+            // 像主循环那样定时取帧：视频队列靠取帧腾位置，不取帧解码线程会一直等着
+            int64_t deliveredPts = -1;
+            int deliveries = 0;
+            const auto pump = [&](int milliseconds) {
+                const auto begin = std::chrono::steady_clock::now();
+                while (true) {
+                    cv::Mat frame;
+                    if (player->acquireFrame(frame)) {
+                        deliveredPts = player->currentFramePtsMs();
+                        ++deliveries;
+                    }
+                    if (elapsedMsSince(begin) >= milliseconds)
+                        break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(3));
+                }
+            };
+
+            // 1) 起播：时钟按 1 倍速推进。
+            // 下界给得宽（这里量的是"时钟有没有在走"，解码被别的活挤到时声卡会饿一小会儿）；
+            // 上界严格，声卡不可能播得比媒体时间还快
+            pump(1000);
+            const int64_t pos1 = player->positionMs();
+            check(pos1 >= 400, std::format("播放 1 秒后位置 {}ms ≥ 400ms（时钟在推进）", pos1));
+            check(pos1 <= 1400, std::format("播放 1 秒后位置 {}ms ≤ 1400ms（没有偷跑）", pos1));
+
+            // 2) 暂停：时钟必须停住（声卡 voice 停在原采样点 / 系统时钟停止累计）
+            player->pause();
+            pump(150);
+            const int64_t paused0 = player->positionMs();
+            pump(500);
+            const int64_t paused1 = player->positionMs();
+            check(player->isPaused(), "暂停后 isPaused() 为真");
+            check(abs64(paused1 - paused0) <= 20,
+                std::format("暂停 500ms 后位置只动了 {}ms", paused1 - paused0));
+
+            // 3) 恢复：从原位置继续，不是从头开始
+            player->resume();
+            pump(500);
+            const int64_t resumed = player->positionMs();
+            check(!player->isPaused(), "恢复后 isPaused() 为假");
+            check(resumed >= paused1 + 200,
+                std::format("恢复 500ms 后位置 {}ms ≥ {}ms（从原位继续）", resumed, paused1 + 200));
+
+            if (duration <= 0) {
+                report += "时长不可知：跳过 seek / 步进 / 结尾断言\n";
+                ++skipped;
+                player->stop();
+                continue;
+            }
+
+            // 4) 暂停中精确 seek 到中点：落点误差不超过一帧，且交出的正是覆盖目标时刻的那一帧
+            player->pause();
+            const int64_t target = duration / 2;
+            deliveredPts = -1; // 清掉上一步的帧号，不然"没交出帧"会被误读成"交出的帧不对"
+            player->seek(target);
+            int64_t landingMs = 0;
+            {
+                const auto begin = std::chrono::steady_clock::now();
+                // 长 GOP 的精确落点要从关键帧一路解到目标（4K + 250 帧 GOP 实测要几秒），
+                // 这里等够；界面侧这段时间显示的是拖动的预览帧。
+                //
+                // 判据用"交出的帧时间戳落在目标附近"，不能用"seek 之后第一次交出帧"：
+                // seek 只是发布目标、两个解码线程各自动作，在那之前时钟还在旧位置、
+                // 队列里也还留着旧位置的帧，取帧照样会把它们交出来（机器忙时这段窗口
+                // 会被拉长，压测里真出现过第一帧还是旧位置的 1760ms、而目标是 3000ms）。
+                // 记的必须是落点帧本身：落点帧之后还可能有一帧落在 clock+20 以内被一起取走。
+                const int64_t landingFloor = target - 4 * frameMs;
+                while (elapsedMsSince(begin) < 15000) {
+                    cv::Mat frame;
+                    if (player->acquireFrame(frame)) {
+                        deliveredPts = player->currentFramePtsMs();
+                        ++deliveries;
+                        if (deliveredPts >= landingFloor)
+                            break;
+                    }
+                    else {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(3));
+                    }
+                }
+                landingMs = elapsedMsSince(begin);
+            }
+            const int64_t seekPos = player->positionMs();
+            check(abs64(seekPos - target) <= frameMs + 20,
+                std::format("暂停中 seek 到 {}ms，落点 {}ms（偏差 ≤ {}ms）", target, seekPos, frameMs + 20));
+            report += std::format("落点耗时 {}ms\n", landingMs);
+            check(deliveredPts >= 0 && deliveredPts <= target && deliveredPts > target - 4 * frameMs,
+                std::format("交出的帧时间戳 {}ms 覆盖目标时刻（应落在 ({}ms, {}ms]）",
+                    deliveredPts, target - 4 * frameMs, target));
+
+            // 5) 单帧步进：前进一帧、再退回原位（暂停态下画面必须跟着换）
+            const int64_t before = player->currentFramePtsMs();
+            player->stepFrame(1);
+            pump(500);
+            const int64_t stepped = player->currentFramePtsMs();
+            const int64_t stepTolerance = (std::max)(int64_t{ 2 }, frameMs / 2);
+            check(abs64(stepped - before - frameMs) <= stepTolerance,
+                std::format("单帧前进：{}ms → {}ms（应 +{}ms）", before, stepped, frameMs));
+
+            player->stepFrame(-1);
+            pump(500);
+            const int64_t back = player->currentFramePtsMs();
+            check(abs64(back - before) <= stepTolerance,
+                std::format("单帧后退：{}ms → {}ms（应回到 {}ms）", stepped, back, before));
+
+            // 6) 播放中 seek：落到目标附近并继续前进（不能弹回开头）
+            player->resume();
+            const int64_t quarter = duration / 4;
+            player->seek(quarter);
+            pump(600);
+            const int64_t afterSeek = player->positionMs();
+            check(afterSeek >= quarter - 20 && afterSeek <= quarter + 1000,
+                std::format("播放中 seek 到 {}ms，600ms 后位置 {}ms", quarter, afterSeek));
+            pump(300);
+            check(player->positionMs() > afterSeek,
+                std::format("seek 之后继续前进（{}ms → {}ms）", afterSeek, player->positionMs()));
+
+            // 7) 播完自动停在最后一帧（不循环、不回退、不关窗）
+            player->seek((std::max)(int64_t{ 0 }, duration - 800));
+            {
+                const auto begin = std::chrono::steady_clock::now();
+                while (!player->hasFinished() && elapsedMsSince(begin) < 6000)
+                    pump(20);
+            }
+            check(player->hasFinished(), "播到结尾后 hasFinished() 为真");
+            const int64_t endPos = player->positionMs();
+            check(endPos >= duration - 2 * frameMs - 50,
+                std::format("结尾位置 {}ms 落在媒体末尾（≥ {}ms）", endPos, duration - 2 * frameMs - 50));
+            check(player->currentFramePtsMs() > duration - 2000,
+                std::format("停在最后一帧（帧时间戳 {}ms）", player->currentFramePtsMs()));
+
+            // 8) 拖回开头：这是"结尾暂停态按空格从头播"的地基
+            player->pause();
+            player->seek(0);
+            pump(400);
+            check(player->positionMs() <= frameMs + 30,
+                std::format("seek(0) 后位置 {}ms 回到开头", player->positionMs()));
+            player->resume();
+            pump(400);
+            check(player->positionMs() >= 150,
+                std::format("从头继续播放 400ms 后位置 {}ms ≥ 150ms", player->positionMs()));
+
+            player->stop();
+
+            // 9) 拖动进度条：走界面上真正用的那份状态机（VideoPlayback）。
+            //    拖动中只出关键帧预览（一帧、时钟停在把手位置、画面不许"追赶"），
+            //    松手精确落位之后才恢复播放——这三条只在界面上靠眼睛看会很含糊
+            {
+                jark::VideoPlayback scrub;
+                if (!scrub.open(path)) {
+                    report += "VideoPlayback 无法打开该文件\n";
+                    ++failed;
+                    continue;
+                }
+
+                int64_t scrubDeliveredPts = -1;
+                int deliveries = 0;
+                const auto pumpScrub = [&](int milliseconds) {
+                    const auto begin = std::chrono::steady_clock::now();
+                    while (true) {
+                        cv::Mat frame;
+                        if (scrub.takeFrame(frame)) {
+                            scrubDeliveredPts = scrub.framePtsMs();
+                            ++deliveries;
+                        }
+                        if (elapsedMsSince(begin) >= milliseconds)
+                            break;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(3));
+                    }
+                };
+
+                pumpScrub(700);
+                check(scrub.isPlaying(), "打开即播放");
+                check(scrub.positionMs() > 400, std::format("起播 700ms 后位置 {}ms", scrub.positionMs()));
+
+                // 把手位置留在媒体中段：拖到结尾会撞上"播完自动暂停"，那就测不出"恢复播放"了
+                const int64_t half = duration * 2 / 5;
+                scrub.beginScrub(half);
+                check(scrub.isScrubbing(), "按下进度条进入拖动状态");
+                check(!scrub.isPlaying(), "拖动中暂停（时钟与声音都停）");
+                check(abs64(scrub.scrubTargetMs() - half) <= frameMs, "把手停在按下位置");
+
+                // 连拖几段：时钟要跟手停在把手位置，且**每一下只交一帧预览**——
+                // 少了"只交一帧"，解码线程会把关键帧之后、还没到目标的帧一帧帧送出来
+                // （它们的 PTS 都早于已重设到目标的时钟，全都算到点），画面看起来像在追赶
+                int64_t worstPts = -1;
+                int64_t moveTarget = half;
+                for (int step = 1; step <= 4; ++step) {
+                    moveTarget = half + static_cast<int64_t>(duration / 20) * step;
+                    const int deliveriesBefore = deliveries;
+                    scrub.updateScrub(moveTarget);
+                    pumpScrub(250);
+                    const int delivered = deliveries - deliveriesBefore;
+
+                    const auto settleBegin = std::chrono::steady_clock::now();
+                    while (abs64(scrub.positionMs() - moveTarget) > frameMs + 20 &&
+                        elapsedMsSince(settleBegin) < 1000)
+                        pumpScrub(20);
+
+                    worstPts = (std::max)(worstPts, scrubDeliveredPts);
+                    check(abs64(scrub.positionMs() - moveTarget) <= frameMs + 20,
+                        std::format("拖动到 {}ms：时钟停在把手位置（{}ms）", moveTarget, scrub.positionMs()));
+                    check(delivered <= 3,
+                        std::format("拖动到 {}ms：一下只交 {} 帧预览（应 ≤ 3）", moveTarget, delivered));
+                }
+                check(worstPts >= 0 && worstPts <= scrub.scrubTargetMs() + frameMs,
+                    std::format("拖动预览只出把手之前的关键帧（最大 {}ms ≤ {}ms）",
+                        worstPts, scrub.scrubTargetMs() + frameMs));
+
+                scrub.endScrub(moveTarget);
+                check(!scrub.isScrubbing(), "松手后退出拖动状态");
+
+                const auto landBegin = std::chrono::steady_clock::now();
+                while ((scrubDeliveredPts < moveTarget - 2 * frameMs) && elapsedMsSince(landBegin) < 5000)
+                    pumpScrub(20);
+                check(scrubDeliveredPts >= moveTarget - 2 * frameMs,
+                    std::format("松手后精确落位到把手位置（帧 {}ms / 目标 {}ms）", scrubDeliveredPts, moveTarget));
+
+                const int64_t landedPos = scrub.positionMs();
+                pumpScrub(500);
+                check(scrub.isPlaying(), "落位后恢复播放（拖动前是在播的）");
+                check(scrub.positionMs() > landedPos,
+                    std::format("落位后时钟继续前进（{}ms → {}ms）", landedPos, scrub.positionMs()));
+                scrub.close();
+            }
+
+            // 10) seek 之后音频必须从**目标附近**开始出声，不能把目标之前的音频也放出来。
+            //     这条坏在"落点"上：av_seek_frame 用默认流（视频+音频的 MP4 就是视频流）时，
+            //     音频实例跟着跳到**视频关键帧**上，于是 seek 之后先送出最多一个 GOP 的旧音频
+            //     （听感：半秒到几秒的杂音 / 像在快放），之后才接上正确位置。音频流每个包都是
+            //     关键帧，按自己的流 seek 就只差一帧。
+            if (player->hasAudio()) {
+                const int64_t audioTarget = duration * 3 / 5;
+                if (auto audioOnly = MediaDecoder::open(mediaBytes, MediaDecoder::StreamFilter::AudioOnly)) {
+                    MediaDecoder::Chunk chunk;
+                    const bool seeked = audioOnly->seek(audioTarget);
+                    int64_t firstAudioPts = -1;
+                    for (int i = 0; i < 4000 && firstAudioPts < 0; ++i) {
+                        if (!audioOnly->readNext(chunk))
+                            break;
+                        if (chunk.type == MediaDecoder::Chunk::Type::Audio && !chunk.audio.empty())
+                            firstAudioPts = chunk.ptsMs;
+                    }
+                    check(seeked, "音频实例 seek 成功");
+                    check(firstAudioPts >= 0 && firstAudioPts <= audioTarget + 50,
+                        std::format("音频 seek 落点 {}ms 不晚于目标 {}ms（向后取关键帧）",
+                            firstAudioPts, audioTarget));
+                    check(firstAudioPts >= audioTarget - 100,
+                        std::format("音频 seek 落点 {}ms 离目标 {}ms 在 100ms 内（不能落到视频关键帧上）",
+                            firstAudioPts, audioTarget));
+                }
+                else {
+                    check(false, "音频实例打不开（无法验证 seek 落点）");
+                }
+
+                // 落点还可能因为别的原因被拽到目标之前（容器索引粒度、同时解两路流的实例……），
+                // 所以"早于目标的样本一律不出声"这条得独立于落点成立：拿一个**同时解音视频**的
+                // 实例（seek 按视频流落到关键帧上，实测早 1.4s）来验——它交出的第一批音频
+                // 也必须落在目标附近（靠 MediaDecoder::setSkipBeforeMs，与视频丢帧同一机制）
+                if (auto both = MediaDecoder::open(mediaBytes)) {
+                    both->setSkipBeforeMs(audioTarget);
+                    MediaDecoder::Chunk mixed;
+                    const bool seeked = both->seek(audioTarget);
+                    int64_t firstPts = -1;
+                    for (int i = 0; i < 8000 && firstPts < 0; ++i) {
+                        if (!both->readNext(mixed))
+                            break;
+                        if (mixed.type == MediaDecoder::Chunk::Type::Audio && !mixed.audio.empty())
+                            firstPts = mixed.ptsMs;
+                    }
+                    check(seeked && firstPts >= audioTarget - 100 && firstPts <= audioTarget + 50,
+                        std::format("落点在目标之前时，交出音频的起点 {}ms 也被拉回目标 {}ms 附近",
+                            firstPts, audioTarget));
+                }
+            }
+        }
+
+        report += std::format("---- video: {} ok, {} failed, {} skipped ----\n", passed, failed, skipped);
+        return report;
+    }
+
     // 缩放平滑插值自检（ImageResampler + CanvasRenderer 的配合）：
     // 重采样块是"已按 rotation 预旋转的名义空间位图 + 一块归一化区域"，采样端按块尺寸算采样密度。
     // 旋转方向、区域原点取整、源/位图尺寸换算这几处错了都不会崩，只是画面整体镜像/偏移，
@@ -1724,11 +2098,14 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         ::SetConsoleOutputCP(CP_UTF8);
     }
 
+    installCrashDumpHandler();
+
     std::vector<std::wstring> targets;
     std::wstring reportPath = L"decode-probe.txt";
     bool fullExif = false;
     bool audioTest = false;
     bool playbackTest = false;
+    bool videoTest = false;
     bool languageTest = false;
     bool batchTest = false;
     bool annotateTest = false;
@@ -1758,6 +2135,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--playback-test") {
             playbackTest = true;
+            continue;
+        }
+        if (argv[i] == L"--video-test") {
+            videoTest = true;
             continue;
         }
         if (argv[i] == L"--lang-test") {
@@ -2006,6 +2387,12 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
 
     if (playbackTest) {
         const auto text = runPlaybackTest(targets);
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+
+    if (videoTest) {
+        const auto text = runVideoTest(targets);
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

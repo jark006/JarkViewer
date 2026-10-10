@@ -162,6 +162,7 @@
     <ClCompile Include="src\InfoScreen.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\UiHost.cpp" />
+    <ClCompile Include="src\VideoPlayerApp.cpp" />
     <ClCompile Include="src\NavigationOverlay.cpp" />
     <ClCompile Include="src\blpDecoder.cpp" />
     <ClCompile Include="src\CanvasRenderer.cpp" />
@@ -177,6 +178,7 @@
     <ClCompile Include="src\AudioOutput.cpp" />
     <ClCompile Include="src\MediaDecoder.cpp" />
     <ClCompile Include="src\MediaPlayer.cpp" />
+    <ClCompile Include="src\VideoPlayback.cpp" />
     <ClCompile Include="src\AiPrompt.cpp" />
     <ClCompile Include="src\exifParse.cpp" />
     <ClCompile Include="src\BatchProcessor.cpp" />
@@ -198,6 +200,7 @@
     <ClInclude Include="include\DecodeProbe.h" />
     <ClInclude Include="include\InfoScreen.h" />
     <ClInclude Include="include\UiHost.h" />
+    <ClInclude Include="include\VideoPlayerApp.h" />
     <ClInclude Include="include\BatchWindow.h" />
     <ClInclude Include="include\EditorWindow.h" />
     <ClInclude Include="include\NavigationOverlay.h" />
@@ -219,6 +222,7 @@
     <ClInclude Include="include\AudioOutput.h" />
     <ClInclude Include="include\MediaDecoder.h" />
     <ClInclude Include="include\MediaPlayer.h" />
+    <ClInclude Include="include\VideoPlayback.h" />
     <ClInclude Include="include\AiPrompt.h" />
     <ClInclude Include="include\exifParse.h" />
     <ClInclude Include="include\BatchProcessor.h" />
@@ -228,6 +232,7 @@
     <ClInclude Include="include\jarkUtils.h" />
     <ClInclude Include="include\Localization.h" />
     <ClInclude Include="include\LRU.h" />
+    <ClInclude Include="include\MappedFileReader.h" />
     <ClInclude Include="include\stringRes.h" />
     <ClInclude Include="include\targetver.h" />
     <ClInclude Include="include\ThumbnailProviderGuids.h" />

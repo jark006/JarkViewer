@@ -74,6 +74,10 @@ Test-Break "README RAW 清单多一个格式" @{
     "README.md" = @("srw x3f", "srw x3f x9z")
 }
 
+Test-Break "videoExt 少了 webm（三处视频清单不一致）" @{
+    "JarkViewer/include/ImageDatabase.h" = @('L"ts", L"mxf", L"webm",', 'L"ts", L"mxf",')
+}
+
 Test-Break "PSD 解码顺序颠倒" @{
     "JarkViewer/src/ImageDatabase.cpp" = @(
         "        auto img = loadPSD(path, buf);`r`n        if (img.empty())`r`n            img = loadSTB(path, buf);",
@@ -116,5 +120,5 @@ if ($script:failed -or -not $restored) {
     Write-Host "反向验证存在失败项（或还原后检查未通过）" -ForegroundColor Red
     exit 1
 }
-Write-Host "反向验证全部通过：12 项破坏全被抓到，文件已按原字节还原" -ForegroundColor Green
+Write-Host "反向验证全部通过：13 项破坏全被抓到，文件已按原字节还原" -ForegroundColor Green
 exit 0

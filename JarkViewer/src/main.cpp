@@ -13,10 +13,12 @@
 #include "MediaPlayer.h"
 #include "VectorImage.h"
 #include "TextRenderer.h"
+#include "FormatSniffer.h"
 #include "ImageDatabase.h"
 #include "PrintWindow.h"
 #include "RenameWindow.h"
 #include "SettingWindow.h"
+#include "VideoPlayerApp.h"
 
 #include "D3D11App.h"
 #include <optional>
@@ -327,6 +329,7 @@ public:
 
     // ---- 启动路径：首图解码与 D3D 设备创建并行 ----
     std::wstring startupFilePath_;
+    std::wstring handoffPath_; // 交给播放器窗口的文件（见 initOpenFile）
     bool startupFilePrepared_ = false;
     std::chrono::steady_clock::time_point appStart_ = std::chrono::steady_clock::now();
 
@@ -336,6 +339,10 @@ public:
     }
 
     void setStartupFile(std::wstring path) { startupFilePath_ = std::move(path); }
+
+    // 退出时若想把某个文件交给"另一个窗口"打开（拖入/选中了视频），由 wWinMain 取走它
+    // 换成播放器窗口。图片永远不走这条路。
+    std::wstring takeHandoffPath() { return std::exchange(handoffPath_, {}); }
 
     // 窗口句柄刚创建、D3D 设备还没建：先把首图解码派发出去（只派发不等待），
     // 建 D3D 设备/交换链的几十毫秒里解码在后台线程上并行跑。等待与收尾仍由 initOpenFile 完成。
@@ -532,6 +539,16 @@ public:
     }
 
     void initOpenFile(wstring filePath) {
+        // 视频归独立播放器：看图窗口不播视频（拖放 / Ctrl+O / 主页按钮都可能拿到视频），
+        // 记下路径、关掉本窗口，由 wWinMain 换成播放器窗口——规则只有一个：
+        // 视频永远在播放器里播，看图窗口里不存在"半套播放器"
+        if (jark::isVideoFile(filePath)) {
+            handoffPath_ = filePath;
+            JARK_LOG("看图: 视频交给播放器窗口 {}", jarkUtils::wstringToUtf8(filePath));
+            operateQueue.push({ ActionENUM::requestExit });
+            return;
+        }
+
         if (startupFilePrepared_ && filePath == startupFilePath_) {
             // 启动路径：OnWindowCreated() 已抢在 D3D 设备创建前扫描目录并派发解码。
             // 这里不能再跑前半段——imgDB.clear() 会把在途解码作废——直接等结果收尾。
@@ -3463,8 +3480,6 @@ public:
     }
 };
 
-void test();
-
 int WINAPI wWinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -3491,8 +3506,6 @@ int WINAPI wWinMain(
         if (envLength > 0 && envLength < 8 && envValue[0] != L'0' && envValue[0] != 0)
             jarkUtils::setLogEnabled(true);
     }
-
-    //test();
 
     // 限制 PPL 默认调度器最多 4 线程, 必须在任何 concurrency::parallel_* 调用之前设置。
     {
@@ -3552,8 +3565,6 @@ int WINAPI wWinMain(
         }
     }
 
-    JarkViewerApp app;
-    app.setStartupFile(filePath);
     // 命令行指定的语言要在窗口创建前应用：窗口一就绪就会扫描目录、放占位并派发解码，
     // 占位文案随 UI_LANG 走
     if (languageOverride.has_value()) {
@@ -3561,21 +3572,43 @@ int WINAPI wWinMain(
             static_cast<uint32_t>(jark::languageFromSetting(*languageOverride));
     }
 
-    if (SUCCEEDED(app.InitWindow(hInstance))) {
-        app.initOpenFile(filePath);
-        app.Run();
-    }
-    else {
-        MessageBoxW(NULL, getUIStringW(13), getUIStringW(14), MB_ICONERROR);
+    // 视频归独立播放器窗口、图片归看图窗口，**二选一构造**，另一个对象根本不构造
+    // （所以播放器里不会出现"按 P 进幻灯片"这类串味）。
+    // 运行中拖放/ Ctrl+O 打开别的文件时，当前窗口退出并留下一个路径，循环据此
+    // 换成另一个窗口——这就是"按内容换窗口"。
+    std::wstring pendingPath = filePath;
+    for (;;) {
+        if (jark::isVideoFile(pendingPath)) {
+            VideoPlayerApp player;
+            player.setStartupFile(pendingPath);
+            if (FAILED(player.Initialize(hInstance))) {
+                MessageBoxW(NULL, getUIStringW(13), getUIStringW(14), MB_ICONERROR);
+                break;
+            }
+            player.Run();
+
+            const std::wstring next = player.takeHandoffPath();
+            if (next.empty())
+                break;
+            pendingPath = next;
+        }
+        else {
+            JarkViewerApp app;
+            app.setStartupFile(pendingPath);
+            if (FAILED(app.InitWindow(hInstance))) {
+                MessageBoxW(NULL, getUIStringW(13), getUIStringW(14), MB_ICONERROR);
+                break;
+            }
+            app.initOpenFile(pendingPath);
+            app.Run();
+
+            const std::wstring next = app.takeHandoffPath();
+            if (next.empty())
+                break;
+            pendingPath = next;
+        }
     }
 
     ::CoUninitialize();
     return 0;
-}
-
-void test() {
-    std::ifstream file("D:\\Downloads\\test\\22.wp2", std::ios::binary);
-    auto buf = std::vector<uint8_t>(std::istreambuf_iterator<char>(file), {});
-
-    exit(0);
 }

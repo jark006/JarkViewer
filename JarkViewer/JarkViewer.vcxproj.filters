@@ -387,6 +387,9 @@
     <ClCompile Include="src\UiHost.cpp">
       <Filter>App</Filter>
     </ClCompile>
+    <ClCompile Include="src\VideoPlayerApp.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
     <ClCompile Include="src\NavigationOverlay.cpp">
       <Filter>Ui</Filter>
     </ClCompile>
@@ -430,6 +433,9 @@
       <Filter>Media</Filter>
     </ClCompile>
     <ClCompile Include="src\MediaPlayer.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VideoPlayback.cpp">
       <Filter>Media</Filter>
     </ClCompile>
     <ClCompile Include="src\AiPrompt.cpp">
@@ -489,6 +495,9 @@
       <Filter>App</Filter>
     </ClInclude>
     <ClInclude Include="include\UiHost.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="include\VideoPlayerApp.h">
       <Filter>App</Filter>
     </ClInclude>
     <ClInclude Include="include\BatchWindow.h">
@@ -554,6 +563,9 @@
     <ClInclude Include="include\MediaPlayer.h">
       <Filter>Media</Filter>
     </ClInclude>
+    <ClInclude Include="include\VideoPlayback.h">
+      <Filter>Media</Filter>
+    </ClInclude>
     <ClInclude Include="include\AiPrompt.h">
       <Filter>Metadata</Filter>
     </ClInclude>
@@ -579,6 +591,9 @@
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="include\LRU.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MappedFileReader.h">
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="include\stringRes.h">

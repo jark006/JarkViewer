@@ -57,10 +57,16 @@ std::string UiHost::systemFontPath(const wchar_t* fileName) {
 }
 
 bool UiHost::init(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* context, IDXGISwapChain* swapChain) {
-    if (initialized_)
-        return true;
     if (!hwnd || !device || !context || !swapChain)
         return false;
+
+    // 每次建窗口都会走到这里（`D3D11App::Initialize`），同一个进程里换窗口时（看图窗口 ↔
+    // 视频播放器窗口）旧窗口与旧设备都已经没了：**必须整个重建** ImGui 上下文与两套后端，
+    // 否则界面依旧被画到已释放的交换链上——表现是"浮层/条带看不见，但鼠标还能操作"
+    // （输入走的是自己的消息处理，不经过 ImGui）。
+    // 不能靠比较 hwnd/设备指针判断"是不是同一个窗口"：它们都可能被系统回收复用。
+    shutdown(); // 幂等，没初始化过就是空操作
+
 
     hwnd_ = hwnd;
     device_ = device;
@@ -109,6 +115,13 @@ void UiHost::shutdown() {
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
+
+    // 指针一并清掉：换窗口重建时它们是旧窗口/旧设备上的，留着只会让人误以为还绑着谁
+    hwnd_ = nullptr;
+    device_ = nullptr;
+    context_ = nullptr;
+    swapChain_ = nullptr;
+    imeContext_ = nullptr;
     initialized_ = false;
 }
 

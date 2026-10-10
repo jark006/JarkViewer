@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace jark {
@@ -61,6 +62,11 @@ FileFormat sniffFileFormat(std::span<const uint8_t> data) noexcept;
 
 // 由扩展名（不含点，大小写不敏感）推断格式；无法识别返回 Unknown。
 FileFormat fileFormatFromExtension(std::wstring_view ext) noexcept;
+
+// 该路径是不是视频文件（按扩展名判定，只看文件名部分）。
+// **这就是"交给独立播放器还是走看图"的那一条判定**：命令行入参、拖放、Ctrl+O
+// 三处都走它，避免同一个文件在不同入口下进了不同的模式。
+bool isVideoFile(const std::wstring& path) noexcept;
 
 // 该格式的扩展名是否需要优先于文件头嗅探结果（魔数无法表达的信息，如 RAW/视频）
 bool isExtensionAuthoritative(FileFormat format) noexcept;

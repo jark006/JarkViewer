@@ -202,6 +202,7 @@ struct MediaDecoder::Impl {
     bool demuxEof = false;
     bool videoFlushSent = false;
     bool audioFlushSent = false;
+    int64_t skipBeforeMs = -1;   // 精确落点：早于它的视频帧不转换、直接丢
     std::optional<int64_t> lastAudioPtsMs;
 };
 
@@ -268,19 +269,27 @@ std::unique_ptr<MediaDecoder> MediaDecoder::open(std::span<const uint8_t> data, 
 
         AVStream* stream = impl.formatContext->streams[streamIndex];
         const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
-        if (!codec)
+        if (!codec) {
+            JARK_LOG("no decoder for codec id {}", static_cast<int>(stream->codecpar->codec_id));
             return nullptr;
+        }
 
         CodecContextPtr context(avcodec_alloc_context3(codec));
         if (!context)
             return nullptr;
 
-        if (avcodec_parameters_to_context(context.get(), stream->codecpar) < 0)
+        if (const int copied = avcodec_parameters_to_context(context.get(), stream->codecpar); copied < 0) {
+            JARK_LOG("avcodec_parameters_to_context failed: {}", ffmpegError(copied));
             return nullptr;
+        }
 
         context->thread_count = 8;
-        if (avcodec_open2(context.get(), codec, nullptr) < 0)
+        if (const int opened = avcodec_open2(context.get(), codec, nullptr); opened < 0) {
+            // 别在这里静默失败：帧线程上下文初始化出错时 avcodec_open2 会返回错误，
+            // 少了这行日志就只能看到"没有可用的解码器"，看不出原因
+            JARK_LOG("avcodec_open2({}) failed: {}", codec->name, ffmpegError(opened));
             return nullptr;
+        }
 
         return context;
     };
@@ -348,6 +357,18 @@ bool MediaDecoder::readNext(Chunk& chunk) {
                     continue;
                 }
 
+                // 时间戳要在转换之前算：早于目标的帧连缩放/拷贝都不做（见 setSkipBeforeMs）
+                const AVRational videoTimeBase = impl.formatContext->streams[impl.videoStreamIndex]->time_base;
+                const int64_t framePts = frame->best_effort_timestamp != AV_NOPTS_VALUE
+                    ? frame->best_effort_timestamp : frame->pts;
+                const int64_t framePtsMs = framePts == AV_NOPTS_VALUE ? 0
+                    : av_rescale_q(framePts, videoTimeBase, AVRational{ 1, 1000 });
+
+                if (impl.skipBeforeMs >= 0 && framePtsMs < impl.skipBeforeMs) {
+                    av_frame_unref(impl.decodeFrame.get());
+                    continue;
+                }
+
                 int dstWidth = srcWidth;
                 int dstHeight = srcHeight;
                 const int longEdge = (std::max)(srcWidth, srcHeight);
@@ -390,12 +411,7 @@ bool MediaDecoder::readNext(Chunk& chunk) {
                         chunk.type = Chunk::Type::Video;
                         chunk.video = cv::Mat(dstHeight, dstWidth, CV_8UC3, impl.rgbFrame->data[0],
                             impl.rgbFrame->linesize[0]).clone();
-
-                        const AVRational timeBase = impl.formatContext->streams[impl.videoStreamIndex]->time_base;
-                        const int64_t pts = frame->best_effort_timestamp != AV_NOPTS_VALUE
-                            ? frame->best_effort_timestamp : frame->pts;
-                        chunk.ptsMs = pts == AV_NOPTS_VALUE ? 0
-                            : av_rescale_q(pts, timeBase, AVRational{ 1, 1000 });
+                        chunk.ptsMs = framePtsMs;
 
                         if (info_.rotationDegrees == 90)
                             cv::rotate(chunk.video, chunk.video, cv::ROTATE_90_CLOCKWISE);
@@ -478,6 +494,23 @@ bool MediaDecoder::readNext(Chunk& chunk) {
                                 chunk.ptsMs = impl.lastAudioPtsMs ? *impl.lastAudioPtsMs + durationMs : 0;
                             }
 
+                            // 精确落点：早于目标的音频一律不出声（与视频的 skipBeforeMs 同一语义，
+                            // 但**先 resample 再裁**——swr 的内部历史要连续喂着走，直接跳过输入帧
+                            // 会在接缝处留下一声爆音）。整批都在目标之前就整批丢掉，下一批接着裁。
+                            if (impl.skipBeforeMs >= 0 && chunk.ptsMs < impl.skipBeforeMs) {
+                                const int64_t skipFrames = (impl.skipBeforeMs - chunk.ptsMs) *
+                                    kOutputSampleRate / 1000;
+                                const int64_t totalFrames = static_cast<int64_t>(chunk.audio.size()) /
+                                    kOutputChannels;
+                                if (skipFrames >= totalFrames) {
+                                    av_frame_unref(impl.decodeFrame.get());
+                                    continue;
+                                }
+                                chunk.audio.erase(chunk.audio.begin(),
+                                    chunk.audio.begin() + static_cast<size_t>(skipFrames) * kOutputChannels);
+                                chunk.ptsMs += skipFrames * 1000 / kOutputSampleRate;
+                            }
+
                             impl.lastAudioPtsMs = chunk.ptsMs;
                             av_frame_unref(impl.decodeFrame.get());
                             return true;
@@ -529,6 +562,53 @@ bool MediaDecoder::readNext(Chunk& chunk) {
         chunk.type = Chunk::Type::End;
         return false;
     }
+}
+
+void MediaDecoder::setSkipBeforeMs(int64_t ms) noexcept {
+    impl_->skipBeforeMs = ms;
+}
+
+bool MediaDecoder::seek(int64_t ms) {
+    auto& impl = *impl_;
+    if (!impl.formatContext)
+        return false;
+
+    // 按**本实例负责的那条流** seek，不用 stream_index = -1（默认流）："视频+音频"的
+    // MP4 默认流是视频流，音频实例跟着跳到**视频关键帧**上，于是 seek 之后会先送出最多
+    // 一个 GOP 的旧音频（听感就是半秒到几秒的杂音/像在快放），之后才接上正确位置。
+    // 音频流每个包都是关键帧，自己 seek 只差一帧；视频流仍按 AVSEEK_FLAG_BACKWARD 落到
+    // 关键帧，再由 setSkipBeforeMs 丢掉目标之前的帧补齐到目标。
+    int streamIndex = -1;
+    if (impl.videoCodec && impl.videoStreamIndex >= 0)
+        streamIndex = impl.videoStreamIndex;
+    else if (impl.audioCodec && impl.audioStreamIndex >= 0)
+        streamIndex = impl.audioStreamIndex;
+
+    // 给了 stream_index 就得用**该流的时间基**（只有不给时才是 AV_TIME_BASE 微秒）
+    // AVSEEK_FLAG_BACKWARD 保证落到"不晚于目标"的关键帧
+    int64_t timestamp = ms > 0 ? ms * 1000 : 0;
+    if (streamIndex >= 0) {
+        const AVRational timeBase = impl.formatContext->streams[streamIndex]->time_base;
+        timestamp = av_rescale_q(ms > 0 ? ms : 0, AVRational{ 1, 1000 }, timeBase);
+    }
+
+    const int result = av_seek_frame(impl.formatContext.get(), streamIndex, timestamp, AVSEEK_FLAG_BACKWARD);
+    if (result < 0) {
+        JARK_LOG("av_seek_frame({}ms) failed: {}", ms, ffmpegError(result));
+        return false;
+    }
+
+    // 解码器内部还留着旧位置的帧与解析状态（B 帧还要靠它们），必须冲掉；
+    // 解复用器侧的 EOF / "已冲空解码器"标记同理，否则 seek 之后读不出新数据
+    if (impl.videoCodec) avcodec_flush_buffers(impl.videoCodec.get());
+    if (impl.audioCodec) avcodec_flush_buffers(impl.audioCodec.get());
+    av_packet_unref(impl.packet.get());
+    if (impl.decodeFrame) av_frame_unref(impl.decodeFrame.get());
+    impl.demuxEof = false;
+    impl.videoFlushSent = false;
+    impl.audioFlushSent = false;
+    impl.lastAudioPtsMs.reset();
+    return true;
 }
 
 } // namespace jark

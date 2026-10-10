@@ -61,6 +61,12 @@ python tools/gen_testdata.py <输出目录>
 # 主界面导航实机交互（鸟瞰拖动/拖出客户区释放/悬停缩略图带/点击换图/滚轮隔离）
 pwsh tools/test_navigation.ps1 -Exe x64/Release/JarkViewer.exe -Image <图片> -OutDirectory <截图目录> [-CheckSettings]
 
+# 播放器暂停态改窗口尺寸后画面还在不在（回归：曾整窗全黑）
+pwsh tools/test_player_resize.ps1 -Exe x64/Release/JarkViewer.exe -Video <文件> -OutDirectory <截图目录>
+
+# 播放器放大画面有没有经过滤波（黑白棋盘格视频 + 中间调断言；回归：曾用最近邻放大，颗粒感很重）
+pwsh tools/test_player_scaling.ps1 -Exe x64/Release/JarkViewer.exe -Video <棋盘格视频> -OutDirectory <截图目录>
+
 # 列出某进程的可见窗口（自动化测试定位窗口用）
 pwsh tools/list_windows.ps1 -ProcessId <pid>
 
@@ -122,6 +128,8 @@ pwsh tools/verify_source_invariant_checks.ps1
 - 界面改动可用 `tools/capture_window.ps1` 做视觉验证：`-Keys "{F1}"` 注入按键（窗口都在主窗口内，不再需要 `-Window` 选择）、`-Keys2 "{ESC}i"` + `-Keys2DelayMs` 送第二批按键（开窗、点击、再按键这类时序）、`-Hover "x,y"` 悬停、`-Drag "x1,y1,x2,y2[;...]"` 拖动或点击（物理客户区坐标）、`-RightClick "x,y"` + `-MenuKeys "b{ENTER}"` 右键菜单（菜单是独立弹窗，要配 `-Screen` 才截得到）、`-DragHold` 拖到最后一个点**不松手**再截图（验证"拖动中"才有的画面，如马赛克/裁剪的拖框）。ImGui 的窗口默认居中于主窗口。编辑窗口的文字工具另有 `tools/test_editor_text.ps1`：选文字工具 → 点锚点 → 点侧栏文字框 → 投递 Unicode `WM_CHAR`（等价于输入法上屏后的字符），一张图同时验证锚点光标、文字预览和中文能进输入框。主界面导航另有 `tools/test_navigation.ps1`：动态按 DPI 换算客户区坐标，依次验证鸟瞰拖动、拖出客户区释放、悬停展开缩略图带、点击直接换图、滚轮只滚条带不穿透、移出后隐藏、设置窗口往返；加 `-CheckSettings` 时还会点「清理缓存」「显示鸟瞰图」并重启核对设置文件字节（该分支要求 `-Exe` 指向 `%TEMP%` 下的独立副本，避免动到用户的设置与缓存）。
 - 视频相关改动除 `--probe` 外，可用 `--probe --audio-test <文件>` 验证音频链路：它以音量 0 提交音频并观察播放时钟是否按采样率推进（不发出声音）。
 - **播放流畅度自检 `--probe --playback-test <文件...>`**：音量 0 起一个真实 `MediaPlayer`，像主循环那样定时取帧，把"卡不卡"变成数字——交付率、交付间隔中位/最大、**播放时钟倍速与最大停滞**、总用时（对照媒体时长）。关键不变式是**时钟按 1 倍速推进**：音频时钟一停，取帧判定就不再满足，画面跟着停——"画面卡 + 声音一卡一卡"是同一个故障的两个表现。卡顿这类问题靠眼睛看不出是解码、队列还是时钟，改动 `MediaPlayer`/`AudioOutput` 后拿它跑一遍实况照片与视频（`D:\Downloads\test\livp` 整个目录是一个好语料）。
+
+- **独立视频播放器自检 `--probe --video-test <文件...>`**：把界面上只能靠眼睛看的语义变成断言——暂停后时钟是否真停、暂停中精确 seek 的落点偏差、单帧前进/后退、**播完停在最后一帧**、结尾按播放从头重播、**seek 之后音频从目标附近出声**（落点断言 + "落点在目标之前时也要拉回目标"两条，见「视频播放器」一节）；以及 `VideoPlayback` 那份拖动状态机的三条不变式（拖动中时钟停在把手位置、**一下只交一帧关键帧预览**、松手精确落位后才恢复播放）。改动 `MediaPlayer`/`MediaDecoder`/`VideoPlayback` 后跑它，再跑 `--playback-test` 确认实况照片那条老链路没回归。它曾经有约 1/5 的间歇性崩溃，已定位为**音频提交缓冲的 use-after-free**并修掉（是 `AudioOutput` 的缓冲区释放时机，见「视频播放器」一节那条硬约束 ③）。这类"要反复开关句柄、几路一起忙才撞上"的竞态**不能挂调试器抓**（会掩盖），改用 `JARKVIEWER_CRASH_DUMP` 让进程自己落盘——用法与看现场的办法见下面「修改注意事项」里那条。
 - `JarkViewer/src/DecodeProbe.cpp` 提供无界面解码自检（`--probe`），用于在没有窗口的情况下验证解码路由与 EXIF 处理。
 - `JarkViewer/include/BatchProcessor.h` 与 `src/BatchProcessor.cpp` 是批量处理逻辑（转换格式/缩放/旋转翻转/重命名，**没有删除任务**——删文件走主窗口的「删除到回收站」）：解码走工程内解码器（HEIC/AVIF/RAW 等也能参与转换），编码用 OpenCV；不依赖窗口，可用命令行 `--probe --batch <文件...> [--out-dir 目录] [--to 格式] [--quality N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--rename 前缀] [--overwrite]` 直接验证。
   缩放任务的规则集中在纯函数 `scaledSize()`（界面预览与批处理共用）：按百分比 / 按宽度 / 按高度（后两者保持宽高比）/ 自定义宽高（可拉伸变形）/ 限制长边（只缩不放），插值方式 `ScaleAlgorithm` 的默认 `Auto` 是**缩小用 INTER_AREA、放大用 Lanczos**（用 INTER_AREA 放大会退化成最近邻）；命令行对应 `--scale-percent N | --scale-width N | --scale-height N | --scale-size 宽x高 | --max-edge N` 与 `--scale-algo 0..5`，不给 `--to` 时**保持原格式**（缩放任务里的 `outputExtension` 为空即表示保持原格式）。
@@ -249,6 +257,23 @@ pwsh tools/verify_source_invariant_checks.ps1
   （`ImmAssociateContext`）：默认把上下文摘下来（中文输入法会吃掉 p/c 这类单键快捷键），
   `io.WantTextInput` 为真（有文本框在编辑）时才挂回去；组字与候选窗口的位置由 ImGui 的
   `Platform_SetImeDataFn` 默认实现按文本光标摆放，不用自己算。
+- **退出必须真的销毁窗口**（`D3D11App::OnDestroy()` 里补的 `DestroyWindow`）：退出走的是
+  `PostMessageW(WM_DESTROY)`，那只调用到 `OnDestroy`，**窗口本身还活着**；对象随后就被析构，
+  于是下一条鼠标/DPI/输入法消息打在这个窗口上就会调到已析构对象的纯虚函数上。实测是
+  `_purecall` → `abort()`，退出码 `0xC0000409`（`HeapEnableTerminationOnCorruption` 之下表现为
+  "安全 cookie/堆损坏"），而且**时间点取决于下一条消息什么时候来**（2~5 秒不等，看着像随机崩溃）。
+  进程直接退出时看不出来；一旦首尾相接（看图窗口 ↔ 视频播放器窗口交换，见「视频播放器」一节）
+  就必然撞上——**新加"同一个进程里换窗口"的玩法前，先确认这条**。`OnDestroy` 用 `m_destroying`
+  保证只生效一次（`DestroyWindow` 会同步送回一条 WM_DESTROY），真正的 WM_DESTROY 走进去时
+  `DestroyWindow` 会直接失败返回、不会递归。
+  **配套的是 `UiHost` 每个窗口都要整套重建**：`UiHost::init()` 不能再"已初始化就提前返回"，
+  必须先 `shutdown()` 再接管新的窗口/设备/交换链（`shutdown()` 也会把 `hwnd_/device_/context_/
+  swapChain_/imeContext_` 置空）；而且**不能拿 hwnd/设备指针比较"是不是同一个窗口"**——句柄会被
+  系统回收复用，看着一样其实已经是新窗口。顺序也有讲究：`OnDestroy()` 要在**窗口还活着时**先
+  `UiHost::shutdown()`（后端 Shutdown 会把窗口过程换回去，句柄已被回收的话就改坏了新窗口的
+  窗口过程），再 `DestroyWindow`。漏了这一步的症状很隐蔽：**画面由应用自己画的部分（视频帧）
+  一切正常、自己的鼠标命中也照常工作，只有 ImGui 画的东西（浮层、音量提示、条带）永远不出现，
+  输入法/键盘也失灵**——因为 ImGui 还绑在那个已经没了的窗口与已释放的交换链上，画到了空处。
 - 输入分发的硬性规则：**只有确实有界面窗口在显示时，ImGui 才能独占鼠标键盘**
   （`D3D11App::hasVisibleWindows()` → `UiHost::mouseCaptured()/keyboardCaptured()`，实时判断）。
   ImGui 在最后一个窗口关闭后不会复位 `WantCapture*`（导航窗口、活动控件等状态还在），
@@ -290,8 +315,24 @@ pwsh tools/verify_source_invariant_checks.ps1
   各实例只保留自己的 stbtt_fontinfo 与字形缓存；它仍是**界面线程专用**。
 - `JarkViewer/include/MediaDecoder.h` / `MediaPlayer.h` / `AudioOutput.h`（对应 `src/*.cpp`）组成媒体播放链路：`MediaDecoder` 在内存数据上做解复用+解码，按出现顺序产出视频帧或音频批（音频统一重采样为 48kHz 立体声 16 位）；`AudioOutput` 用 XAudio2 输出并提供已播放样本数作为主时钟；`MediaPlayer` 以音频时钟驱动视频帧、一次播完。
   **视频与音频必须各占一个解码器实例 + 一个线程**（`MediaPlayer` 里因此有两个 `MediaDecoder`，`MediaDecoder::StreamFilter` 让每个实例只解自己那一路，另一路只解复用不解码）。起因是一个会自锁的恶性循环：视频队列只有 6 帧（一帧几 MB，必须有上限）要靠"播放端取帧"背压，音频却必须永远跑在播放位置之前。两条路抢同一个线程时，视频队列一满，整个循环就卡在等取帧上，音频提交被迫一起停下——视频队满 → 音频提交掉到 1 倍速以下 → 声卡饿死、播放时钟停住 → 播放端按时钟判"还没到点"不再取帧 → 队列永远满，卡顿就此锁死（实测 3 秒的视频播了 9 秒、中间冻 1.15 秒）。拆开后视频线程只受队列上限约束、音频线程只受声卡队列约束，互不牵连。**别再把它们合回一个线程**，那怕只是为了"省一个解码器"。
-  **音频提交有两个硬约束**：① XAudio2 对单个 source voice 最多排 64 个缓冲区（`XAUDIO2_MAX_QUEUED_BUFFERS`），超了 `SubmitSourceBuffer` 直接失败——按样本数限流拦不住（21ms 的批 × 64 就到顶），必须按**缓冲区个数**限流（`AudioOutput::kMaxQueuedBuffers`），并且**提交失败要重试、不能丢**（丢一批就是声音里一个 20ms 空洞 = "一卡一卡"）；② 音轨比视频短时（实况照片常见）要**补静音到媒体总时长**，否则音频队列一空时钟就停，视频最后几帧永远等不到"到点"、`hasFinished()` 永远为假（画面停在末尾、实况照片回不到静态图、播放状态卡死）。
+  **音频提交有三个硬约束**：① XAudio2 对单个 source voice 最多排 64 个缓冲区（`XAUDIO2_MAX_QUEUED_BUFFERS`），超了 `SubmitSourceBuffer` 直接失败——按样本数限流拦不住（21ms 的批 × 64 就到顶），必须按**缓冲区个数**限流（`AudioOutput::kMaxQueuedBuffers`），并且**提交失败要重试、不能丢**（丢一批就是声音里一个 20ms 空洞 = "一卡一卡"）；② 音轨比视频短时（实况照片常见）要**补静音到媒体总时长**，否则音频队列一空时钟就停，视频最后几帧永远等不到"到点"、`hasFinished()` 永远为假（画面停在末尾、实况照片回不到静态图、播放状态卡死）；③ **提交出去的那块内存只有 `OnBufferEnd` 到过（或引擎整个销毁）才能释放**——XAudio2 是照着 `pAudioData` 直接取样的，不拷贝。`Stop(0)` + `FlushSourceBuffers()` **不能**当作"用完了"：正在播的那一块不会被冲掉，它的数据此刻仍在被读，这时释放就崩在音频线程里（`ucrtbase!memcpy ← CSWVoice::Process`、`MatrixMixFromInt16DiagonalAvx`）。所以 `flush()/stop()` 只把缓冲区挪进 `retiredBuffers`（不再计入队列长度，但内存留着），`releaseAllBuffers()` 放在 `IXAudio2::Release()` 之后当兜底。seek 会走 flush，所以"带音轨 + 有 seek"才会撞上，`--playback-test` 从不 seek 就一次都不复现（这处 2026-10-10 修过一次，回归口径：`--video-test` 带音轨语料 4 路并行 48 次零崩溃、无音轨语料 40 次零崩溃）。
   **视频尺寸分两种，别用错**：`MediaInfo::width/height` 是**编码尺寸**（容器/码流里的原始尺寸，未旋转），`displayWidth()/displayHeight()` 是**帧实际交出去时的尺寸**（按 `rotationDegrees` 换过轴）。解码器会按 display matrix 把帧旋转（手机竖拍视频的编码尺寸是横的），所以**给播放端的尺寸必须用 display\***——`MediaPlayer::getVideoSize()` 就是栽在这里：它原先返回编码尺寸，实况照片播放时主窗口拿它当名义尺寸（`applyViewForSize`），竖帧被塞进横框里拉伸。另外帧的长边超过 `kMaxVideoEdge` 时会**降采样**（4K 实况视频只出 1920×1080 的帧），所以"帧尺寸 == 名义尺寸"**不是**不变式，**宽高比一致**才是；`--probe --full` 对每个视频/实况照片都会打印 `显示 WxH (编码 WxH) rot=R` 与 `首帧 WxH … 宽高比一致`，不一致时会显式报 `!! 宽高比不一致`。实况照片（livp / MotionPhoto）与视频文件都走这条路：静态图/首帧作 `ImageAsset::primaryFrame`，视频字节放在 `ImageAsset::videoSource`，由主窗口自动播放一次后回到静态图（不再预解码成帧序列，避免上百 MB 内存）。空格键在实况照片上是播放开关：播放中切回静态图（并把 `playedAsset` 标记为已播放，防自动续播）、静态图时从头播放（主动操作，出声）。
+- **简易视频播放器**（`VideoPlayerApp` + `VideoPlayback` + `MappedFileReader`）是**独立于看图的一个顶层窗口**：`wWinMain` 按入参在「看图窗口」与它之间**二选一构造**，另一个对象根本不构造，所以播放器里不可能出现"按 P 进幻灯片""按 Q 旋转图片"这类串味；它不经过 `ImageDatabase`/缩略图/导航浮层/EXIF/设置窗口，只复用 `CanvasRenderer` 画帧、`UiHost` 画条带。
+  - **判定与入口**：`jark::isVideoFile()`（`FormatSniffer` 的扩展名表，**就是** `ImageDatabase::videoExt` 那份名单，两者必须一致）决定命令行/拖放/Ctrl+O 走哪个窗口；`webm` 归视频端、不在 `supportExt` 里（否则看图列表里会出现"点开却跳到播放器"的项，规则就不唯一了）。运行中"按内容换窗口"由 `wWinMain` 的接力循环实现：当前窗口退出时留下 `takeHandoffPath()`，循环据此构造另一个窗口。ESC / Ctrl+W 退出程序（单向门，没有"切回看图"的路）。
+  - **数据来源是整文件内存映射**（`MappedFileReader`，原在 `ImageDatabase.cpp` 的匿名命名空间里，提到公共头共用）：不再把视频读进内存、**没有 256 MiB 上限**（`ImageDatabase` 侧那条老上限与 `VideoSource` 的整份拷贝只留给实况照片/`--probe`/批处理/缩略图，没动）。映射**必须活得比 `MediaPlayer` 久**（`MediaDecoder::open()` 只持 span 指针、不拷贝数据），`VideoPlayback::close()` 里先 stop 再 reset 映射就是这个原因。
+  - **窗口几何不回写设置**：`D3D11App::persistsWindowPlacement()` 虚开关，播放器返回 false。两个窗口共用一个 `SettingParameter::rect`，都写就会互相覆盖（下次开图变成播放器窗口的大小）。
+  - **键位**：空格播放/暂停（**播完停在最后一帧**并转入暂停态，再按空格从头重播）；A/D 与 ←/→ 播放中 ±5 秒、**暂停中单帧进退**；W/S 与 ↑/↓ 音量 ±5%（初始 50%、**不落盘**）；滚轮也是音量；Home/End 开头/结尾；F/F11/双击画布全屏；Ctrl+O 换片（选到图片则交接给看图窗口）；Ctrl+W/ESC 退出；**其余键一律吞掉**（播放器里不存在"顺势落到看图那套分支"这回事）。**鼠标单击画面也是播放/暂停**（按下与抬起都落在画面上才算，避免"按在条带上、抬在画面上"被误判）；双击全屏与它是两条路——两次单击各切一次、正好抵消，代价只是中间一下很短的停顿，换来单击的零延迟。
+  - **拖动进度条**：按下即暂停并 `SetCapture`（拖到条带外、拖出客户区也跟随，`OnPointerCancel` 收尾）；拖动中每 ~60 ms 只发一次**关键帧预览** seek（`SeekMode::KeyFrame`），被节流挡下的最新目标由 `takeFrame()` 到期补发（用户停手后那一下不能丢）；松手发**精确** seek（`SeekMode::Exact`）。三条不变式，`--probe --video-test` 盯着：①拖动中时钟停在把手位置；②**一下只交一帧预览**（`MediaPlayer` 的 `previewHold`：关键帧交出后就停下等下一次 seek。少了它，解码线程会顺着关键帧把"还没到目标"的帧一帧帧送出来——它们的 PTS 都早于已重设到目标的时钟、全都算到点，画面看起来像在追赶）；③松手后**等精确落位再恢复播放**，落位判定用"已交出的帧 PTS ≥ 目标−一帧半"，**不能**只看"落位在途"标志（那个标志由解码线程置位，很可能在本帧取帧之前就被消费掉了）。
+  - **seek 的实现**：命令按序号发布（`seekTargetMs` + `seekSerial`，两个解码线程各自比对序号、只取最新目标 = 在途旧请求自动作废、不做累积），两个解码器各自 `av_seek_frame`（`MediaDecoder::seek` 里 `AVSEEK_FLAG_BACKWARD` 退到不晚于目标的关键帧再冲解码器状态）；**精确落点靠丢帧**：视频丢"整帧都落在目标之前"的帧、音频裁掉目标之前的样本；丢帧过滤**在缩放/拷贝之前**也做一遍（`MediaDecoder::setSkipBeforeMs`）——从关键帧向前解码要解上百帧，每帧 `sws_scale` + `clone` 就是几毫秒，那是落点耗时的大头（实测 1080p 长 GOP 1.5s → 0.15s、4K 1.5s → 0.4s）。**时钟基线**（`clockBaseMs` + 声卡已播样本数，没有声卡时是墙上时间累计）在 seek 时重设，且**只有一个写者**：有声卡时由音频线程写、没有时由视频线程写，别两边都改。
+  - **seek 必须按"本实例负责的那条流"来**（`MediaDecoder::seek` 拿 `videoStreamIndex`/`audioStreamIndex`，并换算到该流的时间基；只有两条流都没有时才退回 `stream_index = -1`）。别用默认流：视频+音频的 MP4 默认流是视频流，音频实例跟着跳到**视频关键帧**上（实测 seek 18000ms 落到 16619ms），于是 seek 之后先送出一段目标之前的旧音频——听感正是"半秒到几秒的杂音 / 像在快放"，之后才接上正确位置。音频流每个包都是关键帧，自己 seek 只差一帧（实测偏差 5~11ms）。
+  - **"早于目标的样本一律不出声"由解码器侧统一兜住**（`setSkipBeforeMs` 对音频同样生效）：音频**先 resample 再裁**（swr 的内部历史要连续喂着走，跳过输入帧会在接缝处留下爆音），裁过的批把 `ptsMs` 一起往前推，整批在目标之前就整批丢掉、下一批接着裁。播放端**不再自己裁**：以前那里只在 seek 后裁第一块，落点远在目标之前时第二块起就被当成正常音频送出去了（同一个"杂音"的另一半原因）。`--video-test` 用两条断言钉着：音频实例的落点要在目标 100ms 内；落点在目标之前时（拿同时解两路流的实例刻意制造），交出的第一批音频也要被拉回目标附近。
+  - **两个解码线程在 EOF 之后不许退出**（改成等下一次 seek）：播放器要停在最后一帧等用户拖回中间，线程一退出 seek 就没人执行了。同理 `hasFinished()` 的时钟上限要**留一帧余量**（最后一帧的时间戳常常略超容器时长，卡死在时长上会让"时钟 ≥ 最后一帧"永不成立——实况照片会卡在播放状态、播完停不下来）。
+  - 暂停是 `AudioOutput::pause()` 的 `Stop(0)`（**保留位置与已排队缓冲**，别丢队列重来，否则暂停再继续会有静音空洞且反复暂停会累积偏移）；seek 才 `flush()` 丢队列。`AudioOutput::create` 失败时回退系统时钟、静音播放，暂停/seek 照常可用。
+  - **条带**：底部 50 逻辑像素（与看图里动图播放条同高）、半透明底 `ImGuiCol_PopupBg × 0.82`、画在 ImGui 前景绘制列表上并经 `uiPos()` 换算；左侧 50×50 正方形播放/暂停按钮（半透明底只在按钮这一块露出来），图标**手绘**（`AddTriangleFilled` / 两个 `AddRectFilled`，不用字体也不用雪碧图——前者要确认字形存在，后者是连条带背景一起烘焙的、裁不出透明按钮）；**按钮右侧整块就是进度条**：占满条带高度、无内边距无圆角、无把手，两个色调——已播 = 主题强调色（`ImGuiCol_CheckMark`，深色主题下是深蓝），未播 = 它往白色拉 0.55 的浅色调（"左深右浅"在两套主题下都成立：强调色本来就是"与背景对比的那一档"，再往白拉只会更浅）。**两层各铺一层、都半透明（`kTrackAlpha = 0.45`，同一个 α）**，画面会明显透出来（和条带底同一套叠色语义；实测反解出的层色就是 (0,106,164) / (140,188,214)，两点色差 (140,82,50) 与 α 完全吻合）。**别写成"整条先铺浅色、再把深色盖上"**：两层半透明在已播段里互相透色，α 一低两块就糊成一种颜色（实测已播/未播在画面上的亮度差只有 15，现在是 50），所以已播只铺左边那段、未播只铺右边那段。时间 `mm:ss / mm:ss` **水平+垂直居中压在条上**（整块都是进度条，只能叠上去；底下垫一层 `IM_COL32(0,0,0,140)` 深色底 + 白字，才在深/浅两种底色上都看得清——**别**改用主题文字色，浅色主题下会变成深字压浅条）。**纯悬停触发、瞬时显隐**（鼠标进条带即显示、移开立即隐藏，唯一例外是按住拖动期间不隐藏——拖到条带外、拖出客户区也跟随），隐藏时不参与命中测试；音量提示是手绘小喇叭 + 百分数字（1.2 秒后自己擦掉，**不新增多语言文案**）。播放器用 ImGui **只画条带、不做输入捕获**（`hasVisibleWindows()` 返回 false，命中与拖动都在消息处理里自己做）。
+  - **画面缩放只有"适应窗口"一档，且必须先重采样到屏幕尺寸再画**（`updateFitView()` + `drawFitFrame()`）：播放器没有缩放/平移操作，倍率固定 `scale = min(窗口宽/帧宽, 窗口高/帧高)`；逐帧采样路径（`drawCanvasImpl`）为速度只用最近邻，**放大时一个源像素被铺成一整块方块**，帧分辨率明显低于画面区域时颗粒感一眼可见。看图窗口靠"画面静止后平滑重采样"（`ImageResampler`）补这一步，播放器没有、也不可能每帧做一遍，所以 `drawFitFrame()` 自己先把帧 `cv::resize` 到 `fitSize_`（`imageGeometry` 算出的绘制矩形尺寸：缩小 `INTER_AREA`、放大 `INTER_LINEAR`，`INTER_AREA` **只能**用于缩小），再用"名义尺寸 = 位图尺寸、zoom = zoomBase"的 `fitView_` 交给采样路径——采样密度恰好 1:1，滤波只做一次，采样端退化成逐像素拷贝；1:1 时（`fitSize_ == frame_.size()`）不重采样，直接画 `frame_`。放大**不用** CUBIC/Lanczos4 是实测定的：1920x1080 → 2500x1406 一帧 INTER_LINEAR 1.9ms（整帧 10.5ms）、INTER_CUBIC 6.7ms（15.1ms），而 60fps 只有 16.7ms。回归：`tools/test_player_scaling.ps1`（黑白棋盘格视频放大后必须出现中间调灰阶；把这一步去掉就退回 2 个灰阶、0% 中间调，反向验证过）。
+  - **尺寸/DPI 变化后必须立刻重画并重传画布**：`OnResize()` 里的 `CreateWindowSizeDependentResources()` 会把**上传画布用的暂存纹理整块重建**（内容是空的），而 `DrawScene()` 只在"画布变了"时才重画重传——`updateFitView()` 已经把 `viewWinWidth_/viewWinHeight_` 记成新值，那条判定再也不会触发。播放中下一帧会顺手补上，**暂停时没有"下一帧"，于是整个窗口全黑**（要等恢复播放、或再改一次尺寸才回来）。所以 `OnResize()` 在 `updateFitView()` 之后要直接 `drawImageToCanvas + PresentCanvas` 一次（与看图窗口 `OnResize` 里 `drawCanvas` 同一套路），别只 `markPresentRequested()`。回归：`tools/test_player_resize.ps1`（暂停后先缩后放，量画面平均亮度；把那一下去掉会掉到 0，实测反向验证过）。
+  - **打开失败**沿用 `InfoScreen` 占位（文件打不开 = `FileMissing`、解不出视频流 = `DecodeFailed`），**不画条带**，标题栏仍显示文件名。
+  - 自检：`--probe --video-test <文件...>`（`MediaPlayer` 的暂停/seek/单帧/播完停在最后一帧/seek(0) 重播，`VideoPlayback` 的拖动三条不变式）。造语料用 ffmpeg 生成到临时目录：>256 MiB 大文件、4K、无音轨、竖拍带 display matrix、长 GOP（`-g 250`，专门量落点耗时）、截断损坏文件。
 - `JarkViewer/include/CanvasRenderer.h` 与 `JarkViewer/src/CanvasRenderer.cpp` 是从 `JarkViewerApp` 抽出的画布绘制模块：按 `ViewState`（名义尺寸 / 定点缩放 / 平移 / 旋转）把图像绘制到 BGRA 画布，含透明区域棋盘格与图像边框。`JarkViewerApp::drawCanvas()` 只是把 `curPar` 转成 `ViewState` 后调用它。`imageGeometry()` 是主画布与鸟瞰**共用**的纯几何（旋转后名义尺寸、显示矩形、归一化可见区域——`slide + round((canvas-rendered)/2)` 的定位公式只有这一处），`navigationSlide()` 把归一化图像点换算成目标 slide（某轴完整可见时保持居中、不改动原有“允许留白”的拖图夹取）；`--probe --navigation-test` 用合成断言覆盖旋转/平移/端点夹取与浮层输入归属。`ViewState::border=false` 表示不画图像边框（主页/解码失败是界面画面，不是照片）。
 - 主页与解码失败画面由 `JarkViewer/include|src/InfoScreen.{h,cpp}` **按当前语言、主题、DPI 实时绘制**（旧的 `home.png`/`tips.png`、`getHomeMat()/getErrorTipsMat()` 和 ColorManager 里"识别内置提示图"的像素启发式都已删除）：`ImageAsset::placeholder`（`PlaceholderKind`：Home/UnsupportedFormat/DecodeFailed/FileMissing）与 `placeholderDetail` 由 `myLoader` 在失败时填写——文件头与扩展名都识别不出→UnsupportedFormat，能识别但解码失败→DecodeFailed，打不开/不存在→FileMissing（各解码器的失败分支保持"空帧 + format=None"交给 myLoader 继续路由，不再往 primaryFrame 塞提示图）。**失败时 primaryFrame 保持为空**：`--probe` 据此判定失败并输出 `placeholder=<原因>`，批量处理也会如实报"无法解码"（以前提示图会被当成解码成功的图参与批处理）。界面层用 `JarkViewerApp::updatePlaceholderImage()` 按 `jark::infoScreenStamp(尺寸, DPI缩放, 语言, 主题, 按钮交互)` 决定重绘（结果写进 `placeholderStamp`；返回 0/1/2 = 无变化/仅内容变/尺寸也变，只有尺寸变才 `curPar.Init()`，悬停反馈不会重置缩放）：`initOpenFile`/`switchToFile`/重载/删除都在 `curPar.Init()` 前调用一次，`DrawScene()` 开头再兜一次，窗口缩放/换主题/换语言自动重绘。支持格式清单直接读 `ImageDatabase::supportExt/supportRaw/videoExt`，永远与实际解码能力一致。主页是图标 + 名称/版本 + **「打开图片」按钮**（`homeButtonRect` 与绘制共用同一布局；主窗口把客户区坐标按缩放/平移/旋转逆变换回画布像素做命中，悬停/按下有底色反馈，点击等同 Ctrl+O）。文案是窄表 156~165。
 - **画面静止后的平滑重采样**：`JarkViewer/include|src/ImageResampler.{h,cpp}` + `main.cpp` 的
@@ -349,6 +390,13 @@ pwsh tools/verify_source_invariant_checks.ps1
 - `JarkViewerApp::drawCanvas()` 有两条必须同时成立的规则：**几何尺寸用名义尺寸**（`curPar.width/height`，矢量图 100% 时屏幕上应有的尺寸），**采样密度用位图分辨率**（`srcScaleX/srcScaleY = 位图尺寸 / 名义尺寸`）。矢量图的位图分辨率会随缩放变化，任何"用 `srcImg.cols/rows` 当几何尺寸"或"用 `zoomInvert` 直接换算位图坐标"的写法都会让画面尺寸/位置错乱。
 - Release 构建默认不打印日志，排障时用 `--log` 或 `JARKVIEWER_LOG=1`（写入 `%TEMP%\JarkViewer.log`）；新增诊断日志直接写 `JARK_LOG(...)` 即可，`isLogEnabled()` 为假时不会计算参数。
 - 查"启动/打开一张图为什么慢"用 `JARKVIEWER_STARTUP_TRACE=<文件路径>` 环境变量（`jarkUtils::startupTraceMark()`）：记录 begin / 窗口就绪并派发解码 / 设备与 UI 就绪 / 首帧就绪 / 首帧绘制各阶段相对起点的毫秒数；没设环境变量时零开销。新增关键阶段时在对应位置补一个 `startupTraceMark()`。
+- 崩溃只在"反复开关句柄 / 多线程一起忙"时才出现（时序竞态）时，**不能挂调试器抓**：挂 cdb（attach 或直接启动）会把竞态窗口关掉，实测 1/5 的频率一 attach 就基本不复现（`tools/catch_crash.ps1` 对这类问题因此指望不上，它只适合必崩的那种）。改成让进程自己落盘：`--probe` 认环境变量 `JARKVIEWER_CRASH_DUMP=<文件路径>`，在 `SetUnhandledExceptionFilter` 里用 `MiniDumpWriteDump(MiniDumpWithFullMemory)` 写完整内存 dump（约 200~300MB）——时序不变，照样崩。想更快撞上就几路并行跑（12 核机器上 4 路并行比单开容易撞得多）。
+  ```bash
+  JARKVIEWER_CRASH_DUMP='C:\Temp\crash.dmp' JarkViewer.exe --probe --video-test a.mp4 b.mp4 --out r.txt
+  cdb.exe -z crash.dmp -c ".ecxr;r;kb 16;q"         # 崩溃线程与栈；.ecxr 必需，只看默认线程会看错栈
+  cdb.exe -z crash.dmp -c "!address <出事的地址>;q"  # 那块内存现在是什么区域
+  ```
+  系统模块（ntdll/kernel32/ucrtbase/XAudio2）自带符号，`srv*` 够用；要自己的符号就得留 PDB——`-p:` 全局属性**覆盖不了** vcxproj 的 ItemDefinitionGroup 元数据，只能直接把 `DebugInformationFormat` 改成 `ProgramDatabase`、`GenerateDebugInformation` 改成 `true` 再 Rebuild（改完记得还原）。这台机器不是管理员，写不了 WER 的 `LocalDumps` 注册表项、也没有 `CrashDumps` 目录，所以进程内 dump 是唯一顺手的路子。
 - UI 文本来自 `stringRes`：**两张表同名不同文案**——`UIStringTable[stringID][语言]` 供 ImGui/画布，`UIStringTableWide[stringID][语言]` 供 Win32（窗口标题、菜单、消息框），写 `getUIStringW(id)` 时一定要核对**宽表**里那个 ID 是什么（历史上出过把消息框正文写成"关于 (&A)"菜单项的事故）。`getUIStringW` 返回 `UIStringWide`（自带缓冲区、可隐式转 `const wchar_t*`）：旧实现共用同一个 thread_local 缓冲，`MessageBoxW(h, getUIStringW(a), getUIStringW(b))` 后一次转换会冲掉前一次的指针内容（标题乱码）。需要指针活过当前语句时（如 `BROWSEINFO.lpszTitle`）用 `.str()` 存一份 `std::wstring`；丢给 `std::format`/`wstring_view` 参数时要显式 `.c_str()`。**新增文案追加到对应表尾**，并在使用处写成具名常量（各窗口文件里已有 `kStr*` 常量块）。改动后再跑一次 `--probe --lang-test`，它会打印窄表与宽表各若干条文案用于确认 ID 没有错位。
 - README 记录的 OpenCV 预编译库带有源码改动：移除 `imgcodecs` 分辨率限制，并将 HighGUI Win32 窗口光标从 `IDC_CROSS` 改为 `IDC_ARROW`；替换或重建 OpenCV 时要保留这些行为。
 - 不要提交 `.vcxproj.user`、`.vs/` 或机器相关的本地库路径。

@@ -69,6 +69,7 @@ function Get-ExtSet([string]$text, [string]$marker) {
 
 $supportExt = Get-ExtSet $imageDbHeader "supportExt{"
 $supportRaw = Get-ExtSet $imageDbHeader "supportRaw{"
+$videoExt = Get-ExtSet $imageDbHeader "videoExt{"
 $defaultList = [regex]::Match($jarkUtils, 'defaultExtList\{\s*"([^"]+)"').Groups[1].Value -split ','
 $missingDefaults = @($defaultList | Where-Object { -not $supportExt.Contains($_) -and -not $supportRaw.Contains($_) })
 Report ($missingDefaults.Count -eq 0) "默认关联列表全部在 supportExt/supportRaw 里"
@@ -97,6 +98,26 @@ foreach ($ext in $supportRaw) { if (-not $readmeRaw.Contains($ext)) { $rawDiff +
 foreach ($ext in $readmeRaw) { if (-not $supportRaw.Contains($ext)) { $rawDiff += "README 多 $ext" } }
 Report ($rawDiff.Count -eq 0) "README RAW 清单 == supportRaw（$($supportRaw.Count) 项）"
 $rawDiff | Select-Object -First 6 | ForEach-Object { Write-Host "    $_" }
+
+# 6. 视频扩展名三处一致：ImageDatabase::videoExt、FormatSniffer 判为 Video 的扩展名表、README 视频清单。
+#    这一条是"视频归独立播放器、图片走看图"的唯一判定（jark::isVideoFile 查 FormatSniffer 那张表），
+#    三处一旦走偏就会出现"列表里点开却跳到播放器"或"进了播放器又说不是视频"。
+$readmeVideo = Get-ReadmeList '- \*\*视频\*\*[^`]*`([^`]+)`'
+$snifferCpp = Read-Source "JarkViewer/src/FormatSniffer.cpp"
+$snifferVideo = [System.Collections.Generic.HashSet[string]]::new()
+foreach ($match in [regex]::Matches($snifferCpp, 'L"([a-z0-9]+)",\s*FileFormat::Video')) {
+    [void]$snifferVideo.Add($match.Groups[1].Value)
+}
+$videoDiff = @()
+foreach ($ext in $videoExt) {
+    if (-not $snifferVideo.Contains($ext)) { $videoDiff += "FormatSniffer 没把 $ext 判为 Video" }
+    if (-not $readmeVideo.Contains($ext)) { $videoDiff += "README 缺 $ext" }
+    if ($supportExt.Contains($ext)) { $videoDiff += "$ext 同时在 supportExt 里（看图列表会出现它）" }
+}
+foreach ($ext in $snifferVideo) { if (-not $videoExt.Contains($ext)) { $videoDiff += "videoExt 缺 $ext" } }
+foreach ($ext in $readmeVideo) { if (-not $videoExt.Contains($ext)) { $videoDiff += "README 多 $ext" } }
+Report ($videoDiff.Count -eq 0) "视频扩展名一致：videoExt == FormatSniffer[Video] == README（$($videoExt.Count) 项）"
+$videoDiff | Select-Object -First 6 | ForEach-Object { Write-Host "    $_" }
 
 # 6. PSD 解码顺序
 $imageDbCpp = Read-Source "JarkViewer/src/ImageDatabase.cpp"

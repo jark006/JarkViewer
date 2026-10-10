@@ -35,6 +35,15 @@ public:
     // 音量 0.0 ~ 1.0
     void setVolume(float volume) noexcept;
 
+    // 暂停：voice Stop() 保留当前采样位置与已排队的缓冲，恢复时从原位继续。
+    // **不能**丢掉队列重来——那样"暂停再继续"会有一段静音空洞，反复暂停还会累积偏移。
+    void pause() noexcept;
+    void resume() noexcept;
+
+    // 丢弃已排队的音频（seek 用）：保留"是否在播放"的意图，之后提交的样本照常播。
+    // 只能由提交音频的那个线程调用（与 submit 同源：它要回收被冲掉的缓冲区）。
+    void flush() noexcept;
+
     void stop() noexcept;
 
     // 最多缓存 2 秒音频，避免解码过快占用内存

@@ -11,6 +11,7 @@
 #endif
 
 #include "blpDecoder.h"
+#include "MappedFileReader.h"
 #include "MediaDecoder.h"
 #include "MediaPlayer.h"
 #include "VectorImage.h"
@@ -109,119 +110,6 @@ public:
 
 private:
     T* ptr_ = nullptr;
-};
-
-class UniqueHandle {
-public:
-    explicit UniqueHandle(HANDLE handle = nullptr) noexcept : handle_(handle) {}
-
-    ~UniqueHandle() {
-        reset();
-    }
-
-    UniqueHandle(const UniqueHandle&) = delete;
-    UniqueHandle& operator=(const UniqueHandle&) = delete;
-
-    UniqueHandle(UniqueHandle&& other) noexcept : handle_(other.release()) {}
-
-    UniqueHandle& operator=(UniqueHandle&& other) noexcept {
-        if (this != &other) {
-            reset(other.release());
-        }
-        return *this;
-    }
-
-    HANDLE get() const noexcept {
-        return handle_;
-    }
-
-    void reset(HANDLE handle = nullptr) noexcept {
-        if (handle == handle_) {
-            return;
-        }
-        if (handle_ && handle_ != INVALID_HANDLE_VALUE) {
-            CloseHandle(handle_);
-        }
-        handle_ = handle;
-    }
-
-    HANDLE release() noexcept {
-        HANDLE handle = handle_;
-        handle_ = nullptr;
-        return handle;
-    }
-
-    explicit operator bool() const noexcept {
-        return handle_ && handle_ != INVALID_HANDLE_VALUE;
-    }
-
-private:
-    HANDLE handle_ = nullptr;
-};
-
-class MappedFileReader {
-public:
-    explicit MappedFileReader(std::wstring_view path) {
-        std::wstring filePath(path);
-        hFile.reset(CreateFileW(
-            filePath.c_str(),
-            GENERIC_READ,
-            FILE_SHARE_READ,
-            nullptr,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            nullptr
-        ));
-
-        if (!hFile) {
-            JARK_LOG("Failed to open file: {}", jarkUtils::wstringToUtf8(path));
-            return;
-        }
-
-        hMapping.reset(CreateFileMappingW(hFile.get(), nullptr, PAGE_READONLY, 0, 0, nullptr));
-        if (!hMapping) {
-            JARK_LOG("Failed to create file mapping: {}", jarkUtils::wstringToUtf8(path));
-            return;
-        }
-
-        void* view = MapViewOfFile(hMapping.get(), FILE_MAP_READ, 0, 0, 0);
-        if (!view) {
-            JARK_LOG("Failed to map view of file: {}", jarkUtils::wstringToUtf8(path));
-            return;
-        }
-
-        LARGE_INTEGER size;
-        if (!GetFileSizeEx(hFile.get(), &size)) {
-            UnmapViewOfFile(view);
-            JARK_LOG("Failed to get file size: {}", jarkUtils::wstringToUtf8(path));
-            return;
-        }
-
-        data_ = static_cast<const uint8_t*>(view);
-        size_ = static_cast<size_t>(size.QuadPart);
-    }
-
-    ~MappedFileReader() {
-        if (data_) UnmapViewOfFile(const_cast<void*>(static_cast<const void*>(data_)));
-    }
-
-    // 禁止拷贝
-    MappedFileReader(const MappedFileReader&) = delete;
-    MappedFileReader& operator=(const MappedFileReader&) = delete;
-
-    [[nodiscard]] std::span<const uint8_t> view() const noexcept {
-        return { data_, size_ };
-    }
-
-    bool isEmpty() const noexcept {
-        return data_ == nullptr || size_ < 16;
-    }
-
-private:
-    UniqueHandle hFile;
-    UniqueHandle hMapping;
-    const uint8_t* data_ = nullptr;
-    size_t size_ = 0;
 };
 
 struct HeifContextDeleter {
@@ -3013,7 +2901,7 @@ struct SidecarVideo {
 // 苹果/VIVO 等把视频放在同目录同名文件里：读取其字节交给播放器
 static SidecarVideo readMotionPhotoSidecarVideo(wstring_view path) {
     for (const auto& videoPath : getVideoCandidatePaths(path)) {
-        auto fileReader = MappedFileReader(videoPath);
+        auto fileReader = jark::MappedFileReader(videoPath);
         if (fileReader.isEmpty())
             continue;
 
@@ -3558,7 +3446,7 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
         return failedAsset(PlaceholderKind::FileMissing);
     }
 
-    auto fileReader = MappedFileReader(path);
+    auto fileReader = jark::MappedFileReader(path);
     if (fileReader.isEmpty()) {
         JARK_LOG("File is empty: {}", jarkUtils::wstringToUtf8(path));
         return failedAsset(GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES
@@ -3633,7 +3521,7 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
 
 
 std::vector<uint8_t> ImageDatabase::readIccProfile(const std::wstring& path) {
-    auto fileReader = MappedFileReader(path);
+    auto fileReader = jark::MappedFileReader(path);
     if (fileReader.isEmpty())
         return {};
 

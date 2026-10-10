@@ -249,18 +249,23 @@ public:
         L"gif", L"png", L"apng", L"webp",
     };
 
+    // 视频扩展名：这些文件归**独立播放器**（命令行/拖放/Ctrl+O 一律换成播放器窗口，
+    // 也不进看图的文件夹列表），列表内容必须与 FormatSniffer 里判为 Video 的扩展名一致
+    // ——那条表就是 jark::isVideoFile() 的判定依据。
     static inline const unordered_set<wstring_view> videoExt{
-        L"mp4", L"mov", L"mkv", L"avi", L"wmv", L"flv", L"m4v", L"3gp", 
-        L"mts", L"m2ts", L"vob", L"evo", L"ts", L"mxf", 
+        L"mp4", L"mov", L"mkv", L"avi", L"wmv", L"flv", L"m4v", L"3gp",
+        L"mts", L"m2ts", L"vob", L"evo", L"ts", L"mxf", L"webm",
     };
 
+    // 图片扩展名（**不含视频**：webm 之类的视频一旦列在这里，看图列表里就会出现
+    // 一个"点开却跳到播放器"的项，规则就不唯一了）
     static inline const unordered_set<wstring_view> supportExt{
         L"apng", L"avif", L"avifs", L"blp", L"bmp", L"dds", L"dib", L"exr",
         L"gif", L"hdr", L"heic", L"heif", L"ico", L"icon", L"jfif", L"jp2",
         L"jpe", L"jpeg", L"jpg", L"jxl", L"jxr", L"lep", L"livp", L"pbm",
         L"pcx", L"pfm", L"pgm", L"pic", L"png", L"pnm", L"ppm", L"psd",
         L"psdt", L"pxm", L"qoi", L"ras", L"sr", L"svg", L"tga", L"tif",
-        L"tiff", L"webm", L"webp", L"wp2",
+        L"tiff", L"webp", L"wp2",
     };
 
     static inline const unordered_set<wstring_view> supportRaw{

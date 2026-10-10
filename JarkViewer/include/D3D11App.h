@@ -49,6 +49,15 @@ public:
     // 窗口关掉后 ImGui 自己的 WantCapture* 不会跟着复位，只看它会永久吞掉主窗口的输入。
     virtual bool hasVisibleWindows() const { return false; }
 
+    // 关闭时是否把窗口几何写回设置文件。同一个进程里可能有不止一种顶层窗口
+    // （视频播放器与看图窗口二选一），都往同一个 SettingParameter::rect 里写的话，
+    // 两边会互相覆盖对方上次的位置/大小，所以播放器返回 false（读照旧、只是不回写）。
+    virtual bool persistsWindowPlacement() const { return true; }
+
+    // 是否弹右键菜单（WM_CONTEXTMENU，含菜单键 / Shift+F10）。菜单内容是看图那套
+    // （打印/批量/编辑/重命名…），播放器没有这些功能，返回 false 免得弹出一个点了会崩的菜单。
+    virtual bool showsContextMenu() const { return true; }
+
 protected:
     HRESULT CreateDeviceResources();
     void CreateWindowSizeDependentResources();
@@ -110,6 +119,7 @@ protected:
     ID3D11RenderTargetView* m_pBackBufferRTV = nullptr;
     mutable bool m_presentRequested = true;
     bool m_processingMouseRelease = false; // 区分 backend 正常释放捕获与异常失捕获
+    bool m_destroying = false;             // OnDestroy 只生效一次（DestroyWindow 会同步重入 WM_DESTROY）
     // 所创设备特性等级
     D3D_FEATURE_LEVEL m_featureLevel;
 

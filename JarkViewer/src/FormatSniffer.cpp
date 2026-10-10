@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <cwctype>
 
 namespace jark {
 namespace {
@@ -341,6 +342,20 @@ FileFormat fileFormatFromExtension(std::wstring_view ext) noexcept {
     }
 
     return FileFormat::Unknown;
+}
+
+bool isVideoFile(const std::wstring& path) noexcept {
+    const auto slash = path.find_last_of(L"\\/");
+    const auto dot = path.rfind(L'.');
+    // 只看文件名里的点：目录名带点不能当成扩展名
+    if (dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash) || dot + 1 >= path.size())
+        return false;
+
+    std::wstring ext = path.substr(dot + 1);
+    for (auto& c : ext)
+        c = static_cast<wchar_t>(std::towlower(c));
+
+    return fileFormatFromExtension(ext) == FileFormat::Video;
 }
 
 bool isExtensionAuthoritative(FileFormat format) noexcept {
