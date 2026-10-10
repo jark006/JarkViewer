@@ -119,6 +119,26 @@ foreach ($ext in $readmeVideo) { if (-not $videoExt.Contains($ext)) { $videoDiff
 Report ($videoDiff.Count -eq 0) "视频扩展名一致：videoExt == FormatSniffer[Video] == README（$($videoExt.Count) 项）"
 $videoDiff | Select-Object -First 6 | ForEach-Object { Write-Host "    $_" }
 
+# 6b. 音频扩展名两处一致：FormatSniffer 判为 Audio 的扩展名表、README 音频清单。
+#     音频没有 ImageDatabase 侧的集合（播放器只按扩展名判定 jark::isAudioFile），
+#     所以是两处而不是三处；两份名单走偏的表现是"README 说支持、实际打不开"
+#     或"能打开却不在宣传清单里"。音频扩展名**不能**进 supportExt/videoExt：
+#     进了 supportExt 就会出现在看图翻页列表里（点开却跳到播放器，规则就不唯一了）。
+$readmeAudio = Get-ReadmeList '- \*\*音频\*\*[^`]*`([^`]+)`'
+$snifferAudio = [System.Collections.Generic.HashSet[string]]::new()
+foreach ($match in [regex]::Matches($snifferCpp, 'L"([a-z0-9]+)",\s*FileFormat::Audio')) {
+    [void]$snifferAudio.Add($match.Groups[1].Value)
+}
+$audioDiff = @()
+foreach ($ext in $snifferAudio) {
+    if (-not $readmeAudio.Contains($ext)) { $audioDiff += "README 缺 $ext" }
+    if ($supportExt.Contains($ext)) { $audioDiff += "$ext 同时在 supportExt 里（看图列表会出现它）" }
+    if ($videoExt.Contains($ext)) { $audioDiff += "$ext 同时在 videoExt 里（该按音频还是视频判？）" }
+}
+foreach ($ext in $readmeAudio) { if (-not $snifferAudio.Contains($ext)) { $audioDiff += "FormatSniffer 没把 $ext 判为 Audio" } }
+Report ($audioDiff.Count -eq 0) "音频扩展名一致：FormatSniffer[Audio] == README（$($snifferAudio.Count) 项）"
+$audioDiff | Select-Object -First 6 | ForEach-Object { Write-Host "    $_" }
+
 # 6. PSD 解码顺序
 $imageDbCpp = Read-Source "JarkViewer/src/ImageDatabase.cpp"
 $psdCaseIndex = $imageDbCpp.IndexOf("case jark::FileFormat::Psd:")

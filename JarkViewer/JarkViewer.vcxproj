@@ -176,6 +176,7 @@
     <ClCompile Include="src\VectorImage.cpp" />
     <ClCompile Include="src\videoDecoder.cpp" />
     <ClCompile Include="src\AudioOutput.cpp" />
+    <ClCompile Include="src\AudioSpectrumAnalyzer.cpp" />
     <ClCompile Include="src\MediaDecoder.cpp" />
     <ClCompile Include="src\MediaPlayer.cpp" />
     <ClCompile Include="src\VideoPlayback.cpp" />
@@ -220,6 +221,7 @@
     <ClInclude Include="include\VectorImage.h" />
     <ClInclude Include="include\videoDecoder.h" />
     <ClInclude Include="include\AudioOutput.h" />
+    <ClInclude Include="include\AudioSpectrumAnalyzer.h" />
     <ClInclude Include="include\MediaDecoder.h" />
     <ClInclude Include="include\MediaPlayer.h" />
     <ClInclude Include="include\VideoPlayback.h" />

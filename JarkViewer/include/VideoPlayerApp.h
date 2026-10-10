@@ -1,13 +1,13 @@
 #pragma once
 
-// 单视频播放器窗口：一个独立于看图的顶层窗口。
+// 单媒体播放器窗口：一个独立于看图的顶层窗口，视频与音频共用（音频只是没有画面）。
 //
 // `wWinMain` 按入参在「看图窗口」与它之间**二选一构造**，另一个对象根本不构造——
 // 所以播放器里不可能出现"按 P 进幻灯片""按 Q 旋转图片"这类串味：两边不共享任何输入处理。
 //
 // 它只做三件事：把输入翻译成 VideoPlayback 的调用、把当前帧画到画布（复用 CanvasRenderer）、
 // 按状态画底部条带（ImGui 前景绘制列表，只画不用它做输入捕获）。
-// 打开失败时退化成 InfoScreen 占位画面（与看图里"解码失败"同一个画面），不画条带。
+// 打不开或没有视频轨时退化成 InfoScreen 静态画面（失败占位 / 音频画面），不画条带。
 //
 // 键位与条带规格见 AGENTS.md「视频播放器」一节。
 
@@ -59,15 +59,20 @@ public:
     void OnRequestExitOtherWindows() override {}
 
 private:
-    // 打开/换成另一个视频（位置归零、音量保持不变）
+    // 打开/换成另一个媒体文件（位置归零、音量保持不变）
     void startFile(const std::wstring& path);
-    // 拖入/选中的文件按内容决定去向：视频换片、图片交接给看图窗口
+    // 拖入/选中的文件按内容决定去向：视频与音频换片、图片交接给看图窗口
     void dispatchPath(const std::wstring& path);
     void updateWindowCaption();
+    // 静态画面：打开失败时的失败占位，或没有视频轨时的音频画面（播视频时什么都不画）
     void updatePlaceholder();
+    // 当前是不是"纯音频画面"（打开了但没有视频轨）：条带是否常驻也看它
+    bool showsAudioScreen() const;
     void updateFitView();
     // 把当前帧按"适应窗口"的屏幕尺寸重采样后画到画布（1:1 采样，见 .cpp 里的说明）
     void drawFitFrame();
+    // 纯音频画面：把当前播放位置的实时频谱画到 InfoScreen 画好的底板上（每帧调用）
+    void drawAudioSpectrum();
     void requestExit();
 
     // —— 底部条带的几何（客户区坐标，全部按 uiScale 缩放）——

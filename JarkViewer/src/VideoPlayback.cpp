@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <format>
+#include <string>
 
 namespace jark {
 namespace {
@@ -55,13 +57,17 @@ bool VideoPlayback::open(const std::wstring& path) {
     player_->getVideoSize(videoWidth_, videoHeight_);
     durationMs_ = player_->durationMs();
     hasAudio_ = player_->hasAudio();
+    hasVideo_ = player_->hasVideo();
+    // 只有纯音频画面才需要实时频谱（视频画面被帧占着），别让视频/实况那条路白算 FFT
+    player_->setSpectrumEnabled(!hasVideo_);
     atEnd_ = false;
     landingMinPtsMs_ = -1;
     resumeAfterScrub_ = false;
     scrubbing_ = false;
 
-    JARK_LOG("播放器: 已打开 {} 显示 {}x{} 时长 {}ms 音频={} 音量 {}%",
-        jarkUtils::wstringToUtf8(fileName_), videoWidth_, videoHeight_,
+    JARK_LOG("播放器: 已打开 {} {} 时长 {}ms 音频={} 音量 {}%",
+        jarkUtils::wstringToUtf8(fileName_),
+        hasVideo_ ? std::format("显示 {}x{}", videoWidth_, videoHeight_) : std::string("纯音频"),
         durationMs_, hasAudio_, volumePercent_);
     return true;
 }
@@ -79,6 +85,7 @@ void VideoPlayback::close() {
     videoWidth_ = 0;
     videoHeight_ = 0;
     hasAudio_ = false;
+    hasVideo_ = false;
     atEnd_ = false;
     scrubbing_ = false;
     resumeAfterScrub_ = false;
@@ -103,7 +110,8 @@ bool VideoPlayback::takeFrame(cv::Mat& frame) {
     }
 
     // 松手后的精确落位：画面换成目标附近的那一帧才算落地（精确落点要从关键帧向前
-    // 解码到目标，长 GOP 上要几百毫秒，这段时间画面保持拖动预览帧、进度条已在目标位）
+    // 解码到目标，长 GOP 上要几百毫秒，这段时间画面保持拖动预览帧、进度条已在目标位）。
+    // 纯音频没有帧，endScrub 里就不进这个等待（见那里）。
     if (landingMinPtsMs_ >= 0) {
         if (updated && player_->currentFramePtsMs() >= landingMinPtsMs_)
             landingMinPtsMs_ = -1;
@@ -196,6 +204,14 @@ void VideoPlayback::stepFrame(int direction) {
         return;
 
     atEnd_ = false;
+
+    // 纯音频没有帧可步进：同一个键退化成 ±kNudgeMs 跳转，键位语义（暂停中按住左右）
+    // 在音频上仍然有个说得过去的行为，界面那边的分支就不用为音频另写一套
+    if (!hasVideo_) {
+        nudge(direction >= 0 ? kNudgeMs : -kNudgeMs);
+        return;
+    }
+
     player_->stepFrame(direction); // 内含 pause()：单帧步进只在暂停态有意义
 }
 
@@ -249,8 +265,12 @@ void VideoPlayback::endScrub(int64_t ms) {
     atEnd_ = false;
     player_->seek(scrubTargetMs_, MediaPlayer::SeekMode::Exact);
 
-    // 落位判定阈值：目标之前一帧半以内的画面都算"已经落到目标上"
-    landingMinPtsMs_ = scrubTargetMs_ - static_cast<int64_t>(player_->frameDurationMs() * 1.5);
+    // 落位判定阈值：目标之前一帧半以内的画面都算"已经落到目标上"。
+    // 纯音频没有"落点帧"这个概念（音频侧 seek 由 applyAudioSeek 即时重设时钟基线、
+    // 解码器丢掉目标之前的样本），等一个永远不来的帧只会白等 4 秒才恢复播放
+    landingMinPtsMs_ = hasVideo_
+        ? scrubTargetMs_ - static_cast<int64_t>(player_->frameDurationMs() * 1.5)
+        : -1;
     landingWaitStartedMs_ = steadyNowMs();
     // 拖动前是暂停的：保持暂停，只把画面换到目标位置
 }
@@ -268,6 +288,10 @@ int64_t VideoPlayback::positionMs() const noexcept {
 
 int64_t VideoPlayback::framePtsMs() const noexcept {
     return player_ ? player_->currentFramePtsMs() : 0;
+}
+
+bool VideoPlayback::readSpectrum(std::span<float> out) const noexcept {
+    return player_ && player_->readSpectrum(out);
 }
 
 } // namespace jark

@@ -382,6 +382,7 @@ enum class PlaceholderKind : int {
     UnsupportedFormat,  // 扩展名与文件头都不是受支持的格式
     DecodeFailed,       // 格式已知但解码失败（损坏、数据异常等）
     FileMissing,        // 文件不存在或无法读取
+    Audio,              // 播放器里的纯音频文件（没有画面，只有音符徽章 + 文件名 + 路径）
 };
 
 struct ImageAsset {

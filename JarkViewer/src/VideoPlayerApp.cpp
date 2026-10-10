@@ -1,5 +1,6 @@
 #include "VideoPlayerApp.h"
 
+#include "AudioSpectrumAnalyzer.h"
 #include "FormatSniffer.h"
 #include "InfoScreen.h"
 #include "UiHost.h"
@@ -64,8 +65,9 @@ void VideoPlayerApp::startFile(const std::wstring& path) {
     playButtonHovered_ = false;
 
     // 换片：关掉旧播放器、位置归零（音量保持不变）
-    if (!playback_.open(path))
-        placeholderStamp_ = 0; // 打开失败 → 重画占位画面
+    playback_.open(path);
+    placeholder_ = cv::Mat(); // 上一片的静态画面不能留：换新片那一瞬间会露出来
+    placeholderStamp_ = 0;    // 指纹里没有文件名，换片一律重画（失败占位 / 纯音频画面）
 
     updateWindowCaption();
     updateFitView();
@@ -76,7 +78,7 @@ void VideoPlayerApp::dispatchPath(const std::wstring& path) {
     if (path.empty())
         return;
 
-    if (jark::isVideoFile(path)) {
+    if (jark::isPlayerFile(path)) {
         startFile(path);
         return;
     }
@@ -100,8 +102,22 @@ void VideoPlayerApp::updateWindowCaption() {
         SetWindowTextW(m_hWnd, m_wndCaption.c_str());
 }
 
+// 现在画的是"纯音频画面"吗（打开了但没有视频轨）：条带是否常驻、要不要叠频谱，都看它
+bool VideoPlayerApp::showsAudioScreen() const {
+    return playback_.isOpen() && !playback_.hasVideo();
+}
+
 void VideoPlayerApp::updatePlaceholder() {
-    if (playback_.error() == jark::VideoPlayback::Error::None)
+    // 需要"静态画面"的两种情况：打开失败（失败占位）、以及没有视频轨（纯音频）。
+    // 播视频时这里什么都不做——画面由帧提供
+    PlaceholderKind kind = PlaceholderKind::None;
+    if (!playback_.isOpen())
+        kind = playback_.error() == jark::VideoPlayback::Error::FileMissing
+            ? PlaceholderKind::FileMissing : PlaceholderKind::DecodeFailed;
+    else if (showsAudioScreen())
+        kind = PlaceholderKind::Audio;
+
+    if (kind == PlaceholderKind::None)
         return;
 
     const cv::Size size{ (std::max)(1, winWidth), (std::max)(1, winHeight) };
@@ -109,11 +125,9 @@ void VideoPlayerApp::updatePlaceholder() {
     if (stamp == placeholderStamp_)
         return;
 
+    // 指纹里没有文件名（换片要靠 startFile 把 stamp 清掉），这里只管内容与尺寸
     placeholderStamp_ = stamp;
-    placeholder_ = jark::renderInfoScreen(
-        playback_.error() == jark::VideoPlayback::Error::FileMissing
-            ? PlaceholderKind::FileMissing : PlaceholderKind::DecodeFailed,
-        playback_.fileName(), size, uiScale(), 0);
+    placeholder_ = jark::renderInfoScreen(kind, playback_.fileName(), size, uiScale(), 0);
 }
 
 void VideoPlayerApp::updateFitView() {
@@ -211,17 +225,57 @@ void VideoPlayerApp::DrawScene() {
     if (canvasChanged && !frame_.empty()) {
         drawFitFrame();
     }
-    else if (!playback_.isOpen()) {
+    else if (frame_.empty()) {
+        // 失败占位 / 纯音频画面：这两种情况永远没有帧，画面整块由占位位图提供。
+        // 每帧重贴一次与原来的失败占位路径同一个代价（DrawScene 本来就在空闲分支里空转），
+        // 换来的是"换尺寸之后上传播入的暂存纹理被重建"这件事自然被覆盖——
+        // 少了这一条，音频窗口改大小就会全黑（暂停的视频出过同一个问题，见 OnResize）
         updatePlaceholder();
         if (!placeholder_.empty()) {
             canvasChanged = true;
             placeholder_.copyTo(mainCanvas);
+            drawAudioSpectrum(); // 纯音频时往底板上叠加实时频谱（不是音频则什么都不画）
             PresentCanvas(mainCanvas.ptr(), mainCanvas.cols, mainCanvas.rows, (int)mainCanvas.step);
         }
     }
 
     if (canvasChanged || consumePresentRequest())
         PresentFrame();
+}
+
+// 纯音频画面上那列跟着声音跳的条：底板由 InfoScreen 画好（静态缓存），这里每帧把
+// 当前播放位置的频谱叠上去。
+//
+// 电平取的是"播放位置处"的那一帧（MediaPlayer 里带时间戳的环形缓冲），不是解码线程
+// 最新算出来的那一帧——解码提前约 2 秒，用最新那帧频谱会比听到的声音早出一两秒。
+// 条是底部对齐的（均衡器那套视觉），静音时留一条最小高度当地平线，不然整块底板是空的。
+void VideoPlayerApp::drawAudioSpectrum() {
+    if (!showsAudioScreen() || mainCanvas.empty())
+        return;
+
+    constexpr int kBandCount = jark::AudioSpectrumAnalyzer::kDefaultBandCount;
+    float bands[kBandCount] = {};
+    playback_.readSpectrum(bands); // 取不到（还没数据）就是全 0，画出来是一条地平线
+
+    const cv::Rect area = jark::audioSpectrumRect({ winWidth, winHeight }, uiScale());
+    if (area.width <= 0 || area.height <= 0)
+        return;
+
+    const uint32_t accent = GlobalVar::currentTheme.CHECK;
+    const cv::Scalar color(accent & 0xFF, (accent >> 8) & 0xFF, (accent >> 16) & 0xFF, (accent >> 24) & 0xFF);
+    const int gap = (std::max)(1, static_cast<int>(std::lround(2.0f * uiScale())));
+    const int barWidth = (std::max)(1, (area.width - gap * (kBandCount - 1)) / kBandCount);
+    const int floorHeight = (std::max)(2, static_cast<int>(std::lround(3.0f * uiScale())));
+
+    for (int band = 0; band < kBandCount; ++band) {
+        const double level = std::clamp(static_cast<double>(bands[band]), 0.0, 1.0);
+        const int height = (std::max)(floorHeight, static_cast<int>(std::lround(level * area.height)));
+        const int x = area.x + band * (barWidth + gap);
+        if (x + barWidth > area.x + area.width)
+            break; // 窗口特别窄时宁可少画几段，也不要画到外面
+        cv::rectangle(mainCanvas,
+            { x, area.y + area.height - height, barWidth, height }, color, cv::FILLED);
+    }
 }
 
 void VideoPlayerApp::DrawUi() {
@@ -372,8 +426,10 @@ bool VideoPlayerApp::barHit(int y) const {
 }
 
 bool VideoPlayerApp::barVisible() const {
-    // 鼠标进入底部条带即显示、移开立即隐藏（不做淡出）；拖动把手期间不隐藏
-    return draggingBar_ || mouseInside_;
+    // 纯音频画面（没有帧可看）下条带**常驻**：整幅画面就剩它一个能看、能操作的东西，
+    // 藏起来等于把进度和时间也藏了。
+    // 视频仍是"鼠标进入即显示、移开立即隐藏"（不做淡出），拖动把手期间不隐藏
+    return showsAudioScreen() || draggingBar_ || mouseInside_;
 }
 
 cv::Rect2f VideoPlayerApp::playButtonRect() const {

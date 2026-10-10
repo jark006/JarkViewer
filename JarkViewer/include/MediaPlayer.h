@@ -55,6 +55,13 @@ public:
     // 音量 0.0~1.0
     void setVolume(float volume) noexcept;
 
+    // —— 实时频谱（只有纯音频的播放器画面会用到）——
+    // 开着时音频线程顺带对解码出的样本做 FFT（约几毫秒/秒的代价）；
+    // 关着时 readSpectrum 一律返回 false。**不影响出声**，与音量无关。
+    void setSpectrumEnabled(bool enabled) noexcept;
+    // 取"当前播放位置处"那一帧频谱（每段 0~1）。没有音频、没开启、还没有数据时返回 false
+    bool readSpectrum(std::span<float> out) const noexcept;
+
     // —— 播放控制（视频播放器用；实况照片那条路只用上面那组）——
 
     // 暂停/恢复：声卡 voice 停在原地（位置保留），时钟跟着停，队列不动

@@ -154,7 +154,9 @@ FileFormat sniffFileFormat(std::span<const uint8_t> data) noexcept {
             return FileFormat::WebP;
         if (asciiEquals(data, 8, "AVI "))
             return FileFormat::Video;
-        return FileFormat::Unknown; // WAVE 等非图像 RIFF
+        if (asciiEquals(data, 8, "WAVE"))
+            return FileFormat::Audio;
+        return FileFormat::Unknown; // 其余非图像 RIFF
     }
 
     if (startsWithBytes(data, { 0x00, 0x00, 0x01, 0x00 }))
@@ -262,6 +264,26 @@ FileFormat sniffFileFormat(std::span<const uint8_t> data) noexcept {
     if (looksLikeMpegTs(data))
         return FileFormat::Video;
 
+    // —— 纯音频容器 / 裸码流 ——
+    // 只认无歧义的文件头。像 mp4/mkv/ogg 这种"容器里可能有视频也可能没有"的，一律仍按
+    // 容器判（Video），"有没有视频轨"由播放器实际探测——这里判成 Audio 会把纯音频的
+    // mp4 从视频路由里踢出去，反而与扩展名判定打架。
+    if (startsWith(data, "ID3") ||   // MP3（带 ID3v2 标签）
+        startsWith(data, "fLaC") ||  // FLAC
+        startsWith(data, "OggS") ||  // Ogg（Vorbis / Opus / FLAC-in-Ogg）
+        startsWith(data, "MAC "))    // Monkey's Audio
+        return FileFormat::Audio;
+
+    if (startsWith(data, "FORM") &&  // AIFF / AIFF-C（FORM 单独出现不足以判定）
+        (asciiEquals(data, 8, "AIFF") || asciiEquals(data, 8, "AIFC")))
+        return FileFormat::Audio;
+
+    if (startsWith(data, "wvpk") ||  // WavPack
+        startsWith(data, "TTA1") ||  // TTA
+        startsWith(data, "DSD ") ||  // DSD（DSF）
+        startsWith(data, "#!AMR"))   // AMR
+        return FileFormat::Audio;
+
     if (looksLikeTga(data))
         return FileFormat::Tga;
 
@@ -334,6 +356,35 @@ FileFormat fileFormatFromExtension(std::wstring_view ext) noexcept {
         { L"evo", FileFormat::Video },
         { L"ts", FileFormat::Video },
         { L"mxf", FileFormat::Video },
+        // 纯音频：常见的 + 无损常用的（清单必须与 README 的「音频」一行一致，
+        // tools/check_source_invariants.ps1 盯着这件事）。容器型（mp4/mkv/ogg）里
+        // 只有音频的也在其中：开进播放器后没有视频轨，按音频播。
+        { L"aac", FileFormat::Audio },
+        { L"ac3", FileFormat::Audio },
+        { L"aif", FileFormat::Audio },
+        { L"aiff", FileFormat::Audio },
+        { L"amr", FileFormat::Audio },
+        { L"ape", FileFormat::Audio },
+        { L"au", FileFormat::Audio },
+        { L"caf", FileFormat::Audio },
+        { L"dsf", FileFormat::Audio },
+        { L"dts", FileFormat::Audio },
+        { L"flac", FileFormat::Audio },
+        { L"m4a", FileFormat::Audio },
+        { L"m4b", FileFormat::Audio },
+        { L"mka", FileFormat::Audio },
+        { L"mp2", FileFormat::Audio },
+        { L"mp3", FileFormat::Audio },
+        { L"mpc", FileFormat::Audio },
+        { L"oga", FileFormat::Audio },
+        { L"ogg", FileFormat::Audio },
+        { L"opus", FileFormat::Audio },
+        { L"tak", FileFormat::Audio },
+        { L"tta", FileFormat::Audio },
+        { L"w64", FileFormat::Audio },
+        { L"wav", FileFormat::Audio },
+        { L"wma", FileFormat::Audio },
+        { L"wv", FileFormat::Audio },
     };
 
     for (const auto& entry : table) {
@@ -344,18 +395,35 @@ FileFormat fileFormatFromExtension(std::wstring_view ext) noexcept {
     return FileFormat::Unknown;
 }
 
-bool isVideoFile(const std::wstring& path) noexcept {
+namespace {
+
+// 路径 → 扩展名 → 格式（只看文件名里的点：目录名带点不能当成扩展名）
+FileFormat fileFormatByPathExtension(const std::wstring& path) noexcept {
     const auto slash = path.find_last_of(L"\\/");
     const auto dot = path.rfind(L'.');
-    // 只看文件名里的点：目录名带点不能当成扩展名
     if (dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash) || dot + 1 >= path.size())
-        return false;
+        return FileFormat::Unknown;
 
     std::wstring ext = path.substr(dot + 1);
     for (auto& c : ext)
         c = static_cast<wchar_t>(std::towlower(c));
 
-    return fileFormatFromExtension(ext) == FileFormat::Video;
+    return fileFormatFromExtension(ext);
+}
+
+} // namespace
+
+bool isVideoFile(const std::wstring& path) noexcept {
+    return fileFormatByPathExtension(path) == FileFormat::Video;
+}
+
+bool isAudioFile(const std::wstring& path) noexcept {
+    return fileFormatByPathExtension(path) == FileFormat::Audio;
+}
+
+bool isPlayerFile(const std::wstring& path) noexcept {
+    const FileFormat format = fileFormatByPathExtension(path);
+    return format == FileFormat::Video || format == FileFormat::Audio;
 }
 
 bool isExtensionAuthoritative(FileFormat format) noexcept {
@@ -403,6 +471,7 @@ std::string_view fileFormatName(FileFormat format) noexcept {
     case FileFormat::Tga:     return "TGA";
     case FileFormat::Livp:    return "LIVP";
     case FileFormat::Video:   return "Video";
+    case FileFormat::Audio:   return "Audio";
     case FileFormat::Lep:     return "LEP";
     case FileFormat::Raw:     return "RAW";
     default:                  return "Unknown";

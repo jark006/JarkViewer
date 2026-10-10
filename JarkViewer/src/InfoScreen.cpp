@@ -30,6 +30,7 @@ constexpr uint32_t kStrFormatsTitle = 162;
 constexpr uint32_t kStrFormatsCommon = 163;
 constexpr uint32_t kStrFormatsVideo = 164;
 constexpr uint32_t kStrOpenImage = 165;
+constexpr uint32_t kStrAudio = 190; // 播放器里"纯音频文件"画面的标题
 
 // 警示色：只用于失败页的徽章与标题点缀（主题里没有红色）
 constexpr uint32_t kErrorAccentDeep = 0xFFE06E5E;
@@ -249,6 +250,74 @@ cv::Mat renderHome(cv::Size size, float scale, int interaction) {
     return context.canvas;
 }
 
+// 音频画面的布局度量：renderAudio（画底板与文字）与 audioSpectrumRect（播放器往上画条）
+// 共用同一套数字，保证条正好落在底板里
+constexpr float kAudioPanelWidth = 360.0f;
+constexpr float kAudioPanelHeight = 130.0f;
+constexpr int kAudioPanelPadding = 12; // 条与底板内边距（逻辑像素）
+
+struct AudioMetrics {
+    cv::Rect panel{};
+    int contentTop = 0;
+};
+
+AudioMetrics audioMetrics(cv::Size size, float scale) {
+    TextRenderer& text = screenText();
+    const auto lineHeightOf = [&](float fontLogical) {
+        text.setSize(logicalPx(fontLogical, scale));
+        return text.lineHeight();
+    };
+
+    AudioMetrics metrics;
+    metrics.panel = {
+        size.width / 2 - logicalPx(kAudioPanelWidth, scale) / 2,
+        0,
+        logicalPx(kAudioPanelWidth, scale),
+        logicalPx(kAudioPanelHeight, scale),
+    };
+
+    const int total = metrics.panel.height + logicalPx(26, scale) + lineHeightOf(30) +
+        logicalPx(12, scale) + lineHeightOf(22) + logicalPx(6, scale) + lineHeightOf(14);
+    metrics.contentTop = (std::max)(logicalPx(20, scale), (size.height - total) / 2);
+    metrics.panel.y = metrics.contentTop;
+    return metrics;
+}
+
+// 播放器里的纯音频文件：频谱底板 + 标题 + 文件名 + 路径。
+// 音频文件没有画面可画，窗口又不能空着（否则只剩标题栏和鼠标悬停才出现的条带）。
+//
+// 底板是**静的**（带指纹的缓存位图），跟着声音跳的条由 `VideoPlayerApp` 每帧按
+// `AudioSpectrumAnalyzer` 的电平往这块底板上画——画面一半静态一半逐帧，重画整幅
+// InfoScreen（含文字排版）没有必要。
+cv::Mat renderAudio(const std::wstring& detail, cv::Size size, float scale) {
+    auto context = makeContext(PlaceholderKind::Audio, size, scale);
+    const auto metrics = audioMetrics(size, scale);
+
+    const std::string path = jarkUtils::wstringToUtf8(detail);
+    const std::string fileName = path.empty() ? std::string()
+        : jarkUtils::wstringToUtf8(std::filesystem::path(detail).filename().wstring());
+
+    // 底板：圆角矩形 + 主题的标签底色（比背景亮一档，条压在上面看得清）
+    fillRoundedRect(context.canvas, metrics.panel, context.px(14), context.tag);
+
+    context.y = metrics.contentTop + metrics.panel.height;
+    const float widthLogical = static_cast<float>(size.width) / scale;
+    context.gap(26);
+    context.centerLine(getUIString(kStrAudio), 30, context.fg, widthLogical - 160.0f);
+    context.gap(12);
+    if (!fileName.empty())
+        context.centerLine(fileName, 22, context.fg, widthLogical - 160.0f);
+    context.gap(6);
+    if (!path.empty()) {
+        context.text->setSize(context.px(14));
+        const std::string shown = elideLeft(*context.text, path, context.px(widthLogical - 160.0f));
+        const cv::Size measured = context.text->measure(shown.c_str());
+        context.text->putAlignCenter(context.canvas, { 0, context.y, context.width(), measured.height },
+            shown.c_str(), context.muted);
+    }
+    return context.canvas;
+}
+
 // 排除失败页：警示徽章 + 标题/原因 + 文件名与路径 + 当前支持的格式清单
 cv::Mat renderError(PlaceholderKind kind, const std::wstring& detail, cv::Size size, float scale) {
     auto context = makeContext(kind, size, scale);
@@ -393,6 +462,13 @@ cv::Rect homeButtonRect(cv::Size size, float scale) {
     return { size.width / 2 - metrics.buttonWidth / 2, y, metrics.buttonWidth, metrics.buttonHeight };
 }
 
+cv::Rect audioSpectrumRect(cv::Size size, float scale) {
+    const auto metrics = audioMetrics(size, scale);
+    const int pad = logicalPx(kAudioPanelPadding, scale);
+    return { metrics.panel.x + pad, metrics.panel.y + pad,
+        (std::max)(1, metrics.panel.width - pad * 2), (std::max)(1, metrics.panel.height - pad * 2) };
+}
+
 cv::Mat renderInfoScreen(PlaceholderKind kind, const std::wstring& detail, cv::Size size, float scale, int interaction) {
     if (kind == PlaceholderKind::None)
         return {};
@@ -403,6 +479,8 @@ cv::Mat renderInfoScreen(PlaceholderKind kind, const std::wstring& detail, cv::S
 
     if (kind == PlaceholderKind::Home)
         return renderHome(size, scale, interaction);
+    if (kind == PlaceholderKind::Audio)
+        return renderAudio(detail, size, scale);
     return renderError(kind, detail, size, scale);
 }
 
@@ -412,6 +490,7 @@ const char* placeholderName(PlaceholderKind kind) {
     case PlaceholderKind::UnsupportedFormat: return "unsupported";
     case PlaceholderKind::DecodeFailed: return "decode-failed";
     case PlaceholderKind::FileMissing: return "missing";
+    case PlaceholderKind::Audio: return "audio";
     default: return "";
     }
 }

@@ -51,6 +51,7 @@ enum class FileFormat : uint8_t {
     // —— 复合容器 ——
     Livp,   // iOS 实况照片（zip 容器）
     Video,  // 视频容器：mp4/mov/mkv/webm/avi/...
+    Audio,  // 纯音频（无视频轨的容器/裸码流）：mp3/flac/wav/m4a/ogg/opus/...
 
     // —— 仅能由扩展名判定 ——
     Lep,    // lepton（无文件头特征）
@@ -64,9 +65,15 @@ FileFormat sniffFileFormat(std::span<const uint8_t> data) noexcept;
 FileFormat fileFormatFromExtension(std::wstring_view ext) noexcept;
 
 // 该路径是不是视频文件（按扩展名判定，只看文件名部分）。
-// **这就是"交给独立播放器还是走看图"的那一条判定**：命令行入参、拖放、Ctrl+O
-// 三处都走它，避免同一个文件在不同入口下进了不同的模式。
 bool isVideoFile(const std::wstring& path) noexcept;
+
+// 该路径是不是纯音频文件（同样只看扩展名）。
+bool isAudioFile(const std::wstring& path) noexcept;
+
+// **这就是"交给独立播放器还是走看图"的那一条判定**：命令行入参、拖放、Ctrl+O
+// 三处都走它，避免同一个文件在不同入口下进了不同的模式。视频之外，纯音频也归播放器
+// （同一个窗口，只是没有画面可画）——两处判定必须是这一条，不能各写一半。
+bool isPlayerFile(const std::wstring& path) noexcept;
 
 // 该格式的扩展名是否需要优先于文件头嗅探结果（魔数无法表达的信息，如 RAW/视频）
 bool isExtensionAuthoritative(FileFormat format) noexcept;

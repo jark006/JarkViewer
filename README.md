@@ -61,7 +61,7 @@
 4. 📖 支持读取开源AI生成图像的提示词信息【StableDiffusion WebUI、ComfyUI输出的图像一般都会内嵌提示词参数或工作流JSON，⚠ 若图像经过各大网络平台传播重新编码，该信息可能会被移除】
 5. 🖼️ 资源管理器缩略图：随程序附带的 `JarkThumbnailProvider.dll` 可为 `JXL / AVIF / HEIC` 等格式在资源管理器中提供缩略图（在设置页「文件关联」里勾选格式时一并注册，DLL 不在程序目录时自动跳过）
 6. 📹 导出实况视频：右键菜单「导出视频」把实况照片内嵌的视频原样另存（`livp` 的 `.mov`、Android 动态照片的尾部 `MP4`；直接打开的视频文件也可导出）
-7. ▶️ 简易视频播放器：命令行/拖放/「打开」选中视频文件时进入独立播放界面（播放暂停、单击画面播放/暂停、进度条拖动与精确跳转、±5 秒与单帧步进、音量调节），看图部分不受影响
+7. ▶️ 简易播放器：命令行/拖放/「打开」选中视频或音频文件时进入独立播放界面（播放暂停、单击画面播放/暂停、进度条拖动与精确跳转、±5 秒与单帧步进、音量调节），看图部分不受影响
 
 ## 📂 格式支持
 
@@ -69,6 +69,7 @@
 - **动态**：`gif webp png apng jxl avif`
 - **实况**：`livp(IOS LivePhoto) jpg/heic/heif(Android MicroVideo/MotionPhoto)`
 - **视频**（命令行/拖放/「打开」选中视频文件会进入独立播放器界面；不出现在同目录的翻页列表里）：`3gp avi evo flv m2ts m4v mkv mov mp4 mts mxf ts vob webm wmv`
+- **音频**（同样进独立播放器界面，只是没有画面；不出现在同目录的翻页列表里）：`aac ac3 aif aiff amr ape au caf dsf dts flac m4a m4b mka mp2 mp3 mpc oga ogg opus tak tta w64 wav wma wv`
 - **RAW**：`3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
 
 ## 👋 快速上手

@@ -429,6 +429,9 @@
     <ClCompile Include="src\AudioOutput.cpp">
       <Filter>Media</Filter>
     </ClCompile>
+    <ClCompile Include="src\AudioSpectrumAnalyzer.cpp">
+      <Filter>Media</Filter>
+    </ClCompile>
     <ClCompile Include="src\MediaDecoder.cpp">
       <Filter>Media</Filter>
     </ClCompile>
@@ -555,6 +558,9 @@
       <Filter>Image</Filter>
     </ClInclude>
     <ClInclude Include="include\AudioOutput.h">
+      <Filter>Media</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AudioSpectrumAnalyzer.h">
       <Filter>Media</Filter>
     </ClInclude>
     <ClInclude Include="include\MediaDecoder.h">

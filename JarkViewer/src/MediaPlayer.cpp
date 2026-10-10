@@ -1,5 +1,7 @@
 #include "MediaPlayer.h"
 
+#include "AudioSpectrumAnalyzer.h"
+
 #include "AudioOutput.h"
 #include "MediaDecoder.h"
 #include "jarkUtils.h"
@@ -118,6 +120,12 @@ struct MediaPlayer::Impl {
     bool hasAudio = false;
     int64_t mediaDurationMs = 0;
     int64_t frameStepMs = 33;
+
+    // 实时频谱：分析器在 start() 里建（那时线程还没起）、stop() 里随线程一起收，
+    // 指针本身在整个播放会话里是稳定的，所以音频线程可以直接解引用；
+    // 开关是原子的，界面想开就开，不必与音频线程同步
+    std::unique_ptr<AudioSpectrumAnalyzer> spectrum;
+    std::atomic<bool> spectrumEnabled{ false };
 
     // 时钟：clockBaseMs + 播放中累计
     int64_t clockMs() const {
@@ -342,6 +350,11 @@ struct MediaPlayer::Impl {
                         static_cast<size_t>(chunkMs) * MediaDecoder::kOutputSampleRate / 1000 *
                         MediaDecoder::kOutputChannels, 0);
 
+                    // 补的静音也喂给频谱（时间戳按已提交到的位置推）：否则尾部这段时间里
+                    // 频谱取不到这一段的帧，界面会停在最后一次有声音的样子不动
+                    if (spectrum && spectrumEnabled.load())
+                        spectrum->push(silence, submittedMs);
+
                     const SubmitResult result = submitAudio(silence, stopToken);
                     if (result == SubmitResult::Stop)
                         return;
@@ -380,6 +393,11 @@ struct MediaPlayer::Impl {
             if (chunk.audio.empty())
                 continue;
 
+            // 频谱喂的是**马上要提交的这批样本**（时间戳就是这批的起始媒体时间）：
+            // 界面按播放位置去取，所以"解码跑在前面"不会让频谱提前（见 AudioSpectrumAnalyzer）
+            if (spectrum && spectrumEnabled.load())
+                spectrum->push(chunk.audio, chunk.ptsMs);
+
             // 音频唯一的节流阀是声卡队列：攒满配额就等它播掉一些。
             // 播放时钟就是这个队列的播放位置，余量越足越不怕取帧或解码的抖动
             const SubmitResult result = submitAudio(chunk.audio, stopToken);
@@ -406,11 +424,18 @@ struct MediaPlayer::Impl {
         audioEof = false;
         audioDecodeFinished.store(false);
         submittedMs = target;
+        // 频谱历史原地作废：里面全是旧位置的帧，取出来的画面与新的播放位置对不上
+        if (spectrum)
+            spectrum->reset();
 
         // 时钟基线交给音频这一侧：已播样本数从"当下读到的值"重新起算，
         // 不依赖 FlushSourceBuffers 会不会把 SamplesPlayed 清零（各版本行为不一致）
         if (audio)
             rebaseClockForAudio(target);
+        else if (!videoDecoder)
+            // 没有声卡**又没有视频线程**（纯音频 + 声卡创建失败）：这一侧是唯一的时钟写者，
+            // 不补这一下，seek 之后时钟还按墙上时间从老位置往前跑，永远追不上目标
+            rebaseClockForSystemClock(target);
 
         JARK_LOG("player: audio seek -> {} ms", target);
     }
@@ -429,26 +454,40 @@ std::unique_ptr<MediaPlayer> MediaPlayer::create() {
 bool MediaPlayer::start(std::span<const uint8_t> data, float volume) {
     stop();
 
+    // 视频与音频各自探测：**有哪一路就播哪一路**。纯音频文件（mp3/flac/wav…或只有音轨的
+    // mp4/mkv）没有视频轨，于是没有视频线程、没有画面，只剩时钟与声音——
+    // 播放器窗口照常可用（界面自己画音频占位画面）。
     auto videoDecoder = MediaDecoder::open(data, MediaDecoder::StreamFilter::VideoOnly);
-    if (!videoDecoder || !videoDecoder->info().hasVideo) {
+    if (!videoDecoder || !videoDecoder->info().hasVideo)
+        videoDecoder.reset();
+
+    auto audioDecoder = MediaDecoder::open(data, MediaDecoder::StreamFilter::AudioOnly);
+    if (!audioDecoder || !audioDecoder->info().hasAudio)
+        audioDecoder.reset();
+
+    if (!videoDecoder && !audioDecoder) {
         JARK_LOG("MediaPlayer: cannot open media");
         return false;
     }
     impl_->videoDecoder = std::move(videoDecoder);
+    impl_->audioDecoder = std::move(audioDecoder);
 
-    if (auto audioDecoder = MediaDecoder::open(data, MediaDecoder::StreamFilter::AudioOnly);
-        audioDecoder && audioDecoder->info().hasAudio) {
-        impl_->audioDecoder = std::move(audioDecoder);
-    }
-
-    const MediaInfo& info = impl_->videoDecoder->info();
+    // 时长/帧率取现有那一路：纯音频的 frameRate 是 0，单帧时长保持默认（只用于 seek 上界
+    // 与时钟余量，音频没有帧可言）
+    const MediaInfo& info = impl_->videoDecoder ? impl_->videoDecoder->info() : impl_->audioDecoder->info();
     impl_->hasAudio = impl_->audioDecoder != nullptr;
     impl_->mediaDurationMs = info.durationMs;
+    // 分析器建在线程起来之前（这里是唯一一处新建），有音轨才建；
+    // 真正算不算由 spectrumEnabled 决定（视频/实况照片那条路不白算）
+    impl_->spectrum = impl_->audioDecoder
+        ? std::make_unique<AudioSpectrumAnalyzer>(MediaDecoder::kOutputSampleRate)
+        : nullptr;
+    impl_->spectrumEnabled.store(false);
     impl_->frameStepMs = info.frameRate > 0.0
         ? (std::max)(int64_t{ 1 }, static_cast<int64_t>(std::llround(1000.0 / info.frameRate)))
         : 33;
     impl_->stopRequested.store(false);
-    impl_->videoDecodeFinished.store(false);
+    impl_->videoDecodeFinished.store(impl_->videoDecoder == nullptr); // 没有视频线程 = 已经"解完"
     impl_->audioDecodeFinished.store(!impl_->audioDecoder);
     impl_->decodedFrames.store(0);
     impl_->presentedFrames.store(0);
@@ -489,9 +528,11 @@ bool MediaPlayer::start(std::span<const uint8_t> data, float volume) {
     JARK_LOG("MediaPlayer started: video={} audio={} duration={}ms",
         info.hasVideo, impl_->hasAudio, info.durationMs);
 
-    impl_->videoThread = std::jthread([this](std::stop_token stopToken) {
-        impl_->videoLoop(stopToken);
-    });
+    if (impl_->videoDecoder) {
+        impl_->videoThread = std::jthread([this](std::stop_token stopToken) {
+            impl_->videoLoop(stopToken);
+        });
+    }
     if (impl_->audioDecoder) {
         impl_->audioThread = std::jthread([this](std::stop_token stopToken) {
             impl_->audioLoop(stopToken);
@@ -502,7 +543,9 @@ bool MediaPlayer::start(std::span<const uint8_t> data, float volume) {
 }
 
 void MediaPlayer::stop() {
-    if (!impl_->videoThread.joinable() && !impl_->videoDecoder)
+    // 判据是"还有没有媒体"，**不能**只看视频那一侧：纯音频文件既没有视频线程也没有
+    // 视频解码器，照旧写法会在换片/析构时直接返回，音频线程继续跑、声音停不下来
+    if (!impl_->videoDecoder && !impl_->audioDecoder)
         return;
 
     impl_->stopRequested.store(true);
@@ -531,6 +574,8 @@ void MediaPlayer::stop() {
     impl_->audio.reset();
     impl_->audioDecoder.reset();
     impl_->videoDecoder.reset();
+    impl_->spectrumEnabled.store(false);
+    impl_->spectrum.reset();
     impl_->currentFrame = cv::Mat();
 }
 
@@ -539,7 +584,9 @@ bool MediaPlayer::isRunning() const noexcept {
 }
 
 bool MediaPlayer::hasFinished() const noexcept {
-    if (!impl_->videoDecoder || !impl_->videoDecodeFinished.load() || !impl_->audioDecodeFinished.load())
+    if (!impl_->videoDecoder && !impl_->audioDecoder)
+        return false;
+    if (!impl_->videoDecodeFinished.load() || !impl_->audioDecodeFinished.load())
         return false;
 
     {
@@ -551,9 +598,12 @@ bool MediaPlayer::hasFinished() const noexcept {
     if (impl_->audio && impl_->audio->queuedFrames() > 0)
         return false;
 
-    // 最后一帧显示完毕（给一帧的显示时间）后结束
-    const int64_t lastFrameMs = impl_->lastFramePtsMs.load();
-    return impl_->clockMs() >= lastFrameMs;
+    // 最后一帧显示完毕（给一帧的显示时间）后结束。
+    // 纯音频没有帧时间戳：判据就是媒体时长——音频线程解到 EOF 后按 silenceUntilMs()
+    // 把静音补到时长，队列排空时钟正好压在结尾；时长未知（0）时压住它的其实是上面的
+    // "解码已结束 + 队列已播空"，不会在半路饿一下队列时误判成结尾。
+    const int64_t endMs = impl_->videoDecoder ? impl_->lastFramePtsMs.load() : impl_->mediaDurationMs;
+    return impl_->clockMs() >= endMs;
 }
 
 bool MediaPlayer::getVideoSize(int& width, int& height) const noexcept {
@@ -620,8 +670,21 @@ void MediaPlayer::setVolume(float volume) noexcept {
         impl_->audio->setVolume(volume);
 }
 
+void MediaPlayer::setSpectrumEnabled(bool enabled) noexcept {
+    impl_->spectrumEnabled.store(enabled && impl_->spectrum != nullptr);
+}
+
+bool MediaPlayer::readSpectrum(std::span<float> out) const noexcept {
+    if (!impl_->spectrum || !impl_->spectrumEnabled.load())
+        return false;
+
+    // 用**播放时钟**取，不是"最新那一帧"：音频线程提前约 2 秒解码，
+    // 拿最新的会让频谱比听到的声音早出这么多
+    return impl_->spectrum->readAt(impl_->clockMs(), out);
+}
+
 void MediaPlayer::pause() {
-    if (!impl_->videoDecoder || impl_->paused.exchange(true))
+    if ((!impl_->videoDecoder && !impl_->audioDecoder) || impl_->paused.exchange(true))
         return;
 
     if (impl_->audio) {
@@ -637,7 +700,7 @@ void MediaPlayer::pause() {
 }
 
 void MediaPlayer::resume() {
-    if (!impl_->videoDecoder || !impl_->paused.exchange(false))
+    if ((!impl_->videoDecoder && !impl_->audioDecoder) || !impl_->paused.exchange(false))
         return;
 
     if (impl_->audio) {
@@ -655,14 +718,16 @@ bool MediaPlayer::isPaused() const noexcept {
 }
 
 bool MediaPlayer::seek(int64_t ms, SeekMode mode) {
-    if (!impl_->videoDecoder)
+    if (!impl_->videoDecoder && !impl_->audioDecoder)
         return false;
 
     int64_t target = ms > 0 ? ms : 0;
     if (impl_->mediaDurationMs > 0) {
-        // 目标夹到最后一帧的位置：再往后就只剩"目标之后没有帧"的空档，
-        // 拖到最右端反而看不到结尾画面
-        const int64_t upper = (std::max)(int64_t{ 0 }, impl_->mediaDurationMs - impl_->frameStepMs);
+        // 有视频时目标夹到最后一帧的位置：再往后就只剩"目标之后没有帧"的空档，
+        // 拖到最右端反而看不到结尾画面；纯音频没有帧，直接夹到时长
+        const int64_t upper = impl_->videoDecoder
+            ? (std::max)(int64_t{ 0 }, impl_->mediaDurationMs - impl_->frameStepMs)
+            : impl_->mediaDurationMs;
         target = (std::min)(target, upper);
     }
 

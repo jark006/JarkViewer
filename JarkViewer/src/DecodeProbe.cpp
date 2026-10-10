@@ -4,6 +4,7 @@
 #include "ImageDatabase.h"
 #include "ColorManager.h"
 #include "AudioOutput.h"
+#include "AudioSpectrumAnalyzer.h"
 #include "lcms2.h"
 #include "ImageAnnotator.h"
 #include "Localization.h"
@@ -191,9 +192,9 @@ namespace {
         return report;
     }
 
-    // 视频文件：读盘后交给上面的解码统计
+    // 视频/音频文件：读盘后交给上面的解码统计（音频打印 video=false + 音频轨信息）
     std::string buildMediaReport(const std::wstring& path, jark::FileFormat sniffed) {
-        if (sniffed != jark::FileFormat::Video)
+        if (sniffed != jark::FileFormat::Video && sniffed != jark::FileFormat::Audio)
             return {};
 
         std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -294,7 +295,7 @@ namespace {
     // 语言自检：逐一切换语言并打印若干条文案，验证字符串表与回退逻辑
     std::string runLanguageTest() {
         std::string report;
-        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 156, 165 }; // 含新增导航/缓存/占位界面文案
+        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 156, 165, 190 }; // 含新增导航/缓存/占位界面/音频画面文案
         const uint32_t wideIds[] = { 1, 13, 30, 49 };            // 窗口标题/窗口创建失败/删除到回收站/批量无图提示
 
         const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;
@@ -1012,7 +1013,7 @@ namespace {
 
             auto player = MediaPlayer::create();
             if (!player || !player->start(mediaBytes, 0.0f)) {
-                report += "启动失败：没有可播放的视频流\n";
+                report += "启动失败：没有可播放的媒体流（视频轨与音频轨都没有）\n";
                 ++skipped;
                 continue;
             }
@@ -1022,6 +1023,174 @@ namespace {
             player->getVideoSize(videoWidth, videoHeight);
             const int64_t duration = player->durationMs();
             const int64_t frameMs = static_cast<int64_t>(std::lround(player->frameDurationMs()));
+
+            // —— 纯音频文件（mp3/flac/wav…）：没有视频轨，一帧都取不到 ——
+            // 下面那套视频断言（落点帧、单帧步进、拖动预览只交一帧）在这里无从谈起，
+            // 但"时钟按 1 倍速推进 / 暂停真的停 / 精确 seek 落在目标上 / 播完要停住 / 从头重播"
+            // 一条都不能少：它们是播放器状态机的骨架，在音频上坏了同样是坏。
+            if (!player->hasVideo()) {
+                report += std::format("媒体: 纯音频 时长={}ms 音频={}\n", duration, player->hasAudio());
+                check(player->hasAudio(), "取到音频轨");
+                check(player->frameDurationMs() > 0.0, "单帧时长有默认值（音频用它算 seek 余量）");
+
+                // 与视频同一个取帧节奏：主循环就是这么转的，音频虽无帧可取，
+                // 但 takeFrame/acquireFrame 是驱动时钟观测的那一条路
+                const auto pumpClock = [&](int milliseconds) {
+                    const auto begin = std::chrono::steady_clock::now();
+                    while (elapsedMsSince(begin) < milliseconds) {
+                        cv::Mat frame;
+                        player->acquireFrame(frame);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(3));
+                    }
+                };
+
+                // 1) 起播：时钟按 1 倍速推进（上界严格——声卡不可能播得比媒体时间还快）
+                pumpClock(1000);
+                const int64_t audioPos1 = player->positionMs();
+                check(audioPos1 >= 400, std::format("播放 1 秒后位置 {}ms ≥ 400ms（时钟在推进）", audioPos1));
+                check(audioPos1 <= 1400, std::format("播放 1 秒后位置 {}ms ≤ 1400ms（没有偷跑）", audioPos1));
+
+                // 2) 暂停：时钟必须停住（声卡 voice 停在原采样点）
+                player->pause();
+                pumpClock(150);
+                const int64_t audioPaused0 = player->positionMs();
+                pumpClock(500);
+                const int64_t audioPaused1 = player->positionMs();
+                check(player->isPaused(), "暂停后 isPaused() 为真");
+                check(abs64(audioPaused1 - audioPaused0) <= 20,
+                    std::format("暂停 500ms 后位置只动了 {}ms", audioPaused1 - audioPaused0));
+
+                // 3) 恢复：从原位置继续，不是从头开始
+                player->resume();
+                pumpClock(500);
+                const int64_t audioResumed = player->positionMs();
+                check(!player->isPaused(), "恢复后 isPaused() 为假");
+                check(audioResumed >= audioPaused1 + 200,
+                    std::format("恢复 500ms 后位置 {}ms ≥ {}ms（从原位继续）", audioResumed, audioPaused1 + 200));
+
+                if (duration <= 0) {
+                    report += "时长不可知：跳过 seek / 结尾断言\n";
+                    ++skipped;
+                    player->stop();
+                    continue;
+                }
+
+                // 4) 暂停中精确 seek：音频没有帧时间戳，落点只能对着播放时钟量。
+                //    容差 120ms = 一帧的量级 + 一批提交的样本（解码器按目标丢样本、整批丢弃，
+                //    剩下的零头由时钟基线补偿）——比视频那条"落点帧"断言宽，但仍能抓住
+                //    "落到关键帧上"那种几秒级的偏差
+                player->pause();
+                const int64_t audioTarget = duration / 2;
+                player->seek(audioTarget);
+                int64_t audioLanding = 0;
+                {
+                    const auto begin = std::chrono::steady_clock::now();
+                    do {
+                        audioLanding = player->positionMs();
+                        if (abs64(audioLanding - audioTarget) <= 120)
+                            break;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    } while (elapsedMsSince(begin) < 2000);
+                }
+                check(abs64(audioLanding - audioTarget) <= 120,
+                    std::format("暂停中 seek 到 {}ms，落点 {}ms（偏差 ≤ 120ms）", audioTarget, audioLanding));
+                check(player->isPaused(), "seek 之后仍是暂停态");
+
+                // 5) 播放中 seek：落到目标附近并继续前进。
+                //    seek 是**异步**的（命令交给解码线程），目标生效前读到的是老位置——
+                //    所以先 pump 一段再采样基准，别拿"刚发完命令"的位置当起点
+                //    （视频那条第 6 步同理，这里踩过一次）
+                player->resume();
+                const int64_t audioQuarter = duration / 4;
+                player->seek(audioQuarter);
+                pumpClock(600);
+                const int64_t audioAfterSeek = player->positionMs();
+                check(audioAfterSeek >= audioQuarter - 20 && audioAfterSeek <= audioQuarter + 1000,
+                    std::format("播放中 seek 到 {}ms，600ms 后位置 {}ms", audioQuarter, audioAfterSeek));
+                pumpClock(300);
+                check(player->positionMs() > audioAfterSeek,
+                    std::format("seek 之后继续前进（{}ms → {}ms）", audioAfterSeek, player->positionMs()));
+
+                // 6) 播完停在结尾：hasFinished() 为真（时钟压在媒体时长上、音频队列已播空）
+                player->seek((std::max)(int64_t{ 0 }, duration - 300));
+                {
+                    const auto begin = std::chrono::steady_clock::now();
+                    while (!player->hasFinished() && elapsedMsSince(begin) < 10000)
+                        pumpClock(20);
+                }
+                check(player->hasFinished(), "播到结尾后 hasFinished() 为真");
+                const int64_t audioEndPos = player->positionMs();
+                check(audioEndPos >= duration - 200,
+                    std::format("结尾位置 {}ms 落在媒体末尾（≥ {}ms）", audioEndPos, duration - 200));
+
+                // 7) 拖回开头：这是"结尾暂停态按空格从头播"的地基。先暂停再 seek——
+                //    暂停时时钟冻住，落点就是 seek 的目标本身，不用去猜"这会儿又播到哪了"
+                player->pause();
+                player->seek(0);
+                pumpClock(400);
+                check(player->positionMs() <= 120,
+                    std::format("seek(0) 后位置 {}ms 回到开头", player->positionMs()));
+                player->resume();
+                pumpClock(400);
+                check(player->positionMs() >= 150,
+                    std::format("从头继续播放 400ms 后位置 {}ms ≥ 150ms", player->positionMs()));
+
+                player->stop();
+
+                // 8) 界面那一层的状态机（VideoPlayback）在纯音频上也要能开、能拖：
+                //    拖动中时钟停在把手位置、松手后恢复播放（没有帧可等，不该白等"落位"）
+                {
+                    jark::VideoPlayback audioScrub;
+                    if (!audioScrub.open(path)) {
+                        report += "VideoPlayback 无法打开该音频\n";
+                        ++failed;
+                        continue;
+                    }
+
+                    const auto pumpAudioScrub = [&](int milliseconds) {
+                        const auto begin = std::chrono::steady_clock::now();
+                        while (elapsedMsSince(begin) < milliseconds) {
+                            cv::Mat frame;
+                            audioScrub.takeFrame(frame); // 纯音频永远返回 false，但必须照常调
+                            std::this_thread::sleep_for(std::chrono::milliseconds(3));
+                        }
+                    };
+
+                    pumpAudioScrub(500);
+                    check(!audioScrub.hasVideo(), "VideoPlayback: 纯音频 hasVideo() 为假");
+                    check(audioScrub.isPlaying(), "VideoPlayback: 打开即播放");
+                    check(audioScrub.positionMs() >= 150,
+                        std::format("VideoPlayback: 起播 500ms 后位置 {}ms", audioScrub.positionMs()));
+
+                    const int64_t scrubbedTo = duration * 2 / 5;
+                    audioScrub.beginScrub(scrubbedTo);
+                    check(audioScrub.isScrubbing(), "VideoPlayback: 按下进度条进入拖动状态");
+                    check(!audioScrub.isPlaying(), "VideoPlayback: 拖动中暂停（时钟与声音都停）");
+                    check(abs64(audioScrub.scrubTargetMs() - scrubbedTo) <= 20, "VideoPlayback: 把手停在按下位置");
+
+                    const auto settleBegin = std::chrono::steady_clock::now();
+                    while (abs64(audioScrub.positionMs() - scrubbedTo) > 120 &&
+                        elapsedMsSince(settleBegin) < 1500)
+                        pumpAudioScrub(20);
+                    check(abs64(audioScrub.positionMs() - scrubbedTo) <= 120,
+                        std::format("VideoPlayback: 拖动到 {}ms，时钟停在把手位置（{}ms）",
+                            scrubbedTo, audioScrub.positionMs()));
+
+                    audioScrub.endScrub(scrubbedTo);
+                    pumpAudioScrub(100);
+                    check(!audioScrub.isScrubbing(), "VideoPlayback: 松手后退出拖动状态");
+
+                    const int64_t landedAudio = audioScrub.positionMs();
+                    pumpAudioScrub(500);
+                    check(audioScrub.isPlaying(), "VideoPlayback: 松手后恢复播放（拖动前是在播的）");
+                    check(audioScrub.positionMs() > landedAudio + 100,
+                        std::format("VideoPlayback: 松手后时钟继续前进（{}ms → {}ms）",
+                            landedAudio, audioScrub.positionMs()));
+                    audioScrub.close();
+                }
+                continue;
+            }
+
             report += std::format("媒体: 显示 {}x{} 时长={}ms 单帧={}ms 音频={}\n",
                 videoWidth, videoHeight, duration, frameMs, player->hasAudio());
 
@@ -2087,6 +2256,184 @@ namespace {
         return report;
     }
 
+    // 实时频谱自检（纯合成，不需要语料）：频段映射、电平标定、衰减、以及"按播放位置取帧"。
+    // 这几条坏掉时界面上只表现为"条在跳"，看不出跳得对不对——尤其"取哪一帧"这一条：
+    // 拿解码线程最新算出的那一帧也能跳，但会比听到的声音早一两秒。
+    std::string runSpectrumTest() {
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, const std::string& name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+
+        constexpr int kRate = 48000;
+        constexpr int kBandCount = jark::AudioSpectrumAnalyzer::kDefaultBandCount;
+        constexpr double kPi = 3.14159265358979323846;
+
+        // 立体声交错样本：正弦（幅度按满幅的几分之一）与静音
+        const auto makeSine = [&](double hz, int milliseconds, double amplitude) {
+            const int frames = kRate * milliseconds / 1000;
+            std::vector<int16_t> samples(static_cast<size_t>(frames) * 2);
+            for (int i = 0; i < frames; ++i) {
+                const auto value = static_cast<int16_t>(std::lround(std::sin(2.0 * kPi * hz * i / kRate) * amplitude * 32767.0));
+                samples[static_cast<size_t>(i) * 2] = value;
+                samples[static_cast<size_t>(i) * 2 + 1] = value;
+            }
+            return samples;
+        };
+        const auto makeSilence = [&](int milliseconds) {
+            return std::vector<int16_t>(static_cast<size_t>(kRate) * milliseconds / 1000 * 2, 0);
+        };
+        // 标称频率范围含 hz 的那一段（映射对不对，就看最强段是不是它）
+        const auto bandOf = [&](const jark::AudioSpectrumAnalyzer& analyzer, double hz) {
+            for (int band = 0; band < analyzer.bandCount(); ++band) {
+                double lowHz = 0.0;
+                double highHz = 0.0;
+                analyzer.bandRangeHz(band, lowHz, highHz);
+                if (hz >= lowHz && hz < highHz)
+                    return band;
+            }
+            return analyzer.bandCount() - 1; // 高过最上段：归到最后一段
+        };
+        const auto strongestBand = [](const std::vector<float>& levels) {
+            return static_cast<int>(std::max_element(levels.begin(), levels.end()) - levels.begin());
+        };
+        const auto inRange = [](const std::vector<float>& levels) {
+            return std::all_of(levels.begin(), levels.end(),
+                [](float value) { return std::isfinite(value) && value >= 0.0f && value <= 1.0f; });
+        };
+        // 高频段（上 1/4）与最低三段（40~120Hz）的平均电平：纯单音在两侧都应该几乎是 0。
+        // 最低那三段是"直流偏置有没有滤掉"的哨兵——它们挤在同一个 bin 上，最容易被点亮
+        const auto highMean = [](const std::vector<float>& levels) {
+            const size_t from = levels.size() * 3 / 4;
+            double sum = 0.0;
+            for (size_t i = from; i < levels.size(); ++i)
+                sum += levels[i];
+            return levels.size() > from ? sum / static_cast<double>(levels.size() - from) : 0.0;
+        };
+        const auto lowMean = [](const std::vector<float>& levels) {
+            const size_t count = (std::min)(size_t{ 3 }, levels.size());
+            double sum = 0.0;
+            for (size_t i = 0; i < count; ++i)
+                sum += levels[i];
+            return count > 0 ? sum / static_cast<double>(count) : 0.0;
+        };
+
+        // 1) 442Hz 级别的单音落在哪一段、电平标定对不对（幅度 1/4 ≈ -12dBFS）
+        {
+            jark::AudioSpectrumAnalyzer analyzer(kRate);
+            analyzer.push(makeSine(440.0, 400, 0.25), 0);
+
+            std::vector<float> levels(kBandCount, 0.0f);
+            check(analyzer.readAt(300, levels), "喂过样本之后能取到频谱帧");
+            check(inRange(levels), "所有频段电平都在 [0,1] 且有限");
+
+            const int expected = bandOf(analyzer, 440.0);
+            check(strongestBand(levels) == expected,
+                std::format("440Hz 单音的最强段是第 {} 段（含 440Hz），实际第 {} 段", expected, strongestBand(levels)));
+            check(levels[expected] > 0.4,
+                std::format("单音段电平 {:.2f} > 0.4（幅度 1/4 ≈ -12dBFS）", levels[expected]));
+            check(highMean(levels) < 0.2,
+                std::format("纯单音在高频段几乎没有能量（上 1/4 平均 {:.2f}）", highMean(levels)));
+        }
+
+        // 2) 换成高频单音：最强段要跟着挪（映射在整个频段上都对，不是只在低频段对）
+        {
+            jark::AudioSpectrumAnalyzer analyzer(kRate);
+            analyzer.push(makeSine(8000.0, 400, 0.25), 0);
+
+            std::vector<float> levels(kBandCount, 0.0f);
+            analyzer.readAt(300, levels);
+            const int expected = bandOf(analyzer, 8000.0);
+            check(strongestBand(levels) == expected,
+                std::format("8kHz 单音的最强段是第 {} 段（含 8kHz），实际第 {} 段", expected, strongestBand(levels)));
+            check(levels[bandOf(analyzer, 440.0)] < 0.3,
+                std::format("8kHz 单音在 440Hz 段上很弱（{:.2f}）", levels[bandOf(analyzer, 440.0)]));
+            check(inRange(levels), "8kHz 单音的电平仍在 [0,1] 内");
+            check(lowMean(levels) < 0.1,
+                std::format("8kHz 单音在最低三段上几乎是 0（平均 {:.2f}）", lowMean(levels)));
+        }
+
+        // 2b) 带直流偏置的单音：直流必须被高通掉。素材里几十 LSB 的直流偏置会全落进
+        //     最低那一两个 bin，而低频那几段挤在同一个 bin 上——不滤掉的话最低几根条
+        //     会一直亮着（实测 440Hz 的测试音就带 -50dBFS 的偏置）
+        {
+            jark::AudioSpectrumAnalyzer analyzer(kRate);
+            const auto samples = makeSine(8000.0, 400, 0.25);
+            std::vector<int16_t> biased = samples;
+            for (auto& sample : biased) {
+                const int32_t value = sample + 2000; // ≈ -24dBFS 的直流
+                sample = static_cast<int16_t>(std::clamp(value, -32768, 32767));
+            }
+            analyzer.push(biased, 0);
+
+            std::vector<float> levels(kBandCount, 0.0f);
+            analyzer.readAt(300, levels);
+            check(lowMean(levels) < 0.1,
+                std::format("直流偏置不会把最低几段点亮（平均 {:.2f}）", lowMean(levels)));
+            check(strongestBand(levels) == bandOf(analyzer, 8000.0), "带直流偏置时最强段仍是 8kHz");
+        }
+
+        // 3) 时间戳取用：同一个分析器里"前半段有声、后半段静音"，按不同播放位置取到不同结果
+        //    ——"频谱跟着播放位置走"就是这一条，也是不直接用最新一帧的原因
+        {
+            jark::AudioSpectrumAnalyzer analyzer(kRate);
+            analyzer.push(makeSine(440.0, 400, 0.25), 0);
+            analyzer.push(makeSilence(600), 400);
+
+            std::vector<float> levels(kBandCount, 0.0f);
+            const int expected = bandOf(analyzer, 440.0);
+            analyzer.readAt(200, levels);
+            const float duringTone = levels[expected];
+            analyzer.readAt(950, levels);
+            const float duringSilence = levels[expected];
+
+            check(duringTone > 0.4, std::format("位置 200ms（有声段）取到电平 {:.2f} > 0.4", duringTone));
+            check(duringSilence < 0.05,
+                std::format("位置 950ms（静音段）取到电平 {:.2f} < 0.05（没有拿旧的那一帧顶替）", duringSilence));
+        }
+
+        // 4) 衰减：静音之后要看得见"落下去"，且单调不增（不许反弹）
+        {
+            jark::AudioSpectrumAnalyzer analyzer(kRate);
+            analyzer.push(makeSine(440.0, 400, 0.25), 0);
+
+            std::vector<float> levels(kBandCount, 0.0f);
+            const int expected = bandOf(analyzer, 440.0);
+            analyzer.readAt(300, levels);
+            float previous = levels[expected];
+
+            bool monotonic = true;
+            int64_t pts = 400;
+            for (int step = 0; step < 12; ++step) {
+                analyzer.push(makeSilence(50), pts);
+                pts += 50;
+                analyzer.readAt(pts - 1, levels);
+                if (levels[expected] > previous + 1e-4f)
+                    monotonic = false;
+                previous = levels[expected];
+            }
+
+            check(monotonic, "静音段里电平单调不增（不会反弹）");
+            check(previous < 0.05, std::format("静音 600ms 后电平落到 {:.2f} < 0.05", previous));
+        }
+
+        // 5) reset：seek 会调它，清掉之后不该再取到旧位置的帧
+        {
+            jark::AudioSpectrumAnalyzer analyzer(kRate);
+            analyzer.push(makeSine(440.0, 400, 0.25), 0);
+
+            std::vector<float> levels(kBandCount, 0.0f);
+            check(analyzer.readAt(300, levels), "reset 之前能取到帧");
+            analyzer.reset();
+            check(!analyzer.readAt(300, levels), "reset 之后取不到帧（旧位置的帧已作废）");
+        }
+
+        report = std::format("---- 频谱自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
+        return report;
+    }
+
 } // namespace
 
 int runDecodeProbe(const std::vector<std::wstring>& argv) {
@@ -2112,6 +2459,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool navigationTest = false;
     bool colorTest = false;
     bool resampleTest = false;
+    bool spectrumTest = false;
     bool thumbnailTest = false;
     bool shellThumbnailTest = false;
     bool vectorTest = false;
@@ -2159,6 +2507,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--resample-test") {
             resampleTest = true;
+            continue;
+        }
+        if (argv[i] == L"--spectrum-test") {
+            spectrumTest = true;
             continue;
         }
         if (argv[i] == L"--svg-test") {
@@ -2290,7 +2642,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && thumbnailWriter < 0) {
+    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -2314,6 +2666,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (resampleTest) {
         const auto text = runResampleTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (spectrumTest) {
+        const auto text = runSpectrumTest();
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

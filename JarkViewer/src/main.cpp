@@ -539,12 +539,12 @@ public:
     }
 
     void initOpenFile(wstring filePath) {
-        // 视频归独立播放器：看图窗口不播视频（拖放 / Ctrl+O / 主页按钮都可能拿到视频），
+        // 视频与音频归独立播放器：看图窗口不播媒体（拖放 / Ctrl+O / 主页按钮都可能拿到），
         // 记下路径、关掉本窗口，由 wWinMain 换成播放器窗口——规则只有一个：
-        // 视频永远在播放器里播，看图窗口里不存在"半套播放器"
-        if (jark::isVideoFile(filePath)) {
+        // 媒体永远在播放器里播（音频只是没有画面），看图窗口里不存在"半套播放器"
+        if (jark::isPlayerFile(filePath)) {
             handoffPath_ = filePath;
-            JARK_LOG("看图: 视频交给播放器窗口 {}", jarkUtils::wstringToUtf8(filePath));
+            JARK_LOG("看图: 媒体交给播放器窗口 {}", jarkUtils::wstringToUtf8(filePath));
             operateQueue.push({ ActionENUM::requestExit });
             return;
         }
@@ -3572,13 +3572,13 @@ int WINAPI wWinMain(
             static_cast<uint32_t>(jark::languageFromSetting(*languageOverride));
     }
 
-    // 视频归独立播放器窗口、图片归看图窗口，**二选一构造**，另一个对象根本不构造
+    // 视频/音频归独立播放器窗口、图片归看图窗口，**二选一构造**，另一个对象根本不构造
     // （所以播放器里不会出现"按 P 进幻灯片"这类串味）。
     // 运行中拖放/ Ctrl+O 打开别的文件时，当前窗口退出并留下一个路径，循环据此
     // 换成另一个窗口——这就是"按内容换窗口"。
     std::wstring pendingPath = filePath;
     for (;;) {
-        if (jark::isVideoFile(pendingPath)) {
+        if (jark::isPlayerFile(pendingPath)) {
             VideoPlayerApp player;
             player.setStartupFile(pendingPath);
             if (FAILED(player.Initialize(hInstance))) {

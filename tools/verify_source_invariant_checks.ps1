@@ -78,6 +78,14 @@ Test-Break "videoExt 少了 webm（三处视频清单不一致）" @{
     "JarkViewer/include/ImageDatabase.h" = @('L"ts", L"mxf", L"webm",', 'L"ts", L"mxf",')
 }
 
+Test-Break "README 音频清单缺一个格式" @{
+    "README.md" = @("flac m4a m4b mka", "m4a m4b mka")
+}
+
+Test-Break "FormatSniffer 把音频扩展名判成视频（音频清单两处不一致）" @{
+    "JarkViewer/src/FormatSniffer.cpp" = @('{ L"flac", FileFormat::Audio },', '{ L"flac", FileFormat::Video },')
+}
+
 Test-Break "PSD 解码顺序颠倒" @{
     "JarkViewer/src/ImageDatabase.cpp" = @(
         "        auto img = loadPSD(path, buf);`r`n        if (img.empty())`r`n            img = loadSTB(path, buf);",

@@ -1,16 +1,20 @@
 #pragma once
 
-// 单视频播放器的引擎与状态机（**不依赖窗口**）。
+// 单媒体播放器的引擎与状态机（**不依赖窗口**）。
 //
 // 界面（VideoPlayerApp）只做三件事：把输入翻译成这里的调用、把这里的当前帧画到画布、
 // 按这里的状态画底部条带。`--probe --video-test` 驱动的也是这一份逻辑，
 // 所以自检里过的语义就是界面里跑的语义。
 //
-// 与看图那条路的区别：整文件内存映射（不把视频读进内存、没有 256 MiB 上限），
+// 与看图那条路的区别：整文件内存映射（不把媒体读进内存、没有 256 MiB 上限），
 // 播放/暂停/精确 seek/单帧步进/音量都由这里管，不碰 ImageDatabase / 缩略图 / EXIF。
+//
+// 纯音频文件（mp3/flac/wav…）也走这里：没有视频轨时 hasVideo() 为假、取不到帧，
+// 界面改画音频占位画面，其余（时钟、暂停、seek、音量、拖动）完全一样。
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 
 #include <opencv2/opencv.hpp>
@@ -26,7 +30,7 @@ public:
     enum class Error {
         None,
         FileMissing,   // 打不开：不存在、被独占、映射失败
-        DecodeFailed,  // 打开了但没有可解的视频流
+        DecodeFailed,  // 打开了但没有可解的音视频流
     };
 
     VideoPlayback();
@@ -44,7 +48,9 @@ public:
     const std::wstring& fileName() const noexcept { return fileName_; }
 
     // —— 取画面 ——
-    // 每帧调用一次；返回 true 表示这一帧与上一帧不同（调用方需要重绘）
+    // 每帧调用一次；返回 true 表示这一帧与上一帧不同（调用方需要重绘）。
+    // 纯音频文件永远返回 false（没有帧可取），但它同时还负责补发拖动预览、恢复播放、
+    // 判结尾——所以**每帧都必须调**，不能因为"上次没帧"就跳过。
     bool takeFrame(cv::Mat& frame);
 
     // —— 播放控制 ——
@@ -57,7 +63,8 @@ public:
 
     void seekTo(int64_t ms);           // 跳转（保持跳前的播放/暂停状态）
     void nudge(int64_t deltaMs);       // ±5 秒
-    void stepFrame(int direction);     // 暂停中单帧前进/后退
+    // 暂停中单帧前进/后退；纯音频没有帧，退化成 ±kNudgeMs（键位语义因此不用改）
+    void stepFrame(int direction);
 
     // —— 拖动进度条 ——
     // 按下/移动/松手。移动期间只出关键帧预览（节流，只保留最新目标），
@@ -82,6 +89,14 @@ public:
     int videoWidth() const noexcept { return videoWidth_; }
     int videoHeight() const noexcept { return videoHeight_; }
     bool hasAudio() const noexcept { return hasAudio_; }
+    // 有没有视频轨：为假时界面画音频占位画面（纯音频文件，或只有音轨的容器）
+    bool hasVideo() const noexcept { return hasVideo_; }
+
+    // —— 实时频谱（音频画面那列跳动的条）——
+    // 打开纯音频文件时自动开启；取的是"当前播放位置处"的那一帧，不是最新算出来的
+    // （解码线程跑在播放前面约 2 秒，用最新那帧会早出一两秒）。
+    // 定义在 .cpp 里：这里只有 MediaPlayer 的前置声明，内联写会用到不完整类型
+    bool readSpectrum(std::span<float> out) const noexcept;
 
     static constexpr int kDefaultVolumePercent = 50;
     static constexpr int kVolumeStepPercent = 5;
@@ -104,6 +119,7 @@ private:
     int videoWidth_ = 0;
     int videoHeight_ = 0;
     bool hasAudio_ = false;
+    bool hasVideo_ = false;
 
     int volumePercent_ = kDefaultVolumePercent;
     bool atEnd_ = false;

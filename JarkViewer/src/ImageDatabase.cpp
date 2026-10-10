@@ -3512,8 +3512,13 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
         imageAsset.exifInfo = ExifParse::getSimpleInfo(path, 0, 0, fileBuf.data(), fileBuf.size());
 
     imageAsset.format = ImageFormat::Still;
-    // 文件头与扩展名都识别不出 → 不是支持的格式；否则是已知格式但解码失败
-    imageAsset.placeholder = (sniffedFormat == jark::FileFormat::Unknown && extFormat == jark::FileFormat::Unknown)
+    // 文件头与扩展名都识别不出 → 不是支持的格式；否则是已知格式但解码失败。
+    // 音频单独归到"不支持的格式"：它由独立播放器播（见 jark::isPlayerFile），
+    // 走到这里说明扩展名没认出来（比如改了名的 mp3），对看图来说是"这不是图片"，
+    // 不是"这张图片坏了"
+    const bool audioMedia = sniffedFormat == jark::FileFormat::Audio || extFormat == jark::FileFormat::Audio;
+    imageAsset.placeholder = (audioMedia ||
+        (sniffedFormat == jark::FileFormat::Unknown && extFormat == jark::FileFormat::Unknown))
         ? PlaceholderKind::UnsupportedFormat : PlaceholderKind::DecodeFailed;
     imageAsset.placeholderDetail = path;
     return imageAsset;
