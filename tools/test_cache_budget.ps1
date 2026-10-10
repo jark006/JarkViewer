@@ -1,6 +1,6 @@
 ﻿# 图像缓存的实机回归：连续翻页时工作集必须收敛在缓存预算内。
 #
-# 预算的口径（见 JarkViewer/include/LRU.h、ImageDatabase::defaultCacheBudgetBytes）：
+# 预算的口径（见 JarkViewer/include/ImageAssetCache.h、ImageDatabase::defaultCacheBudgetBytes）：
 #   * 条数最多 10 张、字节最多物理内存的 50%，两个上限先到先算；
 #   * 至少留住 2 张（翻回上一张不用重解码）；
 #   * 当前正在显示的那张由主窗口持有，不参与淘汰。

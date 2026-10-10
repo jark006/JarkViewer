@@ -267,7 +267,7 @@ pwsh tools/verify_source_invariant_checks.ps1
 - `JarkViewer/include/ImageDatabase.h` 与 `JarkViewer/src/ImageDatabase.cpp` 负责图片加载、格式分派、EXIF 处理和图像缓存。核心路径是 `ImageDatabase::loader()` → `myLoader()` → **按文件头（魔数）嗅探格式后再分派**：`FormatSniffer` 判定真实格式 → `decodeByFormat()` 调用 JXL/WP2/AVIF/HEIF/RAW/SVG/PSD/OpenCV/WIC/FFmpeg 等解码器 → 统一转为 OpenCV `cv::Mat`；嗅探失败或解码失败时再用扩展名路由兜底，最后才是 OpenCV/WIC 通用兜底。EXIF 后处理统一由 `applyExifInfo()` 按 `ExifPolicy`（None/SimpleOnly/Full/FullWithOrientation）完成，不再散落在各格式分支里。
 - `JarkViewer/include/ImageAssetCache.h` 是图像缓存（`ImageDatabase` 的基类；键 = 文件路径、值 = `ImageAsset`，带一个后台预读线程）。原先是通用模板 `LRU<keyType, valueType>`，但全项目只有看图这一处用，已按本项目**特化**（键/值定死，"占多少字节"直接问值自己，不再挂一层虚函数）。容量三个口径：
   - **条数上限 10 张**（`CAPACITY`，兜住"海量小图把索引撑爆"）与**字节上限 = 物理内存的 50%**（`ImageDatabase::defaultCacheBudgetBytes()`，下限 512MB，`GlobalMemoryStatusEx`）**先到先算**；
-  - **条数下限 2 张**（`minEntries`）：翻页时"当前图 + 上一张"是最常见的一组，少到 1 张就退化成每翻一张都重解码；预算连两张都装不下时也照样留住两条；
+  - **条数下限 2 张**（`minEntries`）：翻页时"当前图 + 上一张"是最常见的一组，少到 1 张就退化成每翻一张都重解码；这是**硬下限**——预算连两张都装不下时也照样留住两条（宁可短暂超预算），别再把它"修"成"严格不超预算就只剩一张"；
   - **淘汰从最久未用那头开始，但跳过外部还持有引用的条目**（`use_count() > 1`）：踢了也不释放内存（shared_ptr 还在别处），只白丢一次命中；当前显示的图被 `curPar.imageAssetPtr` 持有，天然轮不到它。一圈都有人持有时直接停，不空转。
   为什么非要有字节这条：按条数留 4 张 43890x38875 的扫描件（每张解码后 6.36GB）就是 25GB，32GB 机器直接爆。**"这条占多少字节"问 `ImageAsset::memoryBytes()`**（定义在 `jarkUtils.cpp`）：同一块像素被多个成员共享时按 `data` 指针去重（实况/动图的 `primaryFrame` 与 `frames[0]` 是浅拷贝），lunasvg 的文档内存没法估、不计。条数上限里**主页占位图也占一格**，所以实际能留 9 张图。
   **配套两条**：① 当前图大到"两张装不进预算"时**不再预取邻图**（`JarkViewerApp::shouldPrefetchNeighbor()`，"当前图 × 2 > 预算"即跳过）——预算只管得住"可以不持有的"，当前图必须留，硬解下一张就是内存翻倍，而那种图的翻页本来就要重解码一两分钟；② 平滑重采样块的视图指纹里带 `CurImageParameter::sourceToken`（每次 `Init` 自增）：淘汰变积极之后会出现"旧图释放 → 新图落在同一地址 + 尺寸/画布/缩放/平移/旋转全相同"（同尺寸扫描件翻页时的缩放值就是同一个），只用位图裸指针撞键会复用上一张的重采样块。
