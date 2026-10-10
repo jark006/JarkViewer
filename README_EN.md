@@ -149,6 +149,9 @@ That is a missing VC++ runtime — install [vc_redist.x64.exe](https://aka.ms/vs
 **Where are the AI generation prompts?**
 Press `middle click` or `TAB` to open the EXIF panel; prompts and workflow JSON written by StableDiffusion WebUI / ComfyUI show up there (as long as the image was not re-encoded while circulating online).
 
+**Will memory usage keep growing? Why does paging ever pause?**
+No. At most 10 images are cached at a time and never more than half of physical RAM (whichever limit hits first), the image you are looking at is never evicted, and at least 2 are kept — so paging backwards usually needs no re-decoding. A huge image (several GB once decoded) does not preload its neighbour, since that would double the memory; the pause when you reach it is the decode itself. Press `TAB` / `middle click` for the EXIF panel: the top lines show the cache — `Cache: 9/10 · 3.18/16.0 GB` and `Decodes 12 · evictions 2 · prefetch skips 0` ("Decodes" counts real decodes, so if paging keeps re-decoding you will see it climb).
+
 **Does it support drag-and-drop?**
 Yes — drop an image, video or audio file onto the window to open it (when several files are dropped together only the first is used), then page through the same folder with the arrow keys. You can also pass a file path on the command line.
 

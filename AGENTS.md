@@ -192,6 +192,7 @@ pwsh tools/verify_source_invariant_checks.ps1
 - **崩溃**：必崩的用 `tools/catch_crash.ps1`（cdb 附着后落 dump）；**时序竞态不能挂调试器**（attach 会把窗口关掉，实测 1/5 的频率一挂就基本不复现），改用 `JARKVIEWER_CRASH_DUMP=<文件>` 让进程自己落盘，再看 `cdb.exe -z <dump> -c ".ecxr;r;kb 16;q"`（`.ecxr` 必需，默认线程不是出事的那个）。想更快撞上就几路并行跑。
 - **界面**：`tools/capture_window.ps1` 截图，配 `-Keys` 注入按键、`-DragHold` 看"拖动中"才有的画面（马赛克/裁剪框）。
 - **媒体卡顿**：`--probe --playback-test` 把"卡不卡"变成交付率、时钟倍速与最大停滞。
+- **翻页慢 / 内存占用**：按 `TAB` 或中键打开 EXIF 面板，顶部两行就是缓存状况（条数/字节/上限、解码次数、淘汰、预取跳过）。用户报"翻页慢"时先看它：`解码`次数远超翻过的张数＝缓存一直在被淘汰后重解码；`预取跳过`在涨＝当前图太大、按设计不预读下一张（那种图的等待是解码本身）。要细一点就开 `--log`，淘汰/放弃回收/跳过预取都会打行，`--probe --cache-test` 还能在无界面下量一遍预算逻辑。
 
 ### 环境与工具坑
 
@@ -271,7 +272,8 @@ pwsh tools/verify_source_invariant_checks.ps1
   - **淘汰从最久未用那头开始，但跳过外部还持有引用的条目**（`use_count() > 1`）：踢了也不释放内存（shared_ptr 还在别处），只白丢一次命中；当前显示的图被 `curPar.imageAssetPtr` 持有，天然轮不到它。一圈都有人持有时直接停，不空转。
   为什么非要有字节这条：按条数留 4 张 43890x38875 的扫描件（每张解码后 6.36GB）就是 25GB，32GB 机器直接爆。**"这条占多少字节"问 `ImageAsset::memoryBytes()`**（定义在 `jarkUtils.cpp`）：同一块像素被多个成员共享时按 `data` 指针去重（实况/动图的 `primaryFrame` 与 `frames[0]` 是浅拷贝），lunasvg 的文档内存没法估、不计。条数上限里**主页占位图也占一格**，所以实际能留 9 张图。
   **配套两条**：① 当前图大到"两张装不进预算"时**不再预取邻图**（`JarkViewerApp::shouldPrefetchNeighbor()`，"当前图 × 2 > 预算"即跳过）——预算只管得住"可以不持有的"，当前图必须留，硬解下一张就是内存翻倍，而那种图的翻页本来就要重解码一两分钟；② 平滑重采样块的视图指纹里带 `CurImageParameter::sourceToken`（每次 `Init` 自增）：淘汰变积极之后会出现"旧图释放 → 新图落在同一地址 + 尺寸/画布/缩放/平移/旋转全相同"（同尺寸扫描件翻页时的缩放值就是同一个），只用位图裸指针撞键会复用上一张的重采样块。
-  自检：`--probe --cache-test`（合成断言，去掉字节回收会报 6 项 FAIL）+ `tools/test_cache_budget.ps1`（实机翻页看工作集曲线，实测 12 张 53421x1600（各 326MB）在第 9 张后收敛在 3405MB）。
+  **看得见的运行状态**：`stats()` 给出 `entries/bytes/budget/capacity` 与四个计数（`decodes` 真解码了几次、`hits` 查中几次、`evictions` 被两个上限踢掉几条、`gaveUp` 因"剩下的都被外部持有"放弃回收几次）。看图窗口的 EXIF 面板顶部画两行（跟"色彩空间/质量"那两行同属"当前状态"，因此用面板既有的中/英双语而不是六语言表——那一块本来就只分中英）：`缓存: 10/10 张 · 3.18/16.0 GB`、`解码 12 · 淘汰 2 · 预取跳过 0`。**两条淘汰路径都要计数**：条数上限那条（`putInternal` 里）与字节预算那条（`trimLocked`）都得走 `eraseLocked()`，漏掉前者会出现"界面上淘汰 0、实际每翻一张都在踢"（第一批就是这么漏的）。预取跳过则记在 `JarkViewerApp::prefetchSkips_`（判定是纯函数 `ImageAssetCache::shouldPrefetchNeighbor()`，图省得测不到）。开 `--log` 时淘汰/放弃回收/跳过预取各打一行。
+  自检：`--probe --cache-test`（33 项合成断言，含预算/条数/计数/预取边界；去掉字节回收会报 6 项 FAIL）+ `tools/test_cache_budget.ps1`（实机翻页看工作集曲线，实测 12 张 53421x1600（各 326MB）在第 9 张后收敛在 3405MB，面板上显示 `缓存 10/10 张 · 解码 12 · 淘汰 2`）。README（中/英）常见问题各加一条"内存会不会一直涨"，口径与这里保持一致。
 - `JarkViewer/include/FormatSniffer.h` 与 `JarkViewer/src/FormatSniffer.cpp` 是纯文件头嗅探模块（不依赖任何第三方库）：扩展名与文件头冲突时以文件头为准，但 RAW/视频/LIVP/LEP/TGA 等扩展名携带文件头无法表达的信息（`isExtensionAuthoritative()`）时优先按扩展名路由。`JarkThumbnailProvider` 里的同名模块与其同源，后续计划合并为两个工程共用的模块。
 - 界面改动可用 `tools/capture_window.ps1` 做视觉验证：`-Keys "{F1}"` 注入按键（窗口都在主窗口内，不再需要 `-Window` 选择）、`-Keys2 "{ESC}i"` + `-Keys2DelayMs` 送第二批按键（开窗、点击、再按键这类时序）、`-Hover "x,y"` 悬停、`-Drag "x1,y1,x2,y2[;...]"` 拖动或点击（物理客户区坐标）、`-RightClick "x,y"` + `-MenuKeys "b{ENTER}"` 右键菜单（菜单是独立弹窗，要配 `-Screen` 才截得到）、`-DragHold` 拖到最后一个点**不松手**再截图（验证"拖动中"才有的画面，如马赛克/裁剪的拖框）。ImGui 的窗口默认居中于主窗口。编辑窗口的文字工具另有 `tools/test_editor_text.ps1`：选文字工具 → 点锚点 → 点侧栏文字框 → 投递 Unicode `WM_CHAR`（等价于输入法上屏后的字符），一张图同时验证锚点光标、文字预览和中文能进输入框。主界面导航另有 `tools/test_navigation.ps1`：动态按 DPI 换算客户区坐标，依次验证鸟瞰拖动、拖出客户区释放、悬停展开缩略图带、点击直接换图、滚轮只滚条带不穿透、移出后隐藏、设置窗口往返；加 `-CheckSettings` 时还会点「清理缓存」「显示鸟瞰图」并重启核对设置文件字节（该分支要求 `-Exe` 指向 `%TEMP%` 下的独立副本，避免动到用户的设置与缓存）。
 - 视频相关改动除 `--probe` 外，可用 `--probe --audio-test <文件>` 验证音频链路：它以音量 0 提交音频并观察播放时钟是否按采样率推进（不发出声音）。

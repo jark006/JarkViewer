@@ -282,6 +282,7 @@ public:
     cv::Rect2f exifPanelRect_{};
     float exifPanelScroll_ = 0.0f;
     float exifPanelMaxScroll_ = 0.0f;
+    uint64_t prefetchSkips_ = 0;  // 因"当前图太大"跳过邻图预取的次数（EXIF 面板要显示）
     Cood mousePos, mousePressPos;
     ImageDatabase imgDB;
 
@@ -2217,27 +2218,32 @@ public:
         playbackFrame = cv::Mat();
     }
 
-    // 当前图本身就大到"两张装不进缓存预算"时不再预取邻图：预算只管得住"可以不持有的"，
-    // 当前图必须留着，硬把下一张解出来就是内存翻倍；而这种图的翻页本来就要重解码一两分钟，
-    // 预取省下的那点时间远不值这个内存（巨幅扫描件连翻几张就爆内存，一半来自这里）。
+    // 当前图本身就大到"两张装不进缓存预算"时不再预取邻图（判定在 ImageAssetCache 里，
+    // --probe --cache-test 钉着边界）：预算只管得住"可以不持有的"，当前图必须留着，
+    // 硬把下一张解出来就是内存翻倍；而这种图的翻页本来就要重解码一两分钟，预取省下的
+    // 那点时间远不值这个内存（巨幅扫描件连翻几张就爆内存，一半来自这里）。
+    // 跳过的次数记在 prefetchSkips_ 里，EXIF 面板的缓存统计要看它（"翻页为什么慢"）。
     bool shouldPrefetchNeighbor() const {
         if (!curPar.imageAssetPtr)
             return true;
-        const size_t budget = imgDB.byteBudgetBytes();
-        if (budget == SIZE_MAX)
-            return true;
-        const size_t current = curPar.imageAssetPtr->memoryBytes();
-        return current <= budget / 2; // 两张放得下（当前 + 预取的下一张）才预取
+        return ImageAssetCache::shouldPrefetchNeighbor(
+            curPar.imageAssetPtr->memoryBytes(), imgDB.byteBudgetBytes());
     }
 
     // 请求加载当前图（非阻塞）：命中缓存立即返回；否则进入等待状态并返回空，
     // 主循环由 updatePendingLoad() 每帧轮询收尾（超过 60 秒退回一次阻塞等待兜底）。
     std::shared_ptr<ImageAsset> requestCurrentImage(const std::wstring& nextPath) {
         const std::wstring& path = imgFileList[curFileIdx];
-        if (shouldPrefetchNeighbor())
+        if (shouldPrefetchNeighbor()) {
             imgDB.requestPreloadBatch({ path, nextPath });
-        else
+        }
+        else {
+            ++prefetchSkips_;
+            JARK_LOG("跳过邻图预取：当前图 {:.1f} MB > 缓存预算的一半 {:.1f} MB",
+                curPar.imageAssetPtr ? curPar.imageAssetPtr->memoryBytes() / 1048576.0 : 0.0,
+                imgDB.byteBudgetBytes() / 2097152.0);
             imgDB.requestPreloadBatch({ path });
+        }
         if (auto ptr = imgDB.tryGetPtr(path)) {
             pendingLoad_ = false;
             return ptr;
@@ -2878,6 +2884,33 @@ public:
                 : std::format("Quality: approx. {} (from quantization table)", curPar.imageAssetPtr->jpegQuality);
             drawList->AddText(uiPos(contentLeft, contentTop), imColor(GlobalVar::currentTheme.FG), line.c_str());
             contentTop += ImGui::GetTextLineHeight();
+        }
+
+        // 图像缓存的两行统计（跟上面两行一样是"当前状态"，用面板既有的中/英双语而不是
+        // 六语言表：这一块本来就跟 exifInfo 一样只分中英，单独给这一行走表反而不一致）。
+        // 用途是排查"翻页为什么慢 / 内存占到多少"：占了多少 vs 上限、真解码了几次、
+        // 淘汰了几条、有多少次是因为"当前图太大"跳过了邻图预取。
+        {
+            const auto stats = imgDB.stats();
+            const auto gb = [](size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0); };
+            // 字节上限理论上可以是不限（setByteBudget(0)），别把它打成天文数字
+            const std::string budgetText = stats.budget == SIZE_MAX
+                ? (chinese ? "不限" : "unlimited")
+                : gb(stats.budget) >= 10.0 ? std::format("{:.1f}", gb(stats.budget))
+                                           : std::format("{:.2f}", gb(stats.budget));
+            const std::string line1 = chinese
+                ? std::format("缓存: {}/{} 张 · {:.2f}/{} GB", stats.entries, stats.capacity,
+                    gb(stats.bytes), budgetText)
+                : std::format("Cache: {}/{} · {:.2f}/{} GB", stats.entries, stats.capacity,
+                    gb(stats.bytes), budgetText);
+            const std::string line2 = chinese
+                ? std::format("解码 {} · 淘汰 {} · 预取跳过 {}", stats.decodes, stats.evictions, prefetchSkips_)
+                : std::format("Decodes {} · evictions {} · prefetch skips {}",
+                    stats.decodes, stats.evictions, prefetchSkips_);
+            for (const std::string& line : { line1, line2 }) {
+                drawList->AddText(uiPos(contentLeft, contentTop), imColor(GlobalVar::currentTheme.FG), line.c_str());
+                contentTop += ImGui::GetTextLineHeight();
+            }
         }
         if (contentTop > padding + dp(8)) {
             contentTop += dp(4);

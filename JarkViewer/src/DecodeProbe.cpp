@@ -1926,11 +1926,57 @@ namespace {
             check(cache.size() == 3 && cache.bytes() == 3 * unit,
                 std::format("条数上限兜底（{} 条 / {} 字节）", cache.size(), cache.bytes()));
             check(cache.tryGetPtr(L"2") == nullptr, "尾部条目被条数上限淘汰");
+            // 条数上限那条路径也要计数：不然界面上"淘汰 0"而实际每翻一张都在踢
+            check(cache.stats().evictions == 2,
+                std::format("条数上限淘汰计入统计（{} 条）", cache.stats().evictions));
             cache.clear();
             check(cache.size() == 0 && cache.bytes() == 0, "clear 后字节数归零");
         }
 
-        // 8) 真缓存接上线：预算 = 物理内存的一半（下限 512MB）
+        // 8) 运行计数（EXIF 面板那两行与日志读的就是它）：解码次数 / 命中 / 淘汰 / 放弃回收
+        {
+            TestCache cache;
+            cache.setCapacity(64);
+            cache.setMinEntries(1);
+            cache.setByteBudget(2 * unit);
+            // 走 loader 的路（getSafePtr 会排队等预读线程解码）——decodes 只该由它 +1
+            auto loaded = cache.getSafePtr(L"7");
+            const auto afterLoad = cache.stats();
+            check(loaded != nullptr && afterLoad.decodes == 1,
+                std::format("解码次数按真解码计（{} 次）", afterLoad.decodes));
+            check(afterLoad.hits == 1 && afterLoad.entries == 1 && afterLoad.capacity == 64 &&
+                afterLoad.budget == 2 * unit,
+                std::format("统计快照：命中 {} / {} 条 / 上限 {}", afterLoad.hits, afterLoad.entries, afterLoad.capacity));
+
+            put(cache, L"1");
+            put(cache, L"2"); // 3*unit > 2*unit：踢掉最久未用的
+            const auto afterEvict = cache.stats();
+            check(afterEvict.evictions == 1 && afterEvict.bytes <= 2 * unit,
+                std::format("淘汰计数与字节数一致（淘汰 {} 条 / {} 字节）",
+                    afterEvict.evictions, afterEvict.bytes));
+
+            // 把剩下的两条都握在手里 → 回收只能放弃，要记一笔 gaveUp（而不是空转）
+            auto heldA = cache.tryGetPtr(L"7"); // loaded 也还持着它
+            auto heldB = cache.tryGetPtr(L"2");
+            check(heldA != nullptr && heldB != nullptr, "两条都在缓存里等着被持有");
+            cache.setByteBudget(unit / 2);
+            const auto afterGiveUp = cache.stats();
+            check(afterGiveUp.gaveUp == 1 && afterGiveUp.entries == 2 && afterGiveUp.bytes == 2 * unit,
+                std::format("放弃回收计数（{} 次，仍留 {} 条 / {} 字节）",
+                    afterGiveUp.gaveUp, afterGiveUp.entries, afterGiveUp.bytes));
+        }
+
+        // 9) 邻图预取的边界：两张装得下才预取（纯判定，看图窗口与自检用的是同一个函数）
+        {
+            const size_t budget = size_t(1) << 30; // 1GB
+            check(ImageAssetCache::shouldPrefetchNeighbor(budget / 3, budget), "当前图占三分之一：预取");
+            check(ImageAssetCache::shouldPrefetchNeighbor(budget / 2, budget), "正好一半：预取（两张刚好装下）");
+            check(!ImageAssetCache::shouldPrefetchNeighbor(budget / 2 + 1, budget), "超过一半：跳过预取");
+            check(ImageAssetCache::shouldPrefetchNeighbor(budget, 0), "不限字节：照旧预取");
+            check(ImageAssetCache::shouldPrefetchNeighbor(budget, SIZE_MAX), "SIZE_MAX 视作不限：照旧预取");
+        }
+
+        // 10) 真缓存接上线：预算 = 物理内存的一半（下限 512MB）
         {
             MEMORYSTATUSEX status{};
             status.dwLength = sizeof(status);

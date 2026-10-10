@@ -53,6 +53,13 @@ private:
     size_t bytesTotal = 0;
     size_t minEntries = 2;        // 条数下限
 
+    // 运行计数：EXIF 面板上那一行与日志都读它（排查"翻页为什么慢"。原子类型，
+    // 读的时候不必再抢 cache_mutex）
+    std::atomic<uint64_t> decodes_{ 0 };    // 真正跑过几次解码（花掉实打实时间的那次未命中）
+    std::atomic<uint64_t> hits_{ 0 };       // 查缓存命中次数
+    std::atomic<uint64_t> evictions_{ 0 };  // 被预算/条数上限踢掉的条目数
+    std::atomic<uint64_t> gaveUp_{ 0 };     // "剩下的都被外部持有"而放弃回收的次数
+
     // 预读取相关的成员
     struct PreloadTask {
         Key key;
@@ -98,6 +105,7 @@ private:
 
             ImageAsset value = loader(task.key);
             auto value_ptr = std::make_shared<ImageAsset>(std::move(value));
+            ++decodes_;
 
             lock.lock();
             if (!stop_preload && task.generation == preload_generation) {
@@ -109,9 +117,23 @@ private:
         }
     }
 
+    static double mb(size_t bytes) {
+        return static_cast<double>(bytes) / (1024.0 * 1024.0);
+    }
+
+    // 踢掉一条（条数上限与字节预算两条路径共用），计数记在 evictions_ 上
+    void eraseLocked(ListIterator it) {
+        bytesTotal -= it->bytes;
+        cache_map.erase(it->key);
+        cache_list.erase(it);
+        ++evictions_;
+    }
+
     // 按预算回收：从最久未用的那头开始踢，但跳过外部还持有引用的条目（踢了也不省内存），
     // 且不把缓存踢到 minEntries 之下。一圈都有人持有时直接放弃，不空转。
     void trimLocked() {
+        size_t evicted = 0;
+        const size_t before = bytesTotal;
         while (bytesTotal > byteBudget && cache_map.size() > minEntries) {
             auto victim = cache_list.end();
             for (auto it = cache_list.end(); it != cache_list.begin();) {
@@ -121,12 +143,18 @@ private:
                     break;
                 }
             }
-            if (victim == cache_list.end())
-                return; // 剩下的都被外面持有：没得回收
-            bytesTotal -= victim->bytes;
-            cache_map.erase(victim->key);
-            cache_list.erase(victim);
+            if (victim == cache_list.end()) {
+                ++gaveUp_;
+                JARK_LOG("图像缓存回收放弃：剩下的 {} 条都被外部持有（{:.1f} MB > 上限 {:.1f} MB）",
+                    cache_map.size(), mb(before), mb(byteBudget));
+                break; // 剩下的都被外面持有：没得回收
+            }
+            eraseLocked(victim);
+            ++evicted;
         }
+        if (evicted > 0)
+            JARK_LOG("图像缓存按字节预算淘汰 {} 条：{:.1f} MB → {:.1f} MB（上限 {:.1f} MB，剩 {} 条）",
+                evicted, mb(before), mb(bytesTotal), mb(byteBudget), cache_map.size());
     }
 
     // 内部put函数，不加锁版本
@@ -141,9 +169,9 @@ private:
         }
         else {
             if (cache_map.size() >= CAPACITY) {
-                bytesTotal -= cache_list.back().bytes;
-                cache_map.erase(cache_list.back().key);
-                cache_list.pop_back();
+                JARK_LOG("图像缓存按条数上限淘汰 1 条（上限 {} 条，这条 {:.1f} MB）",
+                    CAPACITY, mb(cache_list.back().bytes));
+                eraseLocked(std::prev(cache_list.end()));
             }
             cache_list.push_front(Node{ key, value_ptr, bytes });
             cache_map[key] = cache_list.begin();
@@ -186,6 +214,7 @@ public:
             auto it = cache_map.find(key);
             if (it != cache_map.end()) {
                 cache_list.splice(cache_list.begin(), cache_list, it->second);
+                ++hits_;
                 return it->second->value;
             }
             lock.unlock();
@@ -209,6 +238,7 @@ public:
         if (it == cache_map.end())
             return nullptr;
         cache_list.splice(cache_list.begin(), cache_list, it->second);
+        ++hits_;
         return it->second->value;
     }
 
@@ -320,16 +350,51 @@ public:
         std::unique_lock<std::shared_mutex> lock(cache_mutex);
         CAPACITY = capacity;
 
-        while (cache_map.size() > CAPACITY) {
-            bytesTotal -= cache_list.back().bytes;
-            cache_map.erase(cache_list.back().key);
-            cache_list.pop_back();
-        }
+        while (cache_map.size() > CAPACITY)
+            eraseLocked(std::prev(cache_list.end()));
     }
 
     // 条数下限（默认 2）：预算再紧也要留下的条目数
     void setMinEntries(size_t entries) {
         std::unique_lock<std::shared_mutex> lock(cache_mutex);
         minEntries = entries < 1 ? 1 : entries;
+    }
+
+    // 运行状态快照：EXIF 面板上那两行、以及排查"翻页为什么慢"时看的都是它。
+    //   decodes / hits       —— 真解码了几次（＝花钱的那次未命中）/ 查中了几次
+    //   evictions / gaveUp   —— 被预算或条数上限踢掉几条 / 因"剩下的都被外部持有"放弃回收几次
+    struct Stats {
+        size_t entries = 0;
+        size_t bytes = 0;
+        size_t budget = 0;
+        size_t capacity = 0;
+        uint64_t decodes = 0;
+        uint64_t hits = 0;
+        uint64_t evictions = 0;
+        uint64_t gaveUp = 0;
+    };
+
+    Stats stats() const {
+        std::shared_lock<std::shared_mutex> lock(cache_mutex);
+        Stats snapshot;
+        snapshot.entries = cache_map.size();
+        snapshot.bytes = bytesTotal;
+        snapshot.budget = byteBudget;
+        snapshot.capacity = CAPACITY;
+        snapshot.decodes = decodes_.load(std::memory_order_relaxed);
+        snapshot.hits = hits_.load(std::memory_order_relaxed);
+        snapshot.evictions = evictions_.load(std::memory_order_relaxed);
+        snapshot.gaveUp = gaveUp_.load(std::memory_order_relaxed);
+        return snapshot;
+    }
+
+    // 该不该预取邻图：当前图大到"两张装不进预算"就不该了。预取的价值是翻页零等待，
+    // 而预算只约束得住"可以不持有的"——当前图必须留着，硬解下一张就是把内存翻倍，
+    // 而那种图的翻页本来就要重解码一两分钟，省下的那点时间远不值。
+    // 看图窗口的 shouldPrefetchNeighbor() 调它；本函数是纯判定，--probe --cache-test 钉边界。
+    static bool shouldPrefetchNeighbor(size_t currentBytes, size_t budgetBytes) {
+        if (budgetBytes == 0 || budgetBytes == SIZE_MAX)
+            return true; // 不限字节就随便预取
+        return currentBytes <= budgetBytes / 2;
     }
 };
