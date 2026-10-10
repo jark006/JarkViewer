@@ -1,5 +1,7 @@
 #include "ImageResampler.h"
 
+#include "jarkUtils.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -93,58 +95,97 @@ ResampledView resampleVisibleRegion(const cv::Mat& source, const ViewState& view
     const double invScale = 1.0 / scale;
 
     cv::Mat block;
-    if (scale >= 1.0) {
-        // 放大：仿射采样，每个输出像素精确映射回源（不累积缩放误差），插值用 Lanczos4
-        const double ex = blockX * invScale / nominalW; // 块原点在名义空间里的归一化坐标
-        const double ey = blockY * invScale / nominalH;
-        const double dx = invScale / nominalW;
-        const double dy = invScale / nominalH;
+    try {
+        if (scale >= 1.0) {
+            // 放大：仿射采样，每个输出像素精确映射回源（不累积缩放误差），插值用 Lanczos4
+            const double ex = blockX * invScale / nominalW; // 块原点在名义空间里的归一化坐标
+            const double ey = blockY * invScale / nominalH;
+            const double dx = invScale / nominalW;
+            const double dy = invScale / nominalH;
 
-        const cv::Point2d origin = toSource(ex, ey);
-        const cv::Point2d stepX = toSource(ex + dx, ey);
-        const cv::Point2d stepY = toSource(ex, ey + dy);
+            const cv::Point2d origin = toSource(ex, ey);
+            const cv::Point2d stepX = toSource(ex + dx, ey);
+            const cv::Point2d stepY = toSource(ex, ey + dy);
 
-        // 不用 cv::Mat_ 的逗号初始化：Mat/Mat_ 从 MatCommaInitializer_ 构造已被标记弃用（C4996），
-        // Matx 一样能直接喂给 warpAffine（_InputArray 有 Matx 重载）
-        const cv::Matx23d matrix(
-            stepX.x - origin.x, stepY.x - origin.x, origin.x,
-            stepX.y - origin.y, stepY.y - origin.y, origin.y);
-        cv::warpAffine(source, block, matrix, cv::Size(blockW, blockH),
-            cv::INTER_LANCZOS4 | cv::WARP_INVERSE_MAP, cv::BORDER_REPLICATE);
-    }
-    else {
-        // 缩小：warpAffine 不支持 INTER_AREA，改为裁出源里对应的矩形再做面积平均
-        // （裁切按外包围盒取整，最多多带一个源像素，缩小后不足一个目标像素）
-        const cv::Point2d corners[4] = {
-            toSource(regionX / nominalW, regionY / nominalH),
-            toSource((regionX + regionW) / nominalW, regionY / nominalH),
-            toSource(regionX / nominalW, (regionY + regionH) / nominalH),
-            toSource((regionX + regionW) / nominalW, (regionY + regionH) / nominalH),
-        };
+            // warpAffine 对非最近邻插值内部走 cv::remap，而 remap 断言 src/dst 都
+            // < SHRT_MAX(32767)：**整幅**位图直接喂进去，宽或高超过 32767 的图（长卷轴、
+            // 大扫描件）就会抛 cv::Exception（界面线程没人接 → 进程直接退出，表现为
+            // "放大到 100% 以上时闪退"，因为只有放大才走这条仿射分支）。
+            // 所以先裁出这次真正要用的源区再仿射：放大的每个输出像素只覆盖不到一个源像素，
+            // 包围盒≈画布大小，既避开断言又省掉对整幅的边界换算。
+            const cv::Point2d corners[4] = {
+                origin,
+                toSource(ex + dx * blockW, ey),
+                toSource(ex, ey + dy * blockH),
+                toSource(ex + dx * blockW, ey + dy * blockH),
+            };
+            double left = corners[0].x, right = corners[0].x;
+            double top = corners[0].y, bottom = corners[0].y;
+            for (const auto& corner : corners) {
+                left = (std::min)(left, corner.x);
+                right = (std::max)(right, corner.x);
+                top = (std::min)(top, corner.y);
+                bottom = (std::max)(bottom, corner.y);
+            }
 
-        double left = corners[0].x, right = corners[0].x;
-        double top = corners[0].y, bottom = corners[0].y;
-        for (const auto& corner : corners) {
-            left = (std::min)(left, corner.x);
-            right = (std::max)(right, corner.x);
-            top = (std::min)(top, corner.y);
-            bottom = (std::max)(bottom, corner.y);
+            // 多留几像素：Lanczos4 的邻域有 4 个源像素宽，贴着裁剪边采样时用 BORDER_REPLICATE
+            // 会拿错边（裁剪边落在图内部时，本来该读到的是真实邻居）
+            constexpr int PAD = 8;
+            const int cropX = std::clamp(static_cast<int>(std::floor(left)) - PAD, 0, srcCols - 1);
+            const int cropY = std::clamp(static_cast<int>(std::floor(top)) - PAD, 0, srcRows - 1);
+            const int cropRight = std::clamp(static_cast<int>(std::ceil(right)) + PAD + 1, cropX + 1, srcCols);
+            const int cropBottom = std::clamp(static_cast<int>(std::ceil(bottom)) + PAD + 1, cropY + 1, srcRows);
+            const cv::Mat crop = source(cv::Rect(cropX, cropY, cropRight - cropX, cropBottom - cropY));
+
+            // 不用 cv::Mat_ 的逗号初始化：Mat/Mat_ 从 MatCommaInitializer_ 构造已被标记弃用（C4996），
+            // Matx 一样能直接喂给 warpAffine（_InputArray 有 Matx 重载）。
+            // 矩阵是"画布像素 → 源像素"的，源换成裁剪后的一块，平移量跟着减掉裁剪原点
+            const cv::Matx23d matrix(
+                stepX.x - origin.x, stepY.x - origin.x, origin.x - cropX,
+                stepX.y - origin.y, stepY.y - origin.y, origin.y - cropY);
+            cv::warpAffine(crop, block, matrix, cv::Size(blockW, blockH),
+                cv::INTER_LANCZOS4 | cv::WARP_INVERSE_MAP, cv::BORDER_REPLICATE);
         }
+        else {
+            // 缩小：warpAffine 不支持 INTER_AREA，改为裁出源里对应的矩形再做面积平均
+            // （裁切按外包围盒取整，最多多带一个源像素，缩小后不足一个目标像素）
+            const cv::Point2d corners[4] = {
+                toSource(regionX / nominalW, regionY / nominalH),
+                toSource((regionX + regionW) / nominalW, regionY / nominalH),
+                toSource(regionX / nominalW, (regionY + regionH) / nominalH),
+                toSource((regionX + regionW) / nominalW, (regionY + regionH) / nominalH),
+            };
 
-        const int cropX = std::clamp(static_cast<int>(std::floor(left)), 0, srcCols - 1);
-        const int cropY = std::clamp(static_cast<int>(std::floor(top)), 0, srcRows - 1);
-        const int cropRight = std::clamp(static_cast<int>(std::ceil(right)), cropX + 1, srcCols);
-        const int cropBottom = std::clamp(static_cast<int>(std::ceil(bottom)), cropY + 1, srcRows);
-        const cv::Mat crop = source(cv::Rect(cropX, cropY, cropRight - cropX, cropBottom - cropY));
+            double left = corners[0].x, right = corners[0].x;
+            double top = corners[0].y, bottom = corners[0].y;
+            for (const auto& corner : corners) {
+                left = (std::min)(left, corner.x);
+                right = (std::max)(right, corner.x);
+                top = (std::min)(top, corner.y);
+                bottom = (std::max)(bottom, corner.y);
+            }
 
-        // 旋转会交换宽高，先缩到"旋转前"的目标尺寸再转
-        const bool swapAxes = (rotation == 1 || rotation == 3);
-        const cv::Size scaledSize = swapAxes ? cv::Size(blockH, blockW) : cv::Size(blockW, blockH);
-        cv::Mat scaled;
-        cv::resize(crop, scaled, scaledSize, 0.0, 0.0, cv::INTER_AREA);
-        block = rotateToNominal(scaled, rotation);
-        if (block.empty() || block.cols != blockW || block.rows != blockH)
-            return result;
+            const int cropX = std::clamp(static_cast<int>(std::floor(left)), 0, srcCols - 1);
+            const int cropY = std::clamp(static_cast<int>(std::floor(top)), 0, srcRows - 1);
+            const int cropRight = std::clamp(static_cast<int>(std::ceil(right)), cropX + 1, srcCols);
+            const int cropBottom = std::clamp(static_cast<int>(std::ceil(bottom)), cropY + 1, srcRows);
+            const cv::Mat crop = source(cv::Rect(cropX, cropY, cropRight - cropX, cropBottom - cropY));
+
+            // 旋转会交换宽高，先缩到"旋转前"的目标尺寸再转
+            const bool swapAxes = (rotation == 1 || rotation == 3);
+            const cv::Size scaledSize = swapAxes ? cv::Size(blockH, blockW) : cv::Size(blockW, blockH);
+            cv::Mat scaled;
+            cv::resize(crop, scaled, scaledSize, 0.0, 0.0, cv::INTER_AREA);
+            block = rotateToNominal(scaled, rotation);
+            if (block.empty() || block.cols != blockW || block.rows != blockH)
+                return result;
+        }
+    }
+    catch (const cv::Exception& e) {
+        // 重采样只是"停稳后看得更清楚"的增强，OpenCV 的内部限制（尺寸/类型断言）不该
+        // 把整个程序带走：失败就退回逐帧最近邻路径（调用方按 valid=false 处理）。
+        JARK_LOG("重采样失败，退回逐帧采样：{}", e.what());
+        return result;
     }
 
     if (block.empty() || block.cols != blockW || block.rows != blockH)

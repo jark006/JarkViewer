@@ -1704,6 +1704,87 @@ namespace {
             }
         }
 
+        // 超宽位图（宽 > SHRT_MAX）：warpAffine 的非最近邻插值内部走 cv::remap，而 remap 断言
+        // src/dst 两个方向都 < SHRT_MAX(32767)——把**整幅**位图喂进去，宽或高超过 32767 的图
+        // （长卷轴、大扫描件）在放大到 100% 以上时就会抛 cv::Exception：界面线程没人接，
+        // 进程直接退出（用户的报告就是"打开没问题、放大到一百多个百分点时闪退"）。
+        // 这条用例钉住"先裁出用得到的源区再仿射"这个修法：把裁剪去掉，这里会 FAIL
+        // （OpenCV 抛的异常被 resampleVisibleRegion 的兜底接住，退化成 valid=false）。
+        {
+            constexpr int WIDE_W = 33000, WIDE_H = 40; // 宽超过 SHRT_MAX(32767)
+            cv::Mat wide(WIDE_H, WIDE_W, CV_8UC4);
+            for (int y = 0; y < wide.rows; ++y) {
+                for (int x = 0; x < wide.cols; ++x) {
+                    // 4 像素竖条 + 横条：裁剪原点算错一个像素，相位立刻对不上
+                    wide.at<cv::Vec4b>(y, x) = cv::Vec4b(((x / 4) & 1) ? 235 : 20,
+                        ((y / 4) & 1) ? 235 : 20,
+                        static_cast<uint8_t>(x * 255 / (wide.cols - 1)), 255);
+                }
+            }
+
+            jark::ViewState view;
+            view.imageWidth = wide.cols;
+            view.imageHeight = wide.rows;
+            view.zoomBase = 1 << 16;
+            view.zoom = view.zoomBase * 2; // 放大分支（缩小走 resize，不受这条断言约束）
+            view.rotation = 0;
+            view.border = false; // 逐字节比像素，别把图像边框算进去
+
+            cv::Mat reference(canvasSize, CV_8UC4);
+            jark::drawImageToCanvas(wide, reference, view);
+
+            const auto block = jark::resampleVisibleRegion(wide, view, canvasSize);
+            check(block.valid, std::format("超宽位图 {}x{} 2.0x：放大分支照常出块", WIDE_W, WIDE_H));
+
+            if (block.valid) {
+                jark::ViewState blockView = view;
+                blockView.border = false;
+                blockView.sourcePreRotated = true;
+                blockView.sourceLeft = block.left;
+                blockView.sourceTop = block.top;
+                blockView.sourceWidth = block.width;
+                blockView.sourceHeight = block.height;
+                cv::Mat rendered(canvasSize, CV_8UC4);
+                jark::drawImageToCanvas(block.image, rendered, blockView);
+
+                const cv::Rect referenceBounds = imageBounds(reference);
+                const cv::Rect renderedBounds = imageBounds(rendered);
+                const bool geometryOk = std::abs(referenceBounds.x - renderedBounds.x) <= 1 &&
+                    std::abs(referenceBounds.y - renderedBounds.y) <= 1 &&
+                    std::abs(referenceBounds.width - renderedBounds.width) <= 2 &&
+                    std::abs(referenceBounds.height - renderedBounds.height) <= 2;
+                check(geometryOk, std::format("超宽位图：图像矩形一致（{}x{} vs {}x{}）",
+                    referenceBounds.width, referenceBounds.height,
+                    renderedBounds.width, renderedBounds.height));
+
+                // 内容没挪动：2.00x 时"离图像原点偶数个画布像素"的位置正好落在源像素中心
+                // （Lanczos 核在整数处取 1、别处取 0），块与逐帧路径在这些位置都等于同一个源像素；
+                // 只有两点都不在整像素上的位置才允许被插值糊开。裁剪原点错 1 个源像素，这些位置
+                // 就落到半像素上，差值立刻变成一整条条纹的反差（215）。
+                const auto geometry = jark::imageGeometry(view, canvasSize, wide.size());
+                int phaseCount = 0;
+                int phaseMaxDiff = 0;
+                for (int y = 0; y < canvasSize.height; ++y) {
+                    const int srcY = (y - geometry.origin.y) / 2;
+                    if ((y - geometry.origin.y) % 2 != 0 || srcY < 0 || srcY >= wide.rows)
+                        continue;
+                    for (int x = 0; x < canvasSize.width; ++x) {
+                        const int srcX = (x - geometry.origin.x) / 2;
+                        if ((x - geometry.origin.x) % 2 != 0 || srcX < 0 || srcX >= wide.cols)
+                            continue;
+                        const cv::Vec4b& a = rendered.at<cv::Vec4b>(y, x);
+                        const cv::Vec4b& b = reference.at<cv::Vec4b>(y, x);
+                        for (int c = 0; c < 3; ++c)
+                            phaseMaxDiff = (std::max)(phaseMaxDiff, std::abs(a[c] - b[c]));
+                        ++phaseCount;
+                    }
+                }
+                check(phaseCount > 100 && phaseMaxDiff <= 2,
+                    std::format("超宽位图：裁剪没挪动内容（{} 个整像素点，最大差 {}）",
+                        phaseCount, phaseMaxDiff));
+            }
+        }
+
         report = std::format("---- 缩放平滑插值自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
         return report;
     }

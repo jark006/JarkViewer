@@ -61,7 +61,7 @@ python tools/gen_testdata.py <输出目录>
 ./x64/Release/JarkViewer.exe --probe --color-test
 
 # 缩放平滑插值自检（重采样块与逐帧路径在四种旋转/两种通道下逐像素对齐、缩小时面积平均更平、
-# 1:1 不做重采样、余量复用边界）
+# 1:1 不做重采样、余量复用边界，以及超过 SHRT_MAX 的超宽位图放大不再触发 OpenCV 的 remap 断言）
 ./x64/Release/JarkViewer.exe --probe --resample-test
 
 # 实时频谱自检（纯合成，不需要语料：频段映射/电平标定/直流阻断/衰减单调/"按播放位置取帧"）
@@ -494,6 +494,17 @@ pwsh tools/verify_source_invariant_checks.ps1
   - 只在**静止**、且不是动图/实况播放/矢量图（矢量自己按可视区域出块）时启用；键里带源位图
     指针+尺寸+类型、画布尺寸、zoom/slide/rotation，任一变化就重算。一次重算约 12~20ms（2K 画面），
     只发生在停稳那一下。
+  - **放大分支必须先把源裁到"这次用得到的那块"再 `warpAffine`**：`cv::warpAffine` 的非最近邻插值
+    内部走 `cv::remap`，而 `remap` 断言 `src`/`dst` 两个方向都 `< SHRT_MAX(32767)`
+    （`imgwarp.cpp`，`hal::warpAffine` → `WarpAffineInvoker` → `remap`）。整幅喂进去时，宽或高
+    超过 32767 的图（长卷轴、大扫描件）在**放大到 100% 以上**就会抛 `cv::Exception`：界面线程没人接，
+    进程直接退出——用户看到的正是"打开没问题（缩小时走 `cv::resize`，不受这条约束）、放大到一百多个
+    百分点闪退"。裁出来的块只有画布大小，顺带省掉整幅的边界换算；裁剪边要多留 8 像素，否则贴着裁剪边
+    采样时 `BORDER_REPLICATE` 会拿错边。`--probe --resample-test` 的超宽位图用例（33000×40，2.0x）
+    钉着这件事：去掉裁剪，或让裁剪原点错 1 个源像素，它都报 FAIL（后者靠"离图像原点偶数个画布像素的
+    位置必须与逐帧路径逐字节相同"——2.00x 时这些位置正好落在源像素中心，Lanczos 核在整数处取 1）。
+  - 两条分支都包在 `try/catch (cv::Exception)` 里：重采样只是"停稳后看得更清楚"的增强，
+    OpenCV 的内部尺寸限制不该把整个程序带走，失败就记日志并退回逐帧最近邻（`valid=false`）。
   - 设置页常规页「缩放平滑插值」（`SettingParameter::disableZoomSmoothing`，**取反命名**：
     旧设置该字节为 0 即默认开启；占 `blackFullscreenBackground` 之后的原对齐填充字节，
     不改变 4096 布局）关掉即退回全最近邻。
