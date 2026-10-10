@@ -2,7 +2,8 @@
 
 // 实时媒体播放器：以音频播放位置为主时钟驱动视频帧。
 // 面向实况照片（一次播完，只用 start/stop/acquireFrame/hasFinished）与
-// 独立视频播放器（暂停、seek、单帧步进、音量，见下半部分的控制接口）。
+// 独立播放器（暂停、seek、单帧步进、音量，见下半部分的控制接口）。
+// 只有音轨的文件（mp3/flac/wav…）同样是合法的输入：没有视频帧可取，时钟与声音照常。
 
 #include <cstdint>
 #include <memory>
@@ -33,7 +34,8 @@ public:
 
     static std::unique_ptr<MediaPlayer> create();
 
-    // 开始播放（数据需在播放期间保持有效由内部拷贝保证）
+    // 开始播放。**不拷贝数据**：data 指向的内存必须活到 stop() / 析构
+    // （播放器窗口用 MappedFileReader 的整文件映射，实况照片用 ImageAsset::videoSource 的字节）
     bool start(std::span<const uint8_t> data, float volume = 1.0f);
 
     void stop();
@@ -62,7 +64,7 @@ public:
     // 取"当前播放位置处"那一帧频谱（每段 0~1）。没有音频、没开启、还没有数据时返回 false
     bool readSpectrum(std::span<float> out) const noexcept;
 
-    // —— 播放控制（视频播放器用；实况照片那条路只用上面那组）——
+    // —— 播放控制（独立播放器用；实况照片那条路只用上面那组）——
 
     // 暂停/恢复：声卡 voice 停在原地（位置保留），时钟跟着停，队列不动
     void pause();

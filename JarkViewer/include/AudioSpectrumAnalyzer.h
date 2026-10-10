@@ -43,11 +43,9 @@ public:
     bool readAt(int64_t positionMs, std::span<float> out) const;
 
     int bandCount() const noexcept { return bandCount_; }
-    int sampleRate() const noexcept { return sampleRate_; }
-    // 第 band 段的标称频率范围与中心频率（Hz），自检用它把某个频率换算成段号。
+    // 第 band 段的标称频率范围（Hz），自检用它把某个频率换算成段号。
     // 注意低段的实际 bin 会聚拢（40~100Hz 只有两三个 bin 可用），标称范围比实际能分辨的窄
     void bandRangeHz(int band, double& lowHz, double& highHz) const;
-    double bandCenterHz(int band) const;
 
 private:
     void analyzeFrame(std::span<const float> frame, int64_t ptsMs);

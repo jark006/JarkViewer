@@ -6,10 +6,12 @@ param([string]$Root = (Split-Path -Parent $PSScriptRoot))
 
 $ErrorActionPreference = "Stop"
 $script:failed = $false
+$script:breakCount = 0
 $checkScript = Join-Path $PSScriptRoot "check_source_invariants.ps1"
 
 function Test-Break([string]$name, [hashtable]$edits) {
     # $edits: 相对路径 -> @(old, new)；多文件各自替换
+    $script:breakCount++
     $backup = @{}
     $checkerFailed = $false
     try {
@@ -86,6 +88,14 @@ Test-Break "FormatSniffer 把音频扩展名判成视频（音频清单两处不
     "JarkViewer/src/FormatSniffer.cpp" = @('{ L"flac", FileFormat::Audio },', '{ L"flac", FileFormat::Video },')
 }
 
+Test-Break "英文 README 静态清单缺一个格式" @{
+    "README_EN.md" = @("tiff webp wp2", "tiff wp2")
+}
+
+Test-Break "英文 README 音频清单缺一个格式" @{
+    "README_EN.md" = @("flac m4a m4b mka", "m4a m4b mka")
+}
+
 Test-Break "PSD 解码顺序颠倒" @{
     "JarkViewer/src/ImageDatabase.cpp" = @(
         "        auto img = loadPSD(path, buf);`r`n        if (img.empty())`r`n            img = loadSTB(path, buf);",
@@ -128,5 +138,5 @@ if ($script:failed -or -not $restored) {
     Write-Host "反向验证存在失败项（或还原后检查未通过）" -ForegroundColor Red
     exit 1
 }
-Write-Host "反向验证全部通过：13 项破坏全被抓到，文件已按原字节还原" -ForegroundColor Green
+Write-Host "反向验证全部通过：$($script:breakCount) 项破坏全被抓到，文件已按原字节还原" -ForegroundColor Green
 exit 0

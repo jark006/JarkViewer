@@ -203,14 +203,4 @@ void AudioSpectrumAnalyzer::bandRangeHz(int band, double& lowHz, double& highHz)
     highHz = kLowHz * std::pow(ratio, static_cast<double>(band + 1) / bandCount_);
 }
 
-double AudioSpectrumAnalyzer::bandCenterHz(int band) const {
-    if (band < 0 || band >= bandCount_)
-        return 0.0;
-
-    const double ratio = kHighHz / kLowHz;
-    const double lowHz = kLowHz * std::pow(ratio, static_cast<double>(band) / bandCount_);
-    const double highHz = kLowHz * std::pow(ratio, static_cast<double>(band + 1) / bandCount_);
-    return std::sqrt(lowHz * highHz);
-}
-
 } // namespace jark

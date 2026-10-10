@@ -4,7 +4,7 @@
 // 按当前语言、主题、DPI 实时绘制到画布 Mat。
 //
 // 取代过去的 home.png / tips.png 资源图（只有中英两套、深浅色写死、支持格式列表容易过期）：
-// 文案全部来自 UIStringTable（五种语言），配色取自 ThemeColor，支持列表直接读
+// 文案全部来自 UIStringTable（六种语言），配色取自 ThemeColor，支持列表直接读
 // ImageDatabase 的扩展名集合，永远与实际能力一致。
 
 #include <cstdint>

@@ -3402,6 +3402,11 @@ ImageAsset ImageDatabase::decodeByFormat(jark::FileFormat format, const wstring&
     case jark::FileFormat::Livp:
         return loadLivp(path, buf);
 
+    // 音频在这一层没有帧可解（它由独立播放器播，见 jark::isPlayerFile）：返回空资源，
+    // 由 myLoader 按"不支持的格式"落占位——那是"请用播放器打开"，不是图片损坏
+    case jark::FileFormat::Audio:
+        return {};
+
     // 以下格式交给通用兜底（OpenCV → WIC）
     case jark::FileFormat::Bmp:
     case jark::FileFormat::Jxr:

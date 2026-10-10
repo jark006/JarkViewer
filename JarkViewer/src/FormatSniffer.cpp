@@ -356,9 +356,9 @@ FileFormat fileFormatFromExtension(std::wstring_view ext) noexcept {
         { L"evo", FileFormat::Video },
         { L"ts", FileFormat::Video },
         { L"mxf", FileFormat::Video },
-        // 纯音频：常见的 + 无损常用的（清单必须与 README 的「音频」一行一致，
-        // tools/check_source_invariants.ps1 盯着这件事）。容器型（mp4/mkv/ogg）里
-        // 只有音频的也在其中：开进播放器后没有视频轨，按音频播。
+        // 纯音频：常见的 + 无损常用的（中英两份 README 的「音频」/「Audio」一行都必须与它
+        // 一致，tools/check_source_invariants.ps1 的 6b/6c 项盯着这件事）。容器型（mp4/mkv/ogg）
+        // 里只有音频的也在其中：开进播放器后没有视频轨，按音频播。
         { L"aac", FileFormat::Audio },
         { L"ac3", FileFormat::Audio },
         { L"aif", FileFormat::Audio },

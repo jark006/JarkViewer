@@ -1,10 +1,11 @@
 # Verify that the player window and the image window share ONE window-placement memory:
 # resize/position the window in one mode, quit, reopen in the other mode -- the geometry
-# must be inherited (that is the intended design, see AGENTS.md "视频播放器" section).
+# must be inherited (that is the intended design, see AGENTS.md "简易播放器" section).
 #
-# Also checks the one exception: quitting while in app-fullscreen (F11) must NOT poison the
+# Also checks the exceptions: quitting while in app-fullscreen (F11) must NOT poison the
 # memory with the borderless fullscreen rect (next launch would then be a fullscreen-sized
-# window with a title bar).
+# window with a title bar) -- the windowed placement from just before F11 is what gets saved;
+# and a maximized state (showCmd) is carried over as well.
 #
 # Why a temp copy of the exe: the app writes JarkViewer.db (settings) next to the exe, so
 # running this against the repo build would clobber the user's own window size/settings.
