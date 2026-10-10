@@ -166,6 +166,11 @@ Test-Break ".ps1 缺 PowerShell 7 守卫" @{
     "tools/list_windows.ps1" = @("`$PSVersionTable.PSEdition -ne 'Core'", '$false')
 }
 
+Test-Break "工程关了多处理器编译 /MP" @{
+    "JarkViewer/JarkViewer.vcxproj" = @('<MultiProcessorCompilation>true</MultiProcessorCompilation>',
+        '<MultiProcessorCompilation>false</MultiProcessorCompilation>')
+}
+
 Write-Host ""
 # 全部还原后再跑一遍完整检查，确认真文件恢复了
 & pwsh -NoProfile -File $checkScript *> $null

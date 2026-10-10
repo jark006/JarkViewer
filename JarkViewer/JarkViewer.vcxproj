@@ -81,6 +81,9 @@
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <!-- /MP：多处理器编译。没有它，一个工程内部的 .cpp 是串行编译的（MSBuild 的 /m 只在工程之间并行），
+           全量重编只有一个核在动。实测 8 个源文件：开之前全程 max cl=1，开之后按核数并发。 -->
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ExceptionHandling>Sync</ExceptionHandling>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
@@ -122,6 +125,9 @@
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <!-- /MP：多处理器编译。没有它，一个工程内部的 .cpp 是串行编译的（MSBuild 的 /m 只在工程之间并行），
+           全量重编只有一个核在动。实测 8 个源文件：开之前全程 max cl=1，开之后按核数并发。 -->
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <ExceptionHandling>Sync</ExceptionHandling>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>

@@ -3,6 +3,12 @@
 # the script before the guard can run (it dies with a syntax error instead of the hint).
 # Build arguments go through the ProcessStartInfo.Arguments string (not ArgumentList):
 # it behaves the same on every supported host and keeps the command line in one place.
+#
+# NOTE on parallelism: the /m below only parallelises ACROSS projects, and this solution has
+# just two (the viewer plus the thumbnail provider). Parallelism inside a project comes from
+# the compiler switch /MP, i.e. <MultiProcessorCompilation>true</MultiProcessorCompilation>
+# in each .vcxproj -- do not remove it, or a full rebuild falls back to one core and nothing
+# reports an error (tools/check_source_invariants.ps1 item 13 guards it).
 
 # --- PowerShell 7 (pwsh) only -------------------------------------------------------------
 # Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and

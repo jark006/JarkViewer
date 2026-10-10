@@ -15,6 +15,7 @@
 #   11.  VS 工程收齐了自有源码/头文件，且 .filters 与 .vcxproj 条目一一对应、路径都存在
 #        （漏收录的文件在 VS 里根本看不到，重命名的旧条目会指向不存在的文件）
 #   12.  所有 .ps1 带 UTF-8 BOM 且含 PowerShell 7 守卫（无 BOM 时 5.1 会在跑到守卫前就语法报错）
+#   13.  两个工程的每个配置都开了多处理器编译 /MP（丢了它全量重编退回单核，且不会有任何报错）
 #
 # 只支持 PowerShell 7（pwsh）：下面的守卫会拒绝 Windows PowerShell 5.1，并提示怎么装 pwsh。
 # 本文件必须保留 UTF-8 BOM——5.1 会把无 BOM 的 .ps1 按 ANSI 解码，脚本在跑到守卫之前就已经
@@ -305,6 +306,20 @@ foreach ($script in $psScripts) {
 }
 Report ($psProblems.Count -eq 0) "所有 .ps1 带 UTF-8 BOM 且有 PowerShell 7 守卫（$($psScripts.Count) 个）"
 $psProblems | Select-Object -First 6 | ForEach-Object { Write-Host "    $_" }
+
+# 13. 两个工程都要开多处理器编译（/MP = `<MultiProcessorCompilation>true</...>`）。
+#     MSBuild 的 /m 只在**工程之间**并行，本解决方案就两个工程、看图独占大头；工程内部的
+#     .cpp 是靠 /MP 才并行的。这个开关掉了不会有任何报错，只是全量重编退回单核（实测 8 个
+#     源文件：关着 max cl=1 / 36s，开着 max cl=9 / 14s），所以专门盯一下。
+$mpMissing = @()
+foreach ($project in @("JarkViewer/JarkViewer.vcxproj", "JarkThumbnailProvider/JarkThumbnailProvider.vcxproj")) {
+    $text = Read-Source $project
+    $configs = ([regex]::Matches($text, '<ItemDefinitionGroup')).Count
+    $enabled = ([regex]::Matches($text, '<MultiProcessorCompilation>true</MultiProcessorCompilation>')).Count
+    if ($enabled -lt $configs) { $mpMissing += "$($project) 只有 $enabled/$configs 个配置开了 /MP" }
+}
+Report ($mpMissing.Count -eq 0) "两个工程的每个配置都开了多处理器编译 /MP"
+$mpMissing | ForEach-Object { Write-Host "    $_" }
 
 Write-Host ""
 if ($script:failed) {

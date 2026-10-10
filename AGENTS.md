@@ -190,6 +190,7 @@ pwsh tools/verify_source_invariant_checks.ps1
 - 写 Python 脚本用 `-I`（隔离模式）；Windows 路径用 `os.environ['TEMP']` 拼接，别在 heredoc 里直接写 `C:\...`（反斜杠会被当转义）。
 - **PowerShell 只用 7（`pwsh`）**：`tools/*.ps1` 与 `buildRelease.ps1` 开头都有一段"5.1 拒绝守卫"，跑在不支持的环境会打印安装/改用 pwsh 的提示再退出。守卫能跑起来的前提是脚本**带 UTF-8 BOM**——5.1 把无 BOM 的 `.ps1` 按 ANSI 解码，会在执行到守卫之前就抛语法错误（`tools/check_source_invariants.ps1` 就踩过：中文注释被解成乱码，报的是"表达式或语句中的 '.' 后缺少表达式"）。**新增或改写 `.ps1` 后确认首三字节是 `EF BB BF`**（用 `python -c "open(f,'rb').read(3)"` 或 `head -c 3 | xxd -p` 查），否则守卫形同虚设。另外：`[Parameter(Mandatory)]` 的脚本在 5.1 下不给参数会先报"缺少参数"，给了参数才会看到守卫提示。
 - **别在 MSBuild 编译进行中改源文件，也别在编译时跑反向验证**：文件被编译进程占着，Edit 会 `EPERM` 失败；`verify_source_invariant_checks.ps1` 是"原地破坏 → 跑检查 → 按原字节还原"，还原那一步撞上占用会失败（脚本现在会重试并逐个还原、失败就报出来，但最省事的做法就是等编译结束再跑）。
+- **写"等构建结束"的脚本要盯构建进程本身，别盯 `MSBuild.exe` 进程数**：MSBuild 的节点复用工作进程（`/nodemode:1 /nodeReuse:true`）空闲时会长期驻留（十几分钟甚至更久），拿"MSBuild 进程数归零"当停止条件会**永远等下去**（实测卡了 20 多分钟）。用 `Start-Process ... -PassThru` 拿进程对象、循环里看 `$p.HasExited`；要顺手清干净可以给 MSBuild 传 `/nodeReuse:false`。
 - 语料：实机大语料在 `D:\Downloads\test`（**只读**，别往里写）；自己造的语料放 `%TEMP%`。文件名带空格时给程序传参要用 null 分隔的写法。
 
 ## 构建前提
@@ -205,6 +206,7 @@ pwsh tools/verify_source_invariant_checks.ps1
   `tools/check_source_invariants.ps1` 的第 11 项检查盯着这件事（两个工程都查：自有 `src/*.cpp`、
   `include/*.h` 全部在列、工程条目都指向存在的文件、`.vcxproj` 与 `.filters` 一一对应），
   反向验证在 `tools/verify_source_invariant_checks.ps1` 里。加文件后忘了跑生成器时，跑一次即修正。
+- **并行编译**：`buildRelease.ps1` 传的 `/m` 只让 MSBuild 在**工程之间**并行（本解决方案只有看图 + 缩略图处理器两个工程，看图独占大头），**一个工程内部的 `.cpp` 是串行编译的**——文件级并行要编译器开关 **`/MP`**（工程属性里的"多处理器编译"）。两个工程的 Debug/Release 都设了 `<MultiProcessorCompilation>true</MultiProcessorCompilation>`，**别删**：掉了不会有任何报错，只是全量重编退回单核（本机 Ryzen 5 5600X / 6C12T 实测：8 个源文件关着 `max cl=1`、36s，开着 `max cl=9`、14s；全量重编开着 38s）。`tools/check_source_invariants.ps1` 第 13 项盯着它。并发实例数默认按逻辑核数（本机 12），每个实例都要解析 OpenCV/FFmpeg 的头，内存吃紧时可以在 `AdditionalOptions` 里补 `/MP6` 限一下（`MultiProcessorCompilation` 只开关、不带数目）。**做对照实验时注意**：命令行 `/p:MultiProcessorCompilation=false` 覆盖不了这个开关（工程里显式写的条目元数据优先），想验证"关掉会怎样"只能临时改 `.vcxproj`、量完再改回来——不然两次跑的都是开着的样子，并发序列一模一样，很容易得出"这开关没用"的错误结论。
 - `JarkViewer.vcxproj` 中 `VcpkgEnabled=false`，默认使用仓库内的静态库目录：`JarkViewer/lib*`（含 `libffmpeg`、`libopencv`、`libjxl`、`libavif`、`libexiv2`、`libwebp2`）、`JarkViewer/include`。
 - **第三方静态库从哪来**：仓库不自带 `.lib`（体积大、不进 git），开发前需从
   [releases/tag/static_lib](https://github.com/jark006/JarkViewer/releases/tag/static_lib) 下载对应版本的静态库包，
