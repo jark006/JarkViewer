@@ -1,8 +1,22 @@
-# Enumerate the visible top-level windows of a process with their rects.
+﻿# Enumerate the visible top-level windows of a process with their rects.
 # Usage: pwsh tools/list_windows.ps1 -ProcessId 1234
-# NOTE: keep this file ASCII-only (Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI).
+# PowerShell 7 (pwsh) only -- the guard below refuses Windows PowerShell 5.1 and says how to
+# install pwsh. Keep the UTF-8 BOM on this file: 5.1 decodes BOM-less .ps1 as ANSI, which mangles
+# the script before the guard can run (it dies with a syntax error instead of the hint).
+
 
 param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 Add-Type @"
 using System; using System.Collections.Generic; using System.Runtime.InteropServices; using System.Text;

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     用源码构建 JarkViewer 需要的 OpenCV 静态库（vcpkg 里没有它）。
 
@@ -35,8 +35,8 @@
     用 -Install 时把产物复制进工程：静态库进 JarkViewer/libopencv/，
     头文件整目录替换 JarkViewer/include/opencv2/。
 
-    注意：本脚本要在 pwsh（PowerShell 7）下运行；Windows PowerShell 5.1 读无 BOM
-    的 .ps1 会按 ANSI 解码，中文注释会被解成乱码。
+    PowerShell 7（pwsh）专用：下面的守卫会拒绝 Windows PowerShell 5.1 并提示怎么装 pwsh。
+    本文件必须保留 UTF-8 BOM——5.1 把无 BOM 的脚本按 ANSI 解码，跑到守卫之前就已经报错。
 
 .EXAMPLE
     pwsh tools/build-opencv.ps1                       # 只构建，产物留在构建目录
@@ -48,6 +48,17 @@ param(
     [string]$WorkDir = "D:\workSpace\vs",
     [switch]$Install
 )
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 

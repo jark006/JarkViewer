@@ -1,4 +1,4 @@
-# Verify that the player window and the image window share ONE window-placement memory:
+﻿# Verify that the player window and the image window share ONE window-placement memory:
 # resize/position the window in one mode, quit, reopen in the other mode -- the geometry
 # must be inherited (that is the intended design, see AGENTS.md "简易播放器" section).
 #
@@ -13,7 +13,10 @@
 # Usage:
 #   pwsh tools/test_placement_memory.ps1 -Exe x64/Release/JarkViewer.exe -Media <video.mp4> -Image <img.png>
 #
-# NOTE: keep this file ASCII-only (Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI).
+# 只支持 PowerShell 7（pwsh）：下面的守卫会拒绝 Windows PowerShell 5.1，并提示怎么装 pwsh。
+# 本文件必须保留 UTF-8 BOM——5.1 会把无 BOM 的 .ps1 按 ANSI 解码，脚本在跑到守卫之前就已经
+# 乱码/语法报错，用户看到的是一句莫名其妙的报错，而不是这条提示。
+
 
 param(
     [string]$Exe = "x64/Release/JarkViewer.exe",
@@ -21,6 +24,17 @@ param(
     [Parameter(Mandatory = $true)][string]$Image,
     [string]$WorkDir = "$env:TEMP\jv-placement-test"
 )
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 

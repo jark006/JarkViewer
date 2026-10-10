@@ -1,10 +1,13 @@
-# Editor text-tool check: open the editor (Ctrl+E), pick the text tool, click an anchor on the
+﻿# Editor text-tool check: open the editor (Ctrl+E), pick the text tool, click an anchor on the
 # canvas, click the sidebar text box, inject two CJK characters as Unicode WM_CHAR (which is what
 # the IME delivers once a composition is committed) and capture the window. Verifies both the
 # in-image anchor feedback (caret + live preview) and that CJK text reaches the ImGui input.
 #
 # Usage: pwsh tools/test_editor_text.ps1 -Exe x64/Release/JarkViewer.exe -Image img.png -Out shot.png
-# NOTE: keep this file ASCII-only (Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI).
+# 只支持 PowerShell 7（pwsh）：下面的守卫会拒绝 Windows PowerShell 5.1，并提示怎么装 pwsh。
+# 本文件必须保留 UTF-8 BOM——5.1 会把无 BOM 的 .ps1 按 ANSI 解码，脚本在跑到守卫之前就已经
+# 乱码/语法报错，用户看到的是一句莫名其妙的报错，而不是这条提示。
+
 #       Coordinates below are physical client coordinates; retune them if the editor layout changes.
 
 param(
@@ -18,6 +21,17 @@ param(
     [int]$TextBoxX = 2350,    # sidebar text box
     [int]$TextBoxY = 790
 )
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
 Add-Type @"

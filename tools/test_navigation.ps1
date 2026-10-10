@@ -1,11 +1,26 @@
-# 主界面导航冒烟：动态计算 DPI/客户区坐标，拖鸟瞰、悬停预览带、点击换图、滚轮与隐藏。
+﻿# 主界面导航冒烟：动态计算 DPI/客户区坐标，拖鸟瞰、悬停预览带、点击换图、滚轮与隐藏。
 # 使用至少 5 张带编号的同目录图片；截图供像素比较及人工查看，不改文件关联或系统缓存。
+# 只支持 PowerShell 7（pwsh）：下面的守卫会拒绝 Windows PowerShell 5.1，并提示怎么装 pwsh。
+# 本文件必须保留 UTF-8 BOM——5.1 会把无 BOM 的 .ps1 按 ANSI 解码，脚本在跑到守卫之前就已经
+# 乱码/语法报错，用户看到的是一句莫名其妙的报错，而不是这条提示。
+
 param(
     [Parameter(Mandatory=$true)][string]$Exe,
     [Parameter(Mandatory=$true)][string]$Image,
     [Parameter(Mandatory=$true)][string]$OutDirectory,
     [switch]$CheckSettings
 )
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 $ErrorActionPreference = 'Stop'
 if ($CheckSettings -and -not ([IO.Path]::GetFullPath($Exe).StartsWith([IO.Path]::GetFullPath($env:TEMP), [StringComparison]::OrdinalIgnoreCase))) {
     throw 'CheckSettings requires an isolated executable copy under TEMP'

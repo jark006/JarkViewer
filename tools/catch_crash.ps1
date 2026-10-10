@@ -1,4 +1,4 @@
-# Catch an intermittent crash of JarkViewer.exe by attaching cdb AFTER the process
+﻿# Catch an intermittent crash of JarkViewer.exe by attaching cdb AFTER the process
 # has started, and write a full memory dump when it faults.
 #
 # Why "attach after": launching the program *under* a debugger hides timing-sensitive
@@ -16,7 +16,9 @@
 #   cdb.exe -z <dump> -c ".ecxr;r;kb 12;q"      (.ecxr is required: the default
 #                                                thread is not the faulting one)
 #
-# NOTE: keep this file ASCII-only (Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI).
+# PowerShell 7 (pwsh) only -- the guard below refuses Windows PowerShell 5.1 and says how to
+# install pwsh. Keep the UTF-8 BOM on this file: 5.1 decodes BOM-less .ps1 as ANSI, which mangles
+# the script before the guard can run (it dies with a syntax error instead of the hint).
 # NOTE: a faulting program only produces a dump if it actually crashes; when the
 #       debugger masks the bug this script just runs to the end without a dump.
 # NOTE: attaching masks the timing-sensitive crashes too (measured 1/5 normally vs
@@ -33,6 +35,17 @@ param(
     [string]$Cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe",
     [string]$LogDir = "$env:TEMP"
 )
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 if (-not (Test-Path $Cdb)) { throw "cdb.exe not found: $Cdb" }
 

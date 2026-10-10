@@ -1,4 +1,4 @@
-# 源码不变量检查：查一批"跑起来也看不出来、但一改就会悄悄坏"的约定。
+﻿# 源码不变量检查：查一批"跑起来也看不出来、但一改就会悄悄坏"的约定。
 # 只读源码，几秒钟出结果；提交前可单独跑。反向验证见 verify_source_invariant_checks.ps1
 # （逐项制造错误确认真会报错——静态检查最危险的失效方式是写歪了正则照样 PASS）。
 #
@@ -14,7 +14,24 @@
 #   10.  main.cpp / .rc 字符串版 / .rc 数字版 版本号一致（升级时最容易漏改 .rc 数字）
 #   11.  VS 工程收齐了自有源码/头文件，且 .filters 与 .vcxproj 条目一一对应、路径都存在
 #        （漏收录的文件在 VS 里根本看不到，重命名的旧条目会指向不存在的文件）
+#   12.  所有 .ps1 带 UTF-8 BOM 且含 PowerShell 7 守卫（无 BOM 时 5.1 会在跑到守卫前就语法报错）
+#
+# 只支持 PowerShell 7（pwsh）：下面的守卫会拒绝 Windows PowerShell 5.1，并提示怎么装 pwsh。
+# 本文件必须保留 UTF-8 BOM——5.1 会把无 BOM 的 .ps1 按 ANSI 解码，脚本在跑到守卫之前就已经
+# 乱码/语法报错，用户看到的是一句莫名其妙的报错，而不是这条提示。
+
 param([string]$Root = (Split-Path -Parent $PSScriptRoot))
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 $script:failed = $false
@@ -267,6 +284,27 @@ foreach ($project in @(@{Name = "JarkViewer"; Dir = "JarkViewer" },
     $staleInProject | Select-Object -First 5 | ForEach-Object { Write-Host "    失效条目: $_" }
     $filtersMismatch | Select-Object -First 3 | ForEach-Object { Write-Host "    缺筛选器条目: $_" }
 }
+
+# 12. 所有 .ps1 都带 UTF-8 BOM，且有 PowerShell 7 守卫。
+#     BOM 不是洁癖：5.1 把无 BOM 的 .ps1 按 ANSI 解码，中文注释会先把它自己解析崩，
+#     用户看到的是"表达式或语句中的 '.' 后缺少表达式"这种莫名其妙的报错，而不是守卫
+#     那句"请改用 pwsh"。守卫被删/被改则等于放 5.1 进来跑（buildRelease 会静默退化成
+#     Debug 构建）。这两个都是"改了看不出来、只有在 5.1 上跑才炸"的约定。
+$psScripts = @(Get-ChildItem -LiteralPath $Root -Filter *.ps1 -File) +
+    @(Get-ChildItem -LiteralPath (Join-Path $Root "tools") -Filter *.ps1 -File)
+$psGuard = '$PSVersionTable.PSEdition -ne ' + "'Core'"
+$psProblems = @()
+foreach ($script in $psScripts) {
+    $bytes = [IO.File]::ReadAllBytes($script.FullName)
+    if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
+        $psProblems += "$($script.Name) 缺 UTF-8 BOM"
+    }
+    if (-not (Get-Content -Raw -LiteralPath $script.FullName -Encoding UTF8).Contains($psGuard)) {
+        $psProblems += "$($script.Name) 缺 PowerShell 7 守卫"
+    }
+}
+Report ($psProblems.Count -eq 0) "所有 .ps1 带 UTF-8 BOM 且有 PowerShell 7 守卫（$($psScripts.Count) 个）"
+$psProblems | Select-Object -First 6 | ForEach-Object { Write-Host "    $_" }
 
 Write-Host ""
 if ($script:failed) {

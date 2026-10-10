@@ -1,3 +1,6 @@
+﻿# 只支持 PowerShell 7（pwsh）：下面的守卫会拒绝 Windows PowerShell 5.1，并提示怎么装 pwsh。
+# 本文件必须保留 UTF-8 BOM——5.1 会把无 BOM 的 .ps1 按 ANSI 解码，脚本在跑到守卫之前就已经
+# 乱码/语法报错，用户看到的是一句莫名其妙的报错，而不是这条提示。
 <#
 .SYNOPSIS
     重建「只解不编」的 FFmpeg 静态库：去掉全部编码器，解码器 / 解复用器一个不少。
@@ -45,6 +48,17 @@ param(
     [string]$WorkDir = (Join-Path $env:TEMP "jarkviewer-ffmpeg-noenc"),
     [switch]$Install
 )
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 

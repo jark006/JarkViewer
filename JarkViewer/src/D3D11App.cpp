@@ -138,6 +138,14 @@ void D3D11App::loadSettings() {
         }
     }
 
+    // 命令行 `--lang` 是**临时**覆盖，必须放在读盘之后：上面那次整体赋值会把窗口创建之前
+    // 设好的分量冲掉（曾经就是这样，命令行参数在界面上完全不起作用）。同时记下文件里的原值，
+    // 退出写盘时写回它，临时语言不落盘。
+    if (GlobalVar::pendingLanguageOverride.has_value()) {
+        GlobalVar::persistedLanguage = GlobalVar::settingParameter.UI_LANG;
+        GlobalVar::settingParameter.UI_LANG = *GlobalVar::pendingLanguageOverride;
+    }
+
     // 计算恢复位置：优先放回上次使用的显示器（有记录且那块屏还接着），记录的位置
     // 不在这块屏上（换过屏、最大化时存的空矩形）就放到它的工作区中央；没有记录或
     // 屏幕已断开时按主屏兜底。副屏坐标允许为负，不能按主屏尺寸去夹。
@@ -228,6 +236,10 @@ void D3D11App::saveSettings() const {
         if (::GetMonitorInfoW(monitor, &info))
             wcscpy_s(GlobalVar::settingParameter.monitorDevice, info.szDevice);
     }
+
+    // 命令行 `--lang` 只临时换语言：写盘时换回设置文件里的原值，别把它记成用户的设置
+    if (GlobalVar::persistedLanguage.has_value())
+        GlobalVar::settingParameter.UI_LANG = *GlobalVar::persistedLanguage;
 
     memcpy(GlobalVar::settingParameter.header, GlobalVar::settingHeader.data(), GlobalVar::settingHeader.length());
 

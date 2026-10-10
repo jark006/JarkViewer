@@ -1,8 +1,23 @@
-# 反向验证 check_source_invariants.ps1：逐项制造它该抓的错误，确认真会报错，
+﻿# 反向验证 check_source_invariants.ps1：逐项制造它该抓的错误，确认真会报错，
 # 跑完按原字节还原（不用 git checkout——那会连未提交的改动一起抹掉）。
 # 静态检查最危险的失效方式是"什么都抓不到"：正则写歪一个字符就照样打印 PASS，
 # 所以每加一条检查，就在这个脚本里加一条对应的破坏。
+# 只支持 PowerShell 7（pwsh）：下面的守卫会拒绝 Windows PowerShell 5.1，并提示怎么装 pwsh。
+# 本文件必须保留 UTF-8 BOM——5.1 会把无 BOM 的 .ps1 按 ANSI 解码，脚本在跑到守卫之前就已经
+# 乱码/语法报错，用户看到的是一句莫名其妙的报错，而不是这条提示。
+
 param([string]$Root = (Split-Path -Parent $PSScriptRoot))
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 $ErrorActionPreference = "Stop"
 $script:failed = $false
@@ -40,8 +55,26 @@ function Test-Break([string]$name, [hashtable]$edits) {
         $checkerFailed = ($LASTEXITCODE -ne 0)
     }
     finally {
+        # 还原必须"尽力而为、逐个进行"：某一个文件被别的进程占着（最常见的是同时在跑
+        # buildRelease/msbuild，或者编辑器开着）不能让其余文件留在破坏状态。占用通常是
+        # 短暂的，先重试几次；实在还原不了就收集起来一起报，别静默留下半截破坏。
+        $restoreFailed = @()
         foreach ($path in $backup.Keys) {
-            [IO.File]::WriteAllBytes((Join-Path $Root $path), $backup[$path])
+            $target = Join-Path $Root $path
+            $restored = $false
+            for ($attempt = 0; $attempt -lt 10 -and -not $restored; $attempt++) {
+                try {
+                    [IO.File]::WriteAllBytes($target, $backup[$path])
+                    $restored = $true
+                }
+                catch {
+                    Start-Sleep -Milliseconds 200
+                }
+            }
+            if (-not $restored) { $restoreFailed += $path }
+        }
+        if ($restoreFailed.Count -gt 0) {
+            throw ("文件还原失败（被占用？别在编译或编辑器打开时跑反向验证）：" + ($restoreFailed -join '、'))
         }
     }
 
@@ -127,6 +160,10 @@ Test-Break "VS 工程条目指向不存在的文件" @{
 Test-Break ".filters 缺条目（与 vcxproj 不一一对应）" @{
     "JarkViewer/JarkViewer.vcxproj.filters" = @(
         ('    <ClCompile Include="src\InfoScreen.cpp">' + "`n"), "")
+}
+
+Test-Break ".ps1 缺 PowerShell 7 守卫" @{
+    "tools/list_windows.ps1" = @("`$PSVersionTable.PSEdition -ne 'Core'", '$false')
 }
 
 Write-Host ""

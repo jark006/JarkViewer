@@ -3517,10 +3517,11 @@ int WINAPI wWinMain(
         }
     }
 
-    // 命令行指定的语言要在窗口创建前应用：窗口一就绪就会扫描目录、放占位并派发解码，
-    // 占位文案随 UI_LANG 走
+    // 命令行指定的语言要赶在窗口就绪之前生效（窗口一就绪就会扫描目录、放占位并派发解码，
+    // 占位文案随 UI_LANG 走），但**不能在这里直接写 settingParameter**：设置文件是窗口对象
+    // 构造时才读盘的，整体赋值会把这时的值冲掉。记成待应用的覆盖值，由 loadSettings 读完盘后再盖。
     if (languageOverride.has_value()) {
-        GlobalVar::settingParameter.UI_LANG =
+        GlobalVar::pendingLanguageOverride =
             static_cast<uint32_t>(jark::languageFromSetting(*languageOverride));
     }
 

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <semaphore>
 #include <string>
 #include <vector>
@@ -153,7 +154,7 @@ struct SettingParameter {
     uint32_t pptTimeout = 5;                // 幻灯片模式  切换间隔 1 ~ 300 秒
 
     uint32_t UI_Mode = 0;                   // 界面主题 0:跟随系统  1:浅色  2:深色
-    uint32_t UI_LANG = 0;                   // 界面语言：0:简体中文 1:繁體中文 2:English 3:日本語 4:한국어（见 Localization.h）
+    uint32_t UI_LANG = 0;                   // 界面语言：0:简体中文 1:繁體中文 2:English 3:日本語 4:한국어 5:Русский（见 Localization.h）
 
     uint32_t legacyRightClickAction = 0;    // 已废弃：旧"右键点击行为"（0 菜单 / 1 退出程序）。
                                             // 右键现在固定打开菜单；字段原位保留——删它会改变
@@ -534,6 +535,13 @@ struct GlobalVar {
     static inline wstring settingPath;
     static inline string_view settingHeader{ "JarkViewerSetting" };
     static inline SettingParameter settingParameter;
+
+    // 命令行 `--lang` 的临时语言覆盖。设置文件是在**窗口对象构造时**才读盘的，而读盘是整体
+    // 赋值（`settingParameter = tmp`），会把窗口创建之前设好的值冲掉——所以命令行只在这里记下
+    // 待应用的覆盖值，由 `loadSettings()` 读完盘后再盖上去（见 D3D11App::loadSettings）。
+    static inline std::optional<uint32_t> pendingLanguageOverride;
+    // 临时覆盖生效时，设置文件里原本的语言：退出写盘要写回它，否则临时语言会被记住
+    static inline std::optional<uint32_t> persistedLanguage;
 };
 
 class jarkUtils {

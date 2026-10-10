@@ -1,4 +1,4 @@
-# Regression check for the video player: after resizing the window the picture must
+﻿# Regression check for the video player: after resizing the window the picture must
 # still be there. The paused case is the one that used to break: a resize recreates
 # the staging texture (empty) and there is no "next frame" to repaint it, so the whole
 # window went black until something else forced a redraw.
@@ -6,13 +6,27 @@
 #   pwsh tools/test_player_resize.ps1 -Exe x64/Release/JarkViewer.exe -Video <file> -OutDirectory <dir>
 #
 # Passes when the mean luma of the picture area stays high after shrink+grow while paused.
-# Keep this file ASCII-only (Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI).
+# PowerShell 7 (pwsh) only -- the guard below refuses Windows PowerShell 5.1 and says how to
+# install pwsh. Keep the UTF-8 BOM on this file: 5.1 decodes BOM-less .ps1 as ANSI, which mangles
+# the script before the guard can run (it dies with a syntax error instead of the hint).
+
 
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [Parameter(Mandatory = $true)][string]$Video,
     [Parameter(Mandatory = $true)][string]$OutDirectory
 )
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 Add-Type -AssemblyName System.Drawing
 Add-Type @"

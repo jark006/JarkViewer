@@ -1,4 +1,4 @@
-# Regression check for the video player: the picture must be scaled with a real filter, not
+﻿# Regression check for the video player: the picture must be scaled with a real filter, not
 # nearest neighbour. Play a black/white checkerboard video (losslessly encoded, so the decoded
 # frame is exactly 0/255) in a window several times bigger than the frame: the scaled picture
 # must show intermediate luma values along every square edge. Pure nearest-neighbour upscaling
@@ -11,7 +11,10 @@
 #   ffmpeg -f lavfi -i "nullsrc=s=320x240:d=4:r=10,format=yuv444p,geq=lum='if(eq(mod(floor(X/8)+floor(Y/8),2),0),0,255)':cb=128:cr=128" \
 #          -c:v libx264 -qp 0 -pix_fmt yuv444p checker-320x240-lossless.mp4
 #
-# Keep this file ASCII-only (Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI).
+# PowerShell 7 (pwsh) only -- the guard below refuses Windows PowerShell 5.1 and says how to
+# install pwsh. Keep the UTF-8 BOM on this file: 5.1 decodes BOM-less .ps1 as ANSI, which mangles
+# the script before the guard can run (it dies with a syntax error instead of the hint).
+
 
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
@@ -20,6 +23,17 @@ param(
     [int]$Width = 1180,
     [int]$Height = 820
 )
+
+# --- PowerShell 7 (pwsh) only -------------------------------------------------------------
+# Windows PowerShell 5.1 is refused below: it reads BOM-less .ps1 files as ANSI (mojibake, and
+# sometimes a syntax error that hides this guard) and quotes Start-Process arguments
+# differently, which the UI test scripts depend on. Run everything with pwsh.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    Write-Host "This script requires PowerShell 7 (pwsh); Windows PowerShell $($PSVersionTable.PSVersion) is not supported." -ForegroundColor Red
+    Write-Host "Re-run with:  pwsh -File `"$PSCommandPath`"" -ForegroundColor Yellow
+    Write-Host "Install:      winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+    exit 1
+}
 
 Add-Type -AssemblyName System.Drawing
 Add-Type @"

@@ -4,11 +4,21 @@
 
 ## 项目概览
 
-JarkViewer 是 Windows 10/11 x64 原生图片查看器，使用 C++23、Win32、Direct3D 11 和 OpenCV 构建。它以单可执行文件方式发布，重点支持大量静态图、动图、RAW、LivePhoto/MotionPhoto、EXIF 信息显示、打印/简单编辑和文件关联。
+JarkViewer 是 Windows 10/11 x64 原生图片查看器，使用 C++23、Win32、Direct3D 11 和 OpenCV 构建。它以单可执行文件方式发布，重点支持大量静态图、动图、RAW、LivePhoto/MotionPhoto、EXIF 信息显示、打印/编辑/标注、批量处理与文件关联；视频与音频由**同一个进程里的独立播放器窗口**打开（`wWinMain` 按 `jark::isPlayerFile()` 在两者之间二选一构造，见「简易播放器」一节）。
+
+**文档分工**：`README.md` / `README_EN.md` 只面向使用者（功能、操作、格式清单、常见问题），不写开发相关内容；开发者要的一切——构建、测试、调试、模块实现、踩坑记录——都写在本文件里。两边唯一的重叠是**格式清单**（用户要看，代码的不变量检查也要拿它交叉核对），中英两份必须逐项一致，`tools/check_source_invariants.ps1` 的 4/5/6/6b/6c 项盯着这件事。
+
+**项目按 AI 协作方式开发**（一句话需求 → 小步改动 → 可复现验证 → 提交），所以本文件的重点不是"介绍代码"，而是把**踩过的坑与验证手段写成可执行的约束**。三条硬要求：
+
+1. **每次改动都要留下一条能重跑的验证命令**（自检 / 回归脚本 / 不变量检查），"我看着没问题"不算；
+2. **新增的约束要配反向验证**——不变量检查加一项，`tools/verify_source_invariant_checks.ps1` 就加一条能把它绊倒的破坏；
+3. **注释与文档和代码同一轮内同步**：历史上英文 README 落后中文一整轮、注释里留着已经被替换掉的设计（"音符徽章"）都发生过，改动落地时顺手把跟随它的说法一起改掉。
+
+具体流程与逐条经验见「开发流程与验证经验」一节。
 
 ## 常用命令
 
-本项目优先使用 PowerShell 执行仓库根目录下的 `buildRelease.ps1` 脚本进行编译、构建：
+**PowerShell 一律用 7（`pwsh`），不要用系统自带的 Windows PowerShell 5.1**：仓库里的 `.ps1` 都在开头带一段守卫，5.1 下会直接打印"请改用 pwsh / 怎么装"的提示并退出（守卫能生效的前提是脚本带 UTF-8 BOM，见「环境与工具坑」）。编译、构建走仓库根目录的 `buildRelease.ps1`：
 
 ```powershell
 # Release x64 构建
@@ -20,6 +30,19 @@ pwsh ./buildRelease.ps1
 
 # 无界面解码自检（无需人眼，验证解码路由/EXIF/动图）
 ./x64/Release/JarkViewer.exe --probe <文件或通配展开的路径...> [--full] [--out 报告.txt]
+
+# 注意：程序是 GUI 子系统，stdout 在脚本/管道里拿不到，自检结果要 `--out 报告.txt` 才看得见；
+# 不写 --out 时会落到工作目录的 decode-probe.txt（已 gitignore）。跑自检一律显式给 --out。
+
+# 播放器自检：视频的暂停/精确 seek/单帧/播完停在最后一帧/拖动三条不变式；
+# 纯音频文件走同一入口的无帧断言
+./x64/Release/JarkViewer.exe --probe --video-test <文件...> --out 报告.txt
+
+# 播放流畅度（交付率/交付间隔/时钟倍速与最大停滞，对照媒体时长）
+./x64/Release/JarkViewer.exe --probe --playback-test <文件...> --out 报告.txt
+
+# 音频链路（音量 0 提交音频，只看播放时钟是否按采样率推进，不发声）
+./x64/Release/JarkViewer.exe --probe --audio-test <音频> --out 报告.txt
 
 # Release 下临时打开日志（写入 %TEMP%\JarkViewer.log；Debug 默认开启控制台日志）
 $env:JARKVIEWER_LOG=1; ./x64/Release/JarkViewer.exe --log "D:/path/to/image.png"
@@ -77,6 +100,22 @@ pwsh tools/test_player_scaling.ps1 -Exe x64/Release/JarkViewer.exe -Video <棋�
 # 列出某进程的可见窗口（自动化测试定位窗口用）
 pwsh tools/list_windows.ps1 -ProcessId <pid>
 
+# 编辑窗口的文字工具实测（Ctrl+E → 文字工具 → 点锚点 → 点侧栏文字框 → 投递 Unicode WM_CHAR）
+pwsh tools/test_editor_text.ps1 -Exe x64/Release/JarkViewer.exe -Image <图片> -Out <截图>
+
+# 命令行 --lang 的语言覆盖回归（改了语言能生效 + 临时语言不落盘；跑在 %TEMP% 的独立副本上）
+pwsh tools/test_language_override.ps1 -Exe x64/Release/JarkViewer.exe
+
+# 图标码位探针：临时把主界面换成码位浏览器，截一张图确认字形存在（--revert 还原）
+python tools/gen_icon_probe.py
+
+# 抓间歇性崩溃：cdb 附着 + 落 dump（时序竞态请改用进程内 JARKVIEWER_CRASH_DUMP，见「修改注意事项」）
+pwsh tools/catch_crash.ps1 -Exe x64/Release/JarkViewer.exe -AppArgs="--probe --video-test a.mp4 --out r.txt" -Dump "$env:TEMP\crash.dmp"
+
+# 重建第三方静态库（OpenCV 源码自建、zlib-ng 替换；详见「构建前提」）
+pwsh tools/build-opencv.ps1 -Install
+pwsh tools/build-zlib-ng.ps1 -Install
+
 # 源码不变量检查（字符串表 // N 编号、格式清单与 README 交叉核对、PSD 顺序、LRU 析构、
 # 菜单加速键、版本号一致、两个 VS 工程的文件列表齐不齐；只读源码、秒级出结果，提交前可单独跑）
 pwsh tools/check_source_invariants.ps1
@@ -88,6 +127,70 @@ pwsh tools/verify_source_invariant_checks.ps1
 ```
 
 每次修改后至少保证 `buildRelease.ps1` 能干净编译通过；解码相关改动应先用 `--probe` 跑一遍 `tools/gen_testdata.py` 生成的语料（包含错扩展名、无扩展名、损坏文件、EXIF 方向、动图、视频等），再做人工冒烟（静态图加载、动图播放、EXIF 显示、打印预览和导出流程）。
+
+## 开发流程与验证经验
+
+这一节是几轮实际开发攒下来的：照着做，改动才落得住。
+
+### 一轮改动的闭环
+
+1. **先定位**：仓库有 CodeGraph 索引（`.codegraph/`），问"这块怎么工作 / 在哪"先用 `codegraph_explore`（一次调用给出符号源码、调用链与影响面），比埋头 grep + 逐个读文件快得多。
+2. **改代码**：贴着相邻文件的风格写；注释写"为什么"，尤其是反直觉的约束和曾经踩过的坑（本文件里那些"别这么写"都来自真实回归）。
+3. **编译**：`pwsh ./buildRelease.ps1` 必须干净通过。
+4. **跑对应的自检**（见下表），拿到数字，而不是"看着对"。
+5. **给新约束留痕**：不变量检查加一项 → 反向验证加一条破坏；界面语义能写成断言的写成断言，写不成的用截图脚本量像素。
+6. **同步文档**：README / AGENTS / 注释与代码同一轮内改完（见「项目概览」那三条硬要求）。
+7. **提交**：中文一句话概括 + 要点列表，写清"改了什么、为什么、怎么验证的"——`git log` 里已有的提交就是这个格式。
+
+### 改哪一块，跑哪个自检
+
+| 改动范围 | 必跑 |
+| --- | --- |
+| 解码路由 / 格式嗅探 / EXIF | `--probe <gen_testdata.py 的语料>`（含错扩展名、无扩展名、损坏文件） |
+| 画布几何 / 旋转 / 缩放平滑 | `--probe --navigation-test`、`--probe --resample-test` |
+| 色彩管理 | `--probe --color-test` |
+| SVG 与预处理 | `--probe --svg-test` |
+| 文件列表 / 排序 / 重命名 | `--probe --sort-test` |
+| 缩略图链路 | `--probe --thumbnail-test`、`--probe --shell-thumbnail` |
+| `MediaPlayer` / `MediaDecoder` / `VideoPlayback` | `--probe --video-test`（含纯音频语料）、`--probe --playback-test`、`--probe --audio-test` |
+| 频谱分析 | `--probe --spectrum-test` |
+| 播放器画面 / 条带 / 音频画面 | `tools/test_player_resize.ps1`、`tools/test_player_scaling.ps1` |
+| 窗口几何与保存 | `tools/test_placement_memory.ps1` |
+| 主界面导航浮层 | `--probe --navigation-test`、`tools/test_navigation.ps1` |
+| 编辑与标注 | `--probe --annotate`、`tools/test_editor_text.ps1` |
+| 命令行参数 / 语言 / 设置读写 | `tools/test_language_override.ps1` |
+| 字符串表 / 格式清单 / 工程文件列表 | `tools/check_source_invariants.ps1` + `tools/verify_source_invariant_checks.ps1` |
+
+多块一起动的改动就把这一列全跑一遍；提交前的底线永远是两条：`buildRelease.ps1` 干净、`check_source_invariants.ps1` 全绿。
+
+### 静态检查必须"真能抓到错"
+
+不变量检查最危险的失效方式是**正则写歪了照样 PASS**。所以每加一项检查，就同步在 `tools/verify_source_invariant_checks.ps1` 里加一条"故意制造这个错误"的破坏用例（它跑完按原字节还原，不用 `git checkout`）；这个脚本自己也会报"检查没抓到破坏"。破坏条数用 `$script:breakCount` 动态算，别写死——写死的那个数字已经错过一次（写"13 项"时实际 17 项）。
+
+### 界面语义用截图 + 像素断言
+
+肉眼看着"应该对"的东西（条带颜色、放大有没有滤波、暂停时改窗口尺寸会不会黑屏）一律脚本化：`tools/capture_window.ps1`（`-Keys` 注入按键、`-Drag/-DragHold` 拖动、`-Hover/-RightClick/-MenuKeys/-Screen`）驱动窗口截图，再量像素。写这类脚本的实测经验：
+
+- **参数里的路径不要带空格、也不要用长绝对路径**：`-Argument` 是拼接成一条命令行再用 `Start-Process -ArgumentList` 递出去的，带空格的路径会被截断（程序表现成"打开失败"，看截图会误判成程序坏了），长绝对路径还会让参数绑定直接报错。要打开某个文件做截图验证时，把它复制到工作目录里用短相对名（`tools/test_language_override.ps1` 就是这么干的）。
+- 坐标是**物理客户区坐标**且随 DPI 变；写死坐标的脚本要注明"布局改了就得重调"（`test_editor_text.ps1` 就是）。
+- 窗口枚举与前台化放在 C# 辅助类里（`MainWindow` / `ForceForeground`，AttachThreadInput + BringWindowToTop）比 PowerShell 的 `SetForegroundWindow` 可靠，F11 这类要求前台的操作才不会静默失败。
+- 会碰用户设置/缓存的脚本必须在 `%TEMP%` 的**独立 exe 副本**上跑（设置文件写在 exe 旁边），别动用户的 `JarkViewer.db`。
+
+### 调试手段速查
+
+- **日志**：Release 下 `--log` 或 `JARKVIEWER_LOG=1` 写 `%TEMP%\JarkViewer.log`；新增诊断点直接写 `JARK_LOG(...)`，`isLogEnabled()` 为假时参数不求值（零开销，可以放心留在代码里）。
+- **启动慢**：`JARKVIEWER_STARTUP_TRACE=<文件>` 记录各阶段相对起点的毫秒数（解码派发 / 设备与 UI 就绪 / 首帧绘制），新增关键阶段顺手补一个 `startupTraceMark()`。
+- **崩溃**：必崩的用 `tools/catch_crash.ps1`（cdb 附着后落 dump）；**时序竞态不能挂调试器**（attach 会把窗口关掉，实测 1/5 的频率一挂就基本不复现），改用 `JARKVIEWER_CRASH_DUMP=<文件>` 让进程自己落盘，再看 `cdb.exe -z <dump> -c ".ecxr;r;kb 16;q"`（`.ecxr` 必需，默认线程不是出事的那个）。想更快撞上就几路并行跑。
+- **界面**：`tools/capture_window.ps1` 截图，配 `-Keys` 注入按键、`-DragHold` 看"拖动中"才有的画面（马赛克/裁剪框）。
+- **媒体卡顿**：`--probe --playback-test` 把"卡不卡"变成交付率、时钟倍速与最大停滞。
+
+### 环境与工具坑
+
+- 控制台是 GBK，中文/韩文输出会乱码：看自检报告一律 `--out` 写文件再读（`python -I` 读文件），别用终端输出判断内容。
+- 写 Python 脚本用 `-I`（隔离模式）；Windows 路径用 `os.environ['TEMP']` 拼接，别在 heredoc 里直接写 `C:\...`（反斜杠会被当转义）。
+- **PowerShell 只用 7（`pwsh`）**：`tools/*.ps1` 与 `buildRelease.ps1` 开头都有一段"5.1 拒绝守卫"，跑在不支持的环境会打印安装/改用 pwsh 的提示再退出。守卫能跑起来的前提是脚本**带 UTF-8 BOM**——5.1 把无 BOM 的 `.ps1` 按 ANSI 解码，会在执行到守卫之前就抛语法错误（`tools/check_source_invariants.ps1` 就踩过：中文注释被解成乱码，报的是"表达式或语句中的 '.' 后缺少表达式"）。**新增或改写 `.ps1` 后确认首三字节是 `EF BB BF`**（用 `python -c "open(f,'rb').read(3)"` 或 `head -c 3 | xxd -p` 查），否则守卫形同虚设。另外：`[Parameter(Mandatory)]` 的脚本在 5.1 下不给参数会先报"缺少参数"，给了参数才会看到守卫提示。
+- **别在 MSBuild 编译进行中改源文件，也别在编译时跑反向验证**：文件被编译进程占着，Edit 会 `EPERM` 失败；`verify_source_invariant_checks.ps1` 是"原地破坏 → 跑检查 → 按原字节还原"，还原那一步撞上占用会失败（脚本现在会重试并逐个还原、失败就报出来，但最省事的做法就是等编译结束再跑）。
+- 语料：实机大语料在 `D:\Downloads\test`（**只读**，别往里写）；自己造的语料放 `%TEMP%`。文件名带空格时给程序传参要用 null 分隔的写法。
 
 ## 构建前提
 
@@ -103,8 +206,28 @@ pwsh tools/verify_source_invariant_checks.ps1
   `include/*.h` 全部在列、工程条目都指向存在的文件、`.vcxproj` 与 `.filters` 一一对应），
   反向验证在 `tools/verify_source_invariant_checks.ps1` 里。加文件后忘了跑生成器时，跑一次即修正。
 - `JarkViewer.vcxproj` 中 `VcpkgEnabled=false`，默认使用仓库内的静态库目录：`JarkViewer/lib*`（含 `libffmpeg`、`libopencv`、`libjxl`、`libavif`、`libexiv2`、`libwebp2`）、`JarkViewer/include`。
-- README 说明第三方静态库需从 release 的 `static_lib` 包准备；如果改为 vcpkg，需要在项目属性中启用并补齐依赖。
-- **OpenCV 不在 vcpkg 里，是源码自建**：`pwsh tools/build-opencv.ps1 [-Version 4.14.0] -Install` 一步到位（拉源码 → 打 `tools/opencv-jarkviewer.patch` → CMake 配置 → 编译 → 安装），`-Install` 再把产物复制进 `JarkViewer/libopencv/` 与 `JarkViewer/include/opencv2/`。脚本里的 CMake 参数是从 4.13.0 那版的构建树逐项对齐来的：world + opencv_contrib + nonfree + 自带 3rdparty（jpeg/png/tiff/webp/openjpeg/openexr/zlib）、`/MT` 静态 CRT、只出 Release；**IPP / IPP-IW / ITT 已关闭**（原本那版是开的）——IPP 的静态 blob 一项就占 exe 约 25 MiB，而 4.14 里 IPP 早就不覆盖看图主路径了（`resize`/`warpAffine`/`cvtColor`/`imdecode` 的源码里没有一处 `ippi*` 调用，`Mat::convertTo` 的 IPP 调用被上游注释成 `[TODO] Recover IPP calls`）。实测方式是把工程那份 `opencv_world` 单独编个基准、用 `OPENCV_IPP=disabled` 对拍 21 项操作（4000x3000、12 线程）：显示主路径全部无差异，`copyTo`/`moments`/`morphologyEx` 关掉反而快 1.8~2.4 倍，只有 `bilateralFilter` 与 `Sobel` 是 IPP 真快（本工程一次都没调用）。判断「要不要开回来」先跑这个对拍，别凭印象；**关掉** dnn/objdetect/datasets（连带 aruco/face/text/wechat_qrcode 不参与编译）、CUDA、OpenGL、Vulkan、GDAL、GDCM、Jasper、AVIF、JPEG XL、OpenCV 自带的 FFmpeg/GStreamer（工程用的是自己那份 FFmpeg）。改这些参数会让产出与 README 描述的静态库包对不上，升级版本时只改 `-Version`。补丁内容：① `modules/imgcodecs/src/loadsave.cpp` 去掉图像分辨率限制（宽/高 `1<<20`、总像素 `1<<30` 三个硬上限）；② `modules/highgui/src/window_w32.cpp` 的窗口光标 `IDC_CROSS` → `IDC_ARROW`。两处代码在 4.13/4.14 里完全一致、行号相同。升级到 4.14 时新 OpenCL 头多出 `HAVE_OPENCL_D3D11_NV`，是上游版本差异，不影响本工程用到的功能（imgcodecs/imgproc/core）。
+- **第三方静态库从哪来**：仓库不自带 `.lib`（体积大、不进 git），开发前需从
+  [releases/tag/static_lib](https://github.com/jark006/JarkViewer/releases/tag/static_lib) 下载对应版本的静态库包，
+  按说明解压到 `JarkViewer/lib*` 与 `JarkViewer/include`。除 `OpenCV` 外都来自 vcpkg 的
+  `x64-windows-static`（项目用 `Visual Studio 2026` 开发）。自己装一套的话（装了之后在项目属性里启用 vcpkg）：
+  ```sh
+  vcpkg install --triplet x64-windows-static ^
+      x265 zlib libyuv minizip[core,bzip2] ^
+      exiv2[core,bmff,png,xmp] libavif[core,aom,dav1d] libjxl libheif[core,hevc] ^
+      libraw[core,dng-lossy,openmp] lunasvg directxtex ^
+      "ffmpeg[all,amf,aom,ass,avcodec,avdevice,avfilter,avformat,bzip2,dav1d,fontconfig,freetype,fribidi,iconv,ilbc,lzma,modplug,mp3lame,nvcodec,opencl,opengl,openh264,openjpeg,openmpt,opus,qsv,sdl2,snappy,soxr,speex,srt,ssh,swresample,swscale,theora,vorbis,vpx,vulkan,webp,xml2,zlib]"
+  ```
+  `ffmpeg` 必须带这串特性：默认特性会少掉 H.264/HEVC/VP8/VP9/AV1/Opus/Vorbis 一大半编解码器，
+  实况照片与手机视频就播不动了。**经典模式下 `vcpkg install` 不会升级已装过的包**（同名旧版本直接报
+  "already installed" 跳过），升级要显式跑 `vcpkg upgrade --no-dry-run --triplet x64-windows-static`。
+- ⚠️ **libheif / libde265 必须用修复版本**：`lib/heif.lib` 与 `lib/libde265.lib` 需来自 **libheif ≥ 1.22.0**、
+  **libde265 ≥ 1.0.17**（当前 1.23.5 / 1.1.3）。旧版本带 **CVE-2026-32741**（libheif 解掩码图时按 `iloc`
+  长度直接 `memcpy` 到按图像尺寸分配的缓冲区，堆溢出）与 **CVE-2026-33165**（libde265 在 SPS 变更后越界写
+  2 字节），一个恶意文件就能触发。**只换头文件没有意义**——有漏洞的是预编译的 `.lib`，而且会造成头/库不一致。
+- 源码只需要最新提交（历史提交里有大量占空间的冗余文件）：`git clone git@github.com:jark006/JarkViewer.git --depth=50`。
+  想快速理解模块实现，可以看项目的 [DeepWiki](https://deepwiki.com/jark006/JarkViewer) 与
+  [Zread](https://zread.ai/jark006/JarkViewer)（AI 生成的结构化说明，两份 README 的顶部徽章也是这两个入口）。
+- **OpenCV 不在 vcpkg 里，是源码自建**：`pwsh tools/build-opencv.ps1 [-Version 4.14.0] -Install` 一步到位（拉源码 → 打 `tools/opencv-jarkviewer.patch` → CMake 配置 → 编译 → 安装），`-Install` 再把产物复制进 `JarkViewer/libopencv/` 与 `JarkViewer/include/opencv2/`。脚本里的 CMake 参数是从 4.13.0 那版的构建树逐项对齐来的：world + opencv_contrib + nonfree + 自带 3rdparty（jpeg/png/tiff/webp/openjpeg/openexr/zlib）、`/MT` 静态 CRT、只出 Release；**IPP / IPP-IW / ITT 已关闭**（原本那版是开的）——IPP 的静态 blob 一项就占 exe 约 25 MiB，而 4.14 里 IPP 早就不覆盖看图主路径了（`resize`/`warpAffine`/`cvtColor`/`imdecode` 的源码里没有一处 `ippi*` 调用，`Mat::convertTo` 的 IPP 调用被上游注释成 `[TODO] Recover IPP calls`）。实测方式是把工程那份 `opencv_world` 单独编个基准、用 `OPENCV_IPP=disabled` 对拍 21 项操作（4000x3000、12 线程）：显示主路径全部无差异，`copyTo`/`moments`/`morphologyEx` 关掉反而快 1.8~2.4 倍，只有 `bilateralFilter` 与 `Sobel` 是 IPP 真快（本工程一次都没调用）。判断「要不要开回来」先跑这个对拍，别凭印象；**关掉** dnn/objdetect/datasets（连带 aruco/face/text/wechat_qrcode 不参与编译）、CUDA、OpenGL、Vulkan、GDAL、GDCM、Jasper、AVIF、JPEG XL、OpenCV 自带的 FFmpeg/GStreamer（工程用的是自己那份 FFmpeg）。改这些参数会让产出与发布出去的 `static_lib` 包对不上，升级版本时只改 `-Version`。补丁内容：① `modules/imgcodecs/src/loadsave.cpp` 去掉图像分辨率限制（宽/高 `1<<20`、总像素 `1<<30` 三个硬上限）；② `modules/highgui/src/window_w32.cpp` 的窗口光标 `IDC_CROSS` → `IDC_ARROW`。两处代码在 4.13/4.14 里完全一致、行号相同。升级到 4.14 时新 OpenCL 头多出 `HAVE_OPENCL_D3D11_NV`，是上游版本差异，不影响本工程用到的功能（imgcodecs/imgproc/core）。
 - `JarkViewer/libopencv/zlib.lib` 已换成 **zlib-ng 的 compat 构建**（大 PNG 解压约快 25%）。compat 模式不改符号名，OpenCV 是最终链接时才解析 inflate，所以是原地替换、不用重建 OpenCV；但 **include 下的 `zlib.h`/`zconf.h`/`zlib_name_mangling.h` 必须与 .lib 是同一来源**。换机器或重建静态库环境时跑一次 `pwsh tools/build-zlib-ng.ps1 -Install`（原件备份在同目录 `zlib-1.3.1.lib`；头文件回退用 git checkout）——**必须在 `build-opencv.ps1 -Install` 之后跑**，否则会被 OpenCV 自带的那份 zlib 覆盖回去。
 - **升级静态库时会变的链接清单**（`ImageDatabase.h` 的 `#pragma comment(lib, …)` 与
   `JarkThumbnailProvider.vcxproj` 的 `AdditionalDependencies`）：升级到 ffmpeg 9.0.2 那一轮踩到的坑——
@@ -316,7 +439,7 @@ pwsh tools/verify_source_invariant_checks.ps1
   `DXGI_SWAP_EFFECT_DISCARD` + 单缓冲在本机会出现“Present 返回成功但窗口全白”，
   改回旧模型前请先复现验证；`WM_PAINT` 与尺寸变化会置 `m_presentRequested`，
   空闲分支据此补一次呈现。
-- `JarkViewer/include/Localization.h` 与 `src/Localization.cpp` 管界面语言（简体中文/繁體中文/English/日本語/한국어/Русский）：`UIStringTable[stringID][语言]` 与 `UIStringTableWide[stringID][语言]` 两张表（前者供画布文字、后者供 Win32 API；同 ID 文案不同是历史遗留，新增文案请追加到表尾）。`getUIString()` 按当前语言取用并在缺失时回退到英文、简体中文；`getUIStringW()` 由 UTF-8 转换而来。帮助/关于页与主页/解码失败画面都改为按语言的文字排版（前两者是 ImGui，后者由 `InfoScreen` 画到画布），不再有按语言分套的资源图；`prefersChineseResources()` 现在只决定 **EXIF 标签文案**用中文还是英文（简繁→中文，其余→英文）。命令行 `--lang 0..5` 可临时指定语言。新增语言时：`Language` 枚举、两张表每一行的新列（顺序对齐、数量断言）、`languageFromSystem()`、`languageDisplayName()`、设置页语言单选项，缺一不可。
+- `JarkViewer/include/Localization.h` 与 `src/Localization.cpp` 管界面语言（简体中文/繁體中文/English/日本語/한국어/Русский）：`UIStringTable[stringID][语言]` 与 `UIStringTableWide[stringID][语言]` 两张表（前者供画布文字、后者供 Win32 API；同 ID 文案不同是历史遗留，新增文案请追加到表尾）。`getUIString()` 按当前语言取用并在缺失时回退到英文、简体中文；`getUIStringW()` 由 UTF-8 转换而来。帮助/关于页与主页/解码失败画面都改为按语言的文字排版（前两者是 ImGui，后者由 `InfoScreen` 画到画布），不再有按语言分套的资源图；`prefersChineseResources()` 现在只决定 **EXIF 标签文案**用中文还是英文（简繁→中文，其余→英文）。命令行 `--lang 0..5` 可临时指定语言，**但要在设置文件读盘之后再盖**：`loadSettings()` 是整体赋值（`settingParameter = tmp`），窗口对象构造时会把窗口创建之前设好的分量冲掉——命令行参数走 `GlobalVar::pendingLanguageOverride`，读完盘应用、退出写盘时换回文件里的原值（临时语言不落盘）；回归 `tools/test_language_override.ps1`（撤掉那几行就会报 FAIL）。新增语言时：`Language` 枚举、两张表每一行的新列（顺序对齐、数量断言）、`languageFromSystem()`、`languageDisplayName()`、设置页语言单选项，缺一不可。
 - 图像内文字渲染（标注文字等）在 `JarkViewer/include/TextRenderer.h` 与 `src/TextRenderer.cpp`：
   用 stb_truetype 按**真实字形度量**（进退宽度/字距/bearing）绘制 UTF-8 文本，支持多行与按宽度折行，
   字形位图按 (字号, 码位) 缓存。字体全部取系统字体（微软雅黑/等线/黑体/宋体…），工程不再内嵌 ttf。
@@ -404,9 +527,9 @@ pwsh tools/verify_source_invariant_checks.ps1
 
 ## 修改注意事项
 
-- `SettingParameter` 按固定 4096 字节设置文件持久化；不要随意调整成员顺序、大小或删除保留字段，否则会破坏旧设置兼容性。
+- `SettingParameter` 按固定 4096 字节设置文件持久化；不要随意调整成员顺序、大小或删除保留字段，否则会破坏旧设置兼容性。**读盘是整体赋值**（`settingParameter = tmp`，`loadSettings()`）：任何"在窗口构造之前"写进 `settingParameter` 的东西都会被文件覆盖——命令行/环境变量之类的临时覆盖要在读盘之后再应用（`--lang` 就是这么修的），否则表现为"参数完全没生效"。
 - 新增图片格式时，同时检查 `ImageDatabase::supportExt` / `supportRaw`、`FormatSniffer`（文件头嗅探与扩展名映射）、`decodeByFormat()` 分支、EXIF/方向处理、设置页文件关联列表和 README 格式列表。
-- `buildRelease.ps1` 必须保持 ASCII-only，且不能用 `ProcessStartInfo.ArgumentList`（Windows PowerShell 5.1 不支持，会静默丢掉全部参数并退化成默认 Debug 构建）。
+- `buildRelease.ps1`：**PowerShell 7 专用**（脚本自带 5.1 拒绝守卫，别把守卫删了），构建参数走 `ProcessStartInfo.Arguments` 字符串而不是 `ArgumentList`——少一处平台差异，命令行也一眼看得全。历史上用 5.1 跑 `ArgumentList.Add()` 会静默丢掉全部参数，MSBuild 退化成默认 Debug 构建。
 - `JarkViewerApp::drawCanvas()` 有两条必须同时成立的规则：**几何尺寸用名义尺寸**（`curPar.width/height`，矢量图 100% 时屏幕上应有的尺寸），**采样密度用位图分辨率**（`srcScaleX/srcScaleY = 位图尺寸 / 名义尺寸`）。矢量图的位图分辨率会随缩放变化，任何"用 `srcImg.cols/rows` 当几何尺寸"或"用 `zoomInvert` 直接换算位图坐标"的写法都会让画面尺寸/位置错乱。
 - Release 构建默认不打印日志，排障时用 `--log` 或 `JARKVIEWER_LOG=1`（写入 `%TEMP%\JarkViewer.log`）；新增诊断日志直接写 `JARK_LOG(...)` 即可，`isLogEnabled()` 为假时不会计算参数。
 - 查"启动/打开一张图为什么慢"用 `JARKVIEWER_STARTUP_TRACE=<文件路径>` 环境变量（`jarkUtils::startupTraceMark()`）：记录 begin / 窗口就绪并派发解码 / 设备与 UI 就绪 / 首帧就绪 / 首帧绘制各阶段相对起点的毫秒数；没设环境变量时零开销。新增关键阶段时在对应位置补一个 `startupTraceMark()`。
@@ -418,7 +541,7 @@ pwsh tools/verify_source_invariant_checks.ps1
   ```
   系统模块（ntdll/kernel32/ucrtbase/XAudio2）自带符号，`srv*` 够用；要自己的符号就得留 PDB——`-p:` 全局属性**覆盖不了** vcxproj 的 ItemDefinitionGroup 元数据，只能直接把 `DebugInformationFormat` 改成 `ProgramDatabase`、`GenerateDebugInformation` 改成 `true` 再 Rebuild（改完记得还原）。这台机器不是管理员，写不了 WER 的 `LocalDumps` 注册表项、也没有 `CrashDumps` 目录，所以进程内 dump 是唯一顺手的路子。
 - UI 文本来自 `stringRes`：**两张表同名不同文案**——`UIStringTable[stringID][语言]` 供 ImGui/画布，`UIStringTableWide[stringID][语言]` 供 Win32（窗口标题、菜单、消息框），写 `getUIStringW(id)` 时一定要核对**宽表**里那个 ID 是什么（历史上出过把消息框正文写成"关于 (&A)"菜单项的事故）。`getUIStringW` 返回 `UIStringWide`（自带缓冲区、可隐式转 `const wchar_t*`）：旧实现共用同一个 thread_local 缓冲，`MessageBoxW(h, getUIStringW(a), getUIStringW(b))` 后一次转换会冲掉前一次的指针内容（标题乱码）。需要指针活过当前语句时（如 `BROWSEINFO.lpszTitle`）用 `.str()` 存一份 `std::wstring`；丢给 `std::format`/`wstring_view` 参数时要显式 `.c_str()`。**新增文案追加到对应表尾**，并在使用处写成具名常量（各窗口文件里已有 `kStr*` 常量块）。改动后再跑一次 `--probe --lang-test`，它会打印窄表与宽表各若干条文案用于确认 ID 没有错位。
-- README 记录的 OpenCV 预编译库带有源码改动：移除 `imgcodecs` 分辨率限制，并将 HighGUI Win32 窗口光标从 `IDC_CROSS` 改为 `IDC_ARROW`；替换或重建 OpenCV 时要保留这些行为。
+- 发布包里的 OpenCV 预编译库带有源码改动：移除 `imgcodecs` 分辨率限制，并将 HighGUI Win32 窗口光标从 `IDC_CROSS` 改为 `IDC_ARROW`；替换或重建 OpenCV 时要保留这些行为（补丁与参数见「构建前提」）。
 - 不要提交 `.vcxproj.user`、`.vs/` 或机器相关的本地库路径。
 - **渐进加载**：当前图的解码不阻塞主循环——`requestCurrentImage()` 用 `LRU::tryGetPtr` 非阻塞查缓存，未命中就挂起，主循环每帧 `updatePendingLoad()` 轮询，就绪后 `adoptCurrentImage()` 收尾。等待期间：启动/主页场景用主页画面垫底（`allowPreviewSwap_`），缩略图（ThumbnailService，持久缓存命中时毫秒级）先到就先顶上当模糊预览；切图场景保留旧图停留（相邻图通常已被预取，点翻页零等待）。客户区左上角画「加载中 X.Xs」浮标（逐帧跳秒——画面稳定分支要按 `pendingLoad_` 持续出帧），超过 60 秒退回一次阻塞等待兜底。**新增"载入当前图"路径时一律用 `requestCurrentImage()`**，不要再直接调 `getSafePtr`（会退回"翻页等解码"）。
 - **动图播放计时**（`DrawScene` 的动画块）：帧推进的剩余时间 `delayRemain` 按**微秒**累计并跨帧保留（欠帧时 `while (delayRemain <= 0)` 循环推进、推进后把超出的部分留给下一帧），不要退回"整毫秒截断"或"每帧重置余量"——主循环每帧 10~16ms，零头被截掉/丢弃会逐帧累积成慢放（100ms 的帧实测会播成 103~109ms）；起播、暂停恢复、切图后要经 `animClockArmed` 重新对齐计时起点，否则加载或暂停的耗时会被算进第一帧（首帧长时间不动）。
