@@ -10,6 +10,10 @@
 // 打不开或没有视频轨时退化成 InfoScreen 静态画面（失败占位 / 音频画面），不画条带。
 //
 // 键位与条带规格见 AGENTS.md「视频播放器」一节。
+//
+// 窗口几何（位置/大小/最大化/所在显示器）与看图窗口**共用同一份记忆**
+// （SettingParameter::rect/showCmd/monitorDevice）：谁退出谁写、谁启动谁读，
+// 所以"上次看视频调出来的窗口尺寸"会原样继承给下次看图，反之亦然。
 
 #include "D3D11App.h"
 
@@ -30,9 +34,6 @@ public:
     // 退出时若还想打开别的文件（拖入图片 / Ctrl+O 选到图片），由 wWinMain 取走它、
     // 据此决定下一轮开哪个窗口（视频→播放器，图片→看图）
     std::wstring takeHandoffPath() { return std::exchange(handoffPath_, {}); }
-
-    // 播放器窗口的几何不回写设置：和看图窗口共用一个 SettingParameter::rect 会互相覆盖
-    bool persistsWindowPlacement() const override { return false; }
 
     // 没有右键菜单（菜单键 / Shift+F10 也不弹看图那套菜单）
     bool showsContextMenu() const override { return false; }

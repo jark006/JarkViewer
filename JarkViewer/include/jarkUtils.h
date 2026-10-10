@@ -635,6 +635,11 @@ public:
     static bool IsFullScreen();
     // 只在状态不同时切换（幻灯片播放要求“确保全屏”，不能无脑 toggle）
     static void SetFullScreen(HWND hwnd, bool fullScreen);
+    // 进全屏那一刻的窗口状态（showCmd 区分普通/最大化，rcNormalPosition 是窗口化矩形）。
+    // 窗口几何回写用它：退出程序时正处在全屏，那次全屏是临时状态、不该变成下次的窗口尺寸，
+    // 该记的是**进全屏之前**用户看到的样子（用户在全屏里也没法挪窗口/改尺寸）。
+    // 没进过全屏返回 false。
+    static bool GetPreFullScreenPlacement(WINDOWPLACEMENT& placement);
 
     // 按设置里的排序方式重排图片文件列表（整路径）；
     // currentIndex（可为 -1）指出当前图片，重排后原地更新为它在新顺序中的下标。

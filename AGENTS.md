@@ -67,6 +67,10 @@ pwsh tools/test_navigation.ps1 -Exe x64/Release/JarkViewer.exe -Image <图片> -
 # 播放器暂停态改窗口尺寸后画面还在不在（回归：曾整窗全黑）
 pwsh tools/test_player_resize.ps1 -Exe x64/Release/JarkViewer.exe -Video <文件> -OutDirectory <截图目录>
 
+# 窗口几何记忆在两种模式间互继承（含"退出时正全屏/最大化"两个例外；在 %TEMP% 的独立
+# exe 副本上跑，设置文件写在 exe 旁边，不会动到用户自己的 JarkViewer.db）
+pwsh tools/test_placement_memory.ps1 -Exe x64/Release/JarkViewer.exe -Media <视频> -Image <图片>
+
 # 播放器放大画面有没有经过滤波（黑白棋盘格视频 + 中间调断言；回归：曾用最近邻放大，颗粒感很重）
 pwsh tools/test_player_scaling.ps1 -Exe x64/Release/JarkViewer.exe -Video <棋盘格视频> -OutDirectory <截图目录>
 
@@ -330,7 +334,9 @@ pwsh tools/verify_source_invariant_checks.ps1
     - 这两条加上电平标定/衰减单调，`--probe --spectrum-test` 全钉着（17 项，纯合成不需要语料；把直流阻断绕过、相位改成"取最新一帧"都会让它报 FAIL——直流那条反向验证过）。seek 会让 `applyAudioSeek()` 调 `reset()` 作废旧位置的帧；只有纯音频画面才 `setSpectrumEnabled(true)`，视频/实况那条路不白算 FFT。播放器在没有视频帧时画它：`VideoPlayerApp::updatePlaceholder()` 一个缓存位图管"打开失败"与"纯音频"两种静态画面，`startFile()` 里必须**无条件**把 `placeholder_` 清掉、`placeholderStamp_` 置 0——`infoScreenStamp()` 的指纹里没有文件名（尺寸/DPI/语言/主题），不清就会拿上一片的文件名重画。
   - **看图那条路遇到音频**：`myLoader` 认出 `FileFormat::Audio` 时按"不支持的格式"报告（它由播放器播，不是图片损坏），`--probe` 另外打一行 media 统计（`video=false` + 音频轨信息）。`JarkViewer/src/FormatSniffer.cpp` 里判 Audio 的**只有无歧义的魔数**（`fLaC`/`OggS`/`ID3`/`RIFF`+`WAVE`/`FORM`+`AIFF`/`MAC `/`wvpk`/`TTA1`/`DSD `/`#!AMR`）；`mp4/mkv/ogg` 这类容器照旧判 `Video`——它们可能有视频也可能没有，"有没有视频轨"由播放器实际探测，按扩展名/魔数硬判成音频反而会与入口判定打架。
   - **数据来源是整文件内存映射**（`MappedFileReader`，原在 `ImageDatabase.cpp` 的匿名命名空间里，提到公共头共用）：不再把视频读进内存、**没有 256 MiB 上限**（`ImageDatabase` 侧那条老上限与 `VideoSource` 的整份拷贝只留给实况照片/`--probe`/批处理/缩略图，没动）。映射**必须活得比 `MediaPlayer` 久**（`MediaDecoder::open()` 只持 span 指针、不拷贝数据），`VideoPlayback::close()` 里先 stop 再 reset 映射就是这个原因。
-  - **窗口几何不回写设置**：`D3D11App::persistsWindowPlacement()` 虚开关，播放器返回 false。两个窗口共用一个 `SettingParameter::rect`，都写就会互相覆盖（下次开图变成播放器窗口的大小）。
+  - **窗口几何与看图窗口共用一份记忆**（`SettingParameter::rect`/`showCmd`/`monitorDevice`）：两个窗口是同一个进程里二选一的顶层窗口，谁退出谁在 `D3D11App::saveSettings()` 里写、谁启动谁在 `Initialize()` 里读（`loadSettings()` 在构造函数里跑，换窗口的接力循环里第二个窗口会重新读盘）。所以**"上次看视频调出来的窗口尺寸会继承给下次看图，反之亦然"**是设计目标，不是 bug；别再按模式分开记。
+    唯一的例外是**退出时正处在全屏**（播放器的 F/F11/双击画面、看图的幻灯片）：窗口那时被临时改成了无边框满屏，直接存下来会让下次启动变成"满屏带标题栏"的怪窗口；而"全屏时干脆不写"又会丢掉用户进全屏**之前**做的调整（实测：调好尺寸 → F11 → 退出 → 下次开的还是启动时那个尺寸）。所以 `jarkUtils::SetFullScreen(hwnd, true)` 在进全屏那一刻额外记一份 `WINDOWPLACEMENT`，`saveSettings()` 在 `IsFullScreen()` 时改用它（`GetPreFullScreenPlacement`）——用户在全屏里挪不动窗口，那份就是"最后看到的窗口化样子"，最大化状态也一并保住。
+    回归：`pwsh tools/test_placement_memory.ps1 -Exe x64/Release/JarkViewer.exe -Media <视频> -Image <图片>`——五项断言：播放器调成 A 尺寸退出 → 看图必须开在 A；看图调成 B 退出 → 播放器必须开在 B；退出时正全屏 → 下次必须回到进全屏前的窗口化尺寸（而不是 2560x1440 那块屏）；最大化退出 → 下次也最大化。它在 `%TEMP%` 的**独立 exe 副本**上跑（设置文件写在 exe 旁边），不会动用户的 `JarkViewer.db`。
   - **键位**：空格播放/暂停（**播完停在最后一帧**并转入暂停态，再按空格从头重播）；A/D 与 ←/→ 播放中 ±5 秒、**暂停中单帧进退**（纯音频没有帧，这一档退化成 ±5 秒）；W/S 与 ↑/↓ 音量 ±5%（初始 50%、**不落盘**）；滚轮也是音量；Home/End 开头/结尾；F/F11/双击画布全屏；Ctrl+O 换片（选到图片则交接给看图窗口）；Ctrl+W/ESC 退出；**其余键一律吞掉**（播放器里不存在"顺势落到看图那套分支"这回事）。**鼠标单击画面也是播放/暂停**（按下与抬起都落在画面上才算，避免"按在条带上、抬在画面上"被误判）；双击全屏与它是两条路——两次单击各切一次、正好抵消，代价只是中间一下很短的停顿，换来单击的零延迟。
   - **拖动进度条**：按下即暂停并 `SetCapture`（拖到条带外、拖出客户区也跟随，`OnPointerCancel` 收尾）；拖动中每 ~60 ms 只发一次**关键帧预览** seek（`SeekMode::KeyFrame`），被节流挡下的最新目标由 `takeFrame()` 到期补发（用户停手后那一下不能丢）；松手发**精确** seek（`SeekMode::Exact`）。三条不变式，`--probe --video-test` 盯着：①拖动中时钟停在把手位置；②**一下只交一帧预览**（`MediaPlayer` 的 `previewHold`：关键帧交出后就停下等下一次 seek。少了它，解码线程会顺着关键帧把"还没到目标"的帧一帧帧送出来——它们的 PTS 都早于已重设到目标的时钟、全都算到点，画面看起来像在追赶）；③松手后**等精确落位再恢复播放**，落位判定用"已交出的帧 PTS ≥ 目标−一帧半"，**不能**只看"落位在途"标志（那个标志由解码线程置位，很可能在本帧取帧之前就被消费掉了）。
   - **seek 的实现**：命令按序号发布（`seekTargetMs` + `seekSerial`，两个解码线程各自比对序号、只取最新目标 = 在途旧请求自动作废、不做累积），两个解码器各自 `av_seek_frame`（`MediaDecoder::seek` 里 `AVSEEK_FLAG_BACKWARD` 退到不晚于目标的关键帧再冲解码器状态）；**精确落点靠丢帧**：视频丢"整帧都落在目标之前"的帧、音频裁掉目标之前的样本；丢帧过滤**在缩放/拷贝之前**也做一遍（`MediaDecoder::setSkipBeforeMs`）——从关键帧向前解码要解上百帧，每帧 `sws_scale` + `clone` 就是几毫秒，那是落点耗时的大头（实测 1080p 长 GOP 1.5s → 0.15s、4K 1.5s → 0.4s）。**时钟基线**（`clockBaseMs` + 声卡已播样本数，没有声卡时是墙上时间累计）在 seek 时重设，且**只有一个写者**：有声卡时由音频线程写、没有时由视频线程写，别两边都改。

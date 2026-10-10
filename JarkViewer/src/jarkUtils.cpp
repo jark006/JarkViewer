@@ -542,10 +542,22 @@ namespace {
     DWORD fullScreenPreStyle = 0;
     DWORD fullScreenPreExStyle = 0;
     bool isFullScreen = false;
+    // 进全屏那一刻的窗口状态（showCmd 区分普通/最大化，rcNormalPosition 是窗口化矩形）。
+    // 与 fullScreenPreRect 的区别：那个是"退出全屏时把窗口摆回哪儿"，这个是"这次全屏之前
+    // 用户看到的是个什么窗口"——退出程序时正处在全屏，回写几何记忆要的是后者
+    WINDOWPLACEMENT fullScreenPrePlacement{};
+    bool hasFullScreenPrePlacement = false;
 }
 
 bool jarkUtils::IsFullScreen() {
     return isFullScreen;
+}
+
+bool jarkUtils::GetPreFullScreenPlacement(WINDOWPLACEMENT& placement) {
+    if (!hasFullScreenPrePlacement)
+        return false;
+    placement = fullScreenPrePlacement;
+    return true;
 }
 
 // 只在状态需要变化时动作（幻灯片播放要"确保全屏"，不能无脑 toggle）
@@ -558,6 +570,10 @@ void jarkUtils::SetFullScreen(HWND hwnd, bool fullScreen) {
         GetWindowRect(hwnd, &fullScreenPreRect);
         fullScreenPreStyle = GetWindowLong(hwnd, GWL_STYLE);
         fullScreenPreExStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+
+        // 另外记一份"窗口状态"给几何记忆用（见 GetPreFullScreenPlacement）
+        fullScreenPrePlacement = { .length = sizeof(WINDOWPLACEMENT) };
+        hasFullScreenPrePlacement = GetWindowPlacement(hwnd, &fullScreenPrePlacement) != FALSE;
 
         // 切换到全屏模式
         HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);

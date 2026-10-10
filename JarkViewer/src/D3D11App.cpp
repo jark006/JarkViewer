@@ -195,27 +195,38 @@ void D3D11App::loadSettings() {
 }
 
 void D3D11App::saveSettings() const {
-    // 窗口几何只在"这就是记几何的那个窗口"时才回写：视频播放器与看图窗口是同一个进程里
-    // 二选一的顶层窗口，都写同一个 rect 的话会互相覆盖（下次开图变成播放器窗口的大小）
-    if (persistsWindowPlacement()) {
-        WINDOWPLACEMENT wp{ .length = sizeof(WINDOWPLACEMENT) };
+    // 窗口几何是**两种模式共用**的一份记忆：看图窗口与播放器是同一个进程里二选一的顶层
+    // 窗口，谁退出谁写（`Initialize` 里两边也读同一份 rect/showCmd）。于是"上次看电影
+    // 调出来的窗口大小"会原样继承给下次看图，反过来也一样。**别再按模式分开记**：
+    // 分开记就等于每次换模式都跳回默认尺寸。
+    //
+    // 唯一的例外是"退出时正处在全屏"（播放器的 F/F11/双击画面、看图的幻灯片）：
+    // 那时窗口被临时改成了无边框满屏，把它当成几何记忆存下来，下次启动会变成一个
+    // 满屏带标题栏的怪窗口；而**跳过不写**又会丢掉用户进全屏之前的调整（实测：调好
+    // 尺寸 → F11 → 退出 → 下次开的是启动时那个尺寸）。所以用 jarkUtils 在**进全屏那一刻**
+    // 记下的窗口状态——用户在全屏里挪不动窗口，那份就是"用户最后看到的窗口化样子"。
+    WINDOWPLACEMENT wp{ .length = sizeof(WINDOWPLACEMENT) };
+    const bool fromPreFullScreen = jarkUtils::IsFullScreen() &&
+        jarkUtils::GetPreFullScreenPlacement(wp);
+    if (!fromPreFullScreen)
+        (void)GetWindowPlacement(m_hWnd, &wp);
 
-        if (GetWindowPlacement(m_hWnd, &wp) && wp.showCmd == SW_NORMAL) {
-            GlobalVar::settingParameter.showCmd = SW_NORMAL;
-            GlobalVar::settingParameter.rect = wp.rcNormalPosition;
-        }
-        else {
-            GlobalVar::settingParameter.showCmd = SW_MAXIMIZE;
-            GlobalVar::settingParameter.rect = {};
-        }
+    if (wp.showCmd == SW_NORMAL) {
+        GlobalVar::settingParameter.showCmd = SW_NORMAL;
+        GlobalVar::settingParameter.rect = wp.rcNormalPosition;
+    }
+    else {
+        GlobalVar::settingParameter.showCmd = SW_MAXIMIZE;
+        GlobalVar::settingParameter.rect = {};
+    }
 
-        // 记住窗口所在显示器（最大化/全屏也记）：下次启动优先回到这块屏
-        if (HMONITOR monitor = ::MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST)) {
-            MONITORINFOEXW info{};
-            info.cbSize = sizeof(MONITORINFOEXW);
-            if (::GetMonitorInfoW(monitor, &info))
-                wcscpy_s(GlobalVar::settingParameter.monitorDevice, info.szDevice);
-        }
+    // 记住窗口所在显示器（最大化也记）：下次启动优先回到这块屏。
+    // 全屏时窗口铺满的正是它所在的那块屏，MonitorFromWindow 给的还是同一块
+    if (HMONITOR monitor = ::MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST)) {
+        MONITORINFOEXW info{};
+        info.cbSize = sizeof(MONITORINFOEXW);
+        if (::GetMonitorInfoW(monitor, &info))
+            wcscpy_s(GlobalVar::settingParameter.monitorDevice, info.szDevice);
     }
 
     memcpy(GlobalVar::settingParameter.header, GlobalVar::settingHeader.data(), GlobalVar::settingHeader.length());
