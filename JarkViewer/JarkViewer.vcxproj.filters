@@ -596,9 +596,6 @@
     <ClInclude Include="include\Localization.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="include\LRU.h">
-      <Filter>Core</Filter>
-    </ClInclude>
     <ClInclude Include="include\MappedFileReader.h">
       <Filter>Core</Filter>
     </ClInclude>
@@ -1198,6 +1195,9 @@
     </ClInclude>
     <ClInclude Include="include\ffmpeg\libswscale\version_major.h">
       <Filter>ThirdParty\ffmpeg\libswscale</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ImageAssetCache.h">
+      <Filter>ThirdParty\single-header</Filter>
     </ClInclude>
     <ClInclude Include="include\jxl\cms.h">
       <Filter>ThirdParty\libjxl</Filter>

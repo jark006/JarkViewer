@@ -1789,6 +1789,188 @@ namespace {
         return report;
     }
 
+    // 图像缓存自检：容量是"条数 + 总字节"双重约束，字节那条是给大图兜底的——一张
+    // 43890x38875 的扫描件解码后 6.36GB，按条数留 4 张就是 25GB（32GB 机器直接爆）。
+    // 这里直接继承生产用的 ImageAssetCache，loader 造 1KB 的小真图（量的是同一套
+    // ImageAsset::memoryBytes()），把预算淘汰、LRU 顺序、"外部持有的条目踢了也不省内存"、
+    // 单条超预算、最少留 2 张这几种情况全钉住。用例里每条一样大，所以 unit 的整数倍
+    // 就是预算，"能装几条"一眼能对上。
+    std::string runCacheTest() {
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+
+        const auto makeAsset = [] {
+            ImageAsset asset;
+            asset.primaryFrame = cv::Mat(1, 1024, CV_8UC1); // 1KB
+            return asset;
+        };
+        const size_t unit = makeAsset().memoryBytes(); // 一条（含 sizeof 等固定开销）的字节数
+
+        // 局部的测试缓存：loader 造 1KB 的小真图（局部类抓不到外面的 lambda，自己造一遍）
+        class TestCache : public ImageAssetCache {
+        public:
+            static ImageAsset smallAsset() {
+                ImageAsset asset;
+                asset.primaryFrame = cv::Mat(1, 1024, CV_8UC1);
+                return asset;
+            }
+            ImageAsset loader(const std::wstring&) override { return smallAsset(); }
+        };
+        const auto put = [](TestCache& cache, const wchar_t* key) {
+            cache.put(key, TestCache::smallAsset());
+        };
+
+        // 1) 预算满了从最久未用的那头踢
+        {
+            TestCache cache;
+            cache.setCapacity(64);
+            cache.setMinEntries(1);
+            cache.setByteBudget(3 * unit);
+            put(cache, L"1");
+            put(cache, L"2");
+            put(cache, L"3");
+            check(cache.size() == 3 && cache.bytes() == 3 * unit,
+                std::format("预算内三条都在（{} 条 / {} 字节）", cache.size(), cache.bytes()));
+            put(cache, L"4"); // 4*unit > 3*unit：踢最久未用的 1
+            check(cache.size() == 3 && cache.bytes() == 3 * unit,
+                std::format("超预算按最久未用淘汰（剩 {} 条 / {} 字节）", cache.size(), cache.bytes()));
+            check(cache.tryGetPtr(L"1") == nullptr && cache.tryGetPtr(L"2") != nullptr &&
+                cache.tryGetPtr(L"4") != nullptr,
+                "被淘汰的取不到、留着的取得到");
+        }
+
+        // 2) 刚用过的不会被踢（LRU 顺序，不是"按插入时间"）
+        {
+            TestCache cache;
+            cache.setCapacity(64);
+            cache.setMinEntries(1);
+            cache.setByteBudget(2 * unit);
+            put(cache, L"1");
+            put(cache, L"2");
+            cache.tryGetPtr(L"1"); // 用一下 1：队列变成 [1, 2]，最久未用的成了 2
+            put(cache, L"3");      // 3*unit > 2*unit：该踢的是 2，不是刚用过的 1
+            check(cache.tryGetPtr(L"1") != nullptr && cache.tryGetPtr(L"3") != nullptr,
+                "预算内留着的条目都在");
+            check(cache.tryGetPtr(L"2") == nullptr && cache.bytes() == 2 * unit,
+                std::format("踢掉的是最久未用的那条，不是刚用过的（{} 字节）", cache.bytes()));
+        }
+
+        // 3) 至少留 2 张（用户口径：最少缓存 2 张）——单张都超预算时也保住两条
+        {
+            TestCache cache;
+            cache.setCapacity(64);
+            cache.setByteBudget(unit / 2); // 比任何一条都小
+            put(cache, L"1");
+            put(cache, L"2");
+            check(cache.size() == 2 && cache.bytes() == 2 * unit,
+                std::format("预算装不下两张时仍保住 2 条（{} 条 / {} 字节）", cache.size(), cache.bytes()));
+            put(cache, L"3");
+            check(cache.size() == 2, std::format("第 3 条进来后仍然只有 2 条（{} 条）", cache.size()));
+        }
+
+        // 4) 外部还持有引用的条目：踢了也不释放内存（只是白丢一次命中），所以轮不到它
+        {
+            TestCache cache;
+            cache.setCapacity(64);
+            put(cache, L"1");
+            auto held = cache.tryGetPtr(L"1"); // 模拟主窗口持着当前显示的那张图
+            put(cache, L"2");
+            cache.setByteBudget(2 * unit);
+            put(cache, L"3"); // 3*unit > 2*unit：最久未用的是 1，但它被持有 → 踢 2
+            check(held != nullptr && held->primaryFrame.cols == 1024,
+                "被持有的条目没有被释放（use-after-free）");
+            check(cache.tryGetPtr(L"1") != nullptr && cache.tryGetPtr(L"3") != nullptr,
+                "被持有的条目留在缓存里（踢它不省内存）");
+            check(cache.tryGetPtr(L"2") == nullptr && cache.bytes() == 2 * unit,
+                std::format("踢掉的是没人持有的那条（{} 字节）", cache.bytes()));
+        }
+
+        // 5) 单条就超预算：进来先留着（没得挑），下一条进来时被踢出去，不空转
+        {
+            TestCache cache;
+            cache.setCapacity(64);
+            cache.setMinEntries(1);
+            cache.setByteBudget(unit / 2);
+            put(cache, L"1");
+            check(cache.size() == 1 && cache.bytes() == unit, "单条超预算时不会反复空转（保留它）");
+            put(cache, L"2");
+            check(cache.tryGetPtr(L"1") == nullptr && cache.bytes() == unit,
+                std::format("有别的可踢时立刻回收（{} 字节）", cache.bytes()));
+        }
+
+        // 6) 调小预算立刻回收
+        {
+            TestCache cache;
+            cache.setCapacity(64);
+            cache.setMinEntries(1);
+            put(cache, L"1");
+            put(cache, L"2");
+            put(cache, L"3");
+            check(cache.bytes() == 3 * unit, "不限字节时三条都留着");
+            cache.setByteBudget(unit);
+            check(cache.bytes() <= unit && cache.size() == 1,
+                std::format("调小预算立即回收到 {} 字节", cache.bytes()));
+        }
+
+        // 7) 条数上限仍然兜底（不限字节时），clear 归零
+        {
+            TestCache cache;
+            cache.setByteBudget(0); // 0 = 不限
+            cache.setCapacity(3);
+            for (const wchar_t* key : { L"1", L"2", L"3", L"4", L"5" })
+                put(cache, key);
+            check(cache.size() == 3 && cache.bytes() == 3 * unit,
+                std::format("条数上限兜底（{} 条 / {} 字节）", cache.size(), cache.bytes()));
+            check(cache.tryGetPtr(L"2") == nullptr, "尾部条目被条数上限淘汰");
+            cache.clear();
+            check(cache.size() == 0 && cache.bytes() == 0, "clear 后字节数归零");
+        }
+
+        // 8) 真缓存接上线：预算 = 物理内存的一半（下限 512MB）
+        {
+            MEMORYSTATUSEX status{};
+            status.dwLength = sizeof(status);
+            const bool haveMem = GlobalMemoryStatusEx(&status) != FALSE;
+            const size_t budget = ImageDatabase::defaultCacheBudgetBytes();
+            check(budget >= (size_t(512) << 20), std::format("预算不低于 512MB（{} MB）", budget >> 20));
+            if (haveMem) {
+                // 内存够大时就是内存的一半；内存特别小时落到 512MB 下限
+                const size_t half = static_cast<size_t>(status.ullTotalPhys / 2);
+                check(budget >= (std::min)(half, size_t(512) << 20) &&
+                    budget <= (std::max)(half, size_t(512) << 20),
+                    std::format("预算 = 物理内存的 50%（{} MB / {} MB）",
+                        budget >> 20, status.ullTotalPhys >> 20));
+            }
+
+            ImageDatabase database;
+            check(database.byteBudgetBytes() == budget && database.bytes() == 0,
+                std::format("ImageDatabase 构造后预算已生效（{} MB）", database.byteBudgetBytes() >> 20));
+
+            const auto blob = [](int cols) {
+                ImageAsset asset;
+                asset.primaryFrame = cv::Mat(1, cols, CV_8UC4);
+                return asset;
+            };
+            const size_t single = blob(64).memoryBytes();
+            check(single >= size_t(64) * 4 + sizeof(ImageAsset),
+                std::format("ImageAsset 字节估算含像素（{} 字节）", single));
+            // 共享同一份像素的多个成员只算一次（实况/动图的 primaryFrame 与 frames[0] 是浅拷贝）
+            ImageAsset shared;
+            shared.primaryFrame = cv::Mat(4, 64, CV_8UC4);
+            shared.frames.push_back(shared.primaryFrame);
+            shared.frames.push_back(shared.primaryFrame);
+            check(shared.memoryBytes() < single * 3,
+                std::format("共享像素只算一次（{} 字节）", shared.memoryBytes()));
+        }
+
+        report = std::format("---- 图像缓存自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
+        return report;
+    }
+
     // 色彩管理自检：源与目标同为 sRGB 时变换是恒等的（跳过可省几百毫秒），大图按行并行——
     // 这两类改动出错不会崩也不会报错，只是颜色悄悄变了，必须用像素断言钉住。
     std::string runColorTest() {
@@ -2566,6 +2748,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool navigationTest = false;
     bool colorTest = false;
     bool resampleTest = false;
+    bool cacheTest = false;
     bool spectrumTest = false;
     bool thumbnailTest = false;
     bool shellThumbnailTest = false;
@@ -2614,6 +2797,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--resample-test") {
             resampleTest = true;
+            continue;
+        }
+        if (argv[i] == L"--cache-test") {
+            cacheTest = true;
             continue;
         }
         if (argv[i] == L"--spectrum-test") {
@@ -2749,7 +2936,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && thumbnailWriter < 0) {
+    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && !cacheTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -2773,6 +2960,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (resampleTest) {
         const auto text = runResampleTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (cacheTest) {
+        const auto text = runCacheTest();
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

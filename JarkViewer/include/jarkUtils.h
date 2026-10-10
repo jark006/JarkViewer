@@ -403,6 +403,12 @@ struct ImageAsset {
     PlaceholderKind placeholder = PlaceholderKind::None;
     std::wstring placeholderDetail;          // 展示用补充信息（文件路径或扩展名）
     uint64_t placeholderStamp = 0;           // 生成 primaryFrame 时的 jark::infoScreenStamp
+
+    // 常驻内存的估算（字节）：图像缓存按它做预算淘汰（见 ImageAssetCache；大图只按条数
+    // 留缓存会爆内存）。同一块像素被多个成员共享（实况/动图的 primaryFrame 与 frames[0]
+    // 是浅拷贝）时只算一次；只统计这个 asset 自己持有的部分——编辑器/打印窗口里的副本、
+    // 缩略图服务的位图不在这里。实现见 jarkUtils.cpp（要用到 VectorImage/VideoSource）。
+    size_t memoryBytes() const noexcept;
 };
 
 enum class ActionENUM:int64_t {

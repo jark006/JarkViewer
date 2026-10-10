@@ -9,7 +9,7 @@
 #   6/6b. 视频/音频扩展名清单（代码 ↔ README）一致，且音频不得混进看图/视频清单
 #   6c.  英文 README 的静态/RAW/视频/音频四张清单与代码一致（它曾落后中文一整轮）
 #   7.   PSD 解码顺序是 psd_sdk 优先、stb 兜底（反了 16 位 RLE 会全透明且不报错）
-#   8.   ImageDatabase 析构里先停 LRU 预读线程（不然退出时在途解码访问已释放成员）
+#   8.   ImageDatabase 析构里先停图像缓存预读线程（不然退出时在途解码访问已释放成员）
 #   9.   右键菜单加速键不重复（重复时只有先出现的那个能按）
 #   10.  main.cpp / .rc 字符串版 / .rc 数字版 版本号一致（升级时最容易漏改 .rc 数字）
 #   11.  VS 工程收齐了自有源码/头文件，且 .filters 与 .vcxproj 条目一一对应、路径都存在
@@ -198,7 +198,7 @@ else {
     Report $false "找不到 PSD 解码分支"
 }
 
-# 8. LRU 预读线程在派生类析构里先停
+# 8. 图像缓存预读线程在派生类析构里先停
 $dtorIndex = $imageDbHeader.IndexOf("~ImageDatabase()")
 if ($dtorIndex -ge 0) {
     $dtorBlock = $imageDbHeader.Substring($dtorIndex, [Math]::Min(400, $imageDbHeader.Length - $dtorIndex))

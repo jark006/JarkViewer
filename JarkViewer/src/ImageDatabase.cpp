@@ -25,6 +25,18 @@
 #include <string_view>
 #pragma intrinsic(_BitScanForward)
 
+size_t ImageDatabase::defaultCacheBudgetBytes() noexcept {
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof(status);
+    if (!GlobalMemoryStatusEx(&status))
+        return size_t(2) << 30;
+    return (std::max)(static_cast<size_t>(status.ullTotalPhys / 2), size_t(512) << 20);
+}
+
+ImageDatabase::ImageDatabase() {
+    setByteBudget(defaultCacheBudgetBytes());
+}
+
 class ScopedComApartment {
 public:
     ScopedComApartment() noexcept {

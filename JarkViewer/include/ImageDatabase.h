@@ -1,7 +1,7 @@
 #pragma once
 #include "jarkUtils.h"
 #include "Localization.h"
-#include "LRU.h"
+#include "ImageAssetCache.h"
 #include "ColorManager.h"
 #include "FormatSniffer.h"
 
@@ -241,7 +241,7 @@
 
 
 
-class ImageDatabase :public LRU<wstring, ImageAsset> {
+class ImageDatabase :public ImageAssetCache {
 public:
 
     // 自 OpenCV 4.12 起支持的动态图像格式 gif png webp
@@ -308,11 +308,16 @@ public:
     // 其余格式（JPEG/PNG/WebP/TIFF…）用这个补读。
     static std::vector<uint8_t> readIccProfile(const std::wstring& path);
 
-    ImageDatabase() = default;
+    ImageDatabase();
+
+    // 缓存预算：物理内存的 50%（下限 512MB）。与"最多 10 张"（ImageAssetCache::CAPACITY）
+    // 两个上限先到先算，并保证至少留住 2 张（minEntries）。
+    // 为什么非要有字节这条：按条数留 4 张 43890x38875 的扫描件就是 25GB，32GB 机器直接爆。
+    static size_t defaultCacheBudgetBytes() noexcept;
 
     ~ImageDatabase() override {
         // 先停预读线程再析构本类成员：线程跑的是本类 loader()、用本类成员（colorManager 等），
-        // 等基类 ~LRU() 才停线程时这些成员已销毁，在途的那次解码会访问已释放的内存。
+        // 等基类 ~ImageAssetCache() 才停线程时这些成员已销毁，在途的那次解码会访问已释放的内存。
         stopPreloadWorker();
     }
 

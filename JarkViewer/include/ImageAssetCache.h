@@ -1,4 +1,23 @@
 #pragma once
+
+// 图像缓存：wstring（文件路径）→ ImageAsset 的 LRU，带后台预读。
+//
+// 原先是通用模板 `LRU<keyType, valueType>`，但全项目只有看图这一处用它
+// （ImageDatabase 的 imgDB），于是按本项目特化：键固定 wstring、值固定 ImageAsset，
+// "这条数据占多少字节"直接问 ImageAsset::memoryBytes()——不必再留一层虚函数给测试造假数据，
+// 自检直接造小尺寸的真 ImageAsset，量的就是同一套真实计量。
+//
+// 容量是**条数 + 总字节**双重约束（先到先算）：
+//   * 条数最多 CAPACITY(10) 张——管住"几万张小图把索引撑爆"，也贴合"缓存几张"的直觉；
+//   * 字节最多 byteBudget——一张 43890x38875 的扫描件解码后 6.36GB，只按条数留 4 张就是 25GB，
+//     32GB 机器直接爆内存，所以大图必须按字节算（预算由 ImageDatabase 按物理内存的一半设置）；
+//   * 至少留住 minEntries(2) 张——翻页时"当前图 + 上一张"是最常见的一组，少到 1 张就退化成
+//     "每翻一张都重解码"。
+// 淘汰从最久未用的那头开始，但**跳过外部还持有引用的条目**：踢出去也不释放内存
+// （shared_ptr 还在别处），只是白丢一次命中；当前正在显示的那张图被主窗口持有，天然轮不到它。
+
+#include "jarkUtils.h"
+
 #include <unordered_map>
 #include <list>
 #include <thread>
@@ -12,27 +31,36 @@
 #include <shared_mutex>
 #include <vector>
 
-template<typename keyType, typename valueType>
-class LRU {
+class ImageAssetCache {
 private:
+    using Key = std::wstring;
     // 使用shared_ptr包装数据，确保数据不会被意外释放
-    using ValuePtr = std::shared_ptr<valueType>;
-    using ListIterator = typename std::list<std::pair<keyType, ValuePtr>>::iterator;
+    using ValuePtr = std::shared_ptr<ImageAsset>;
 
-    // 原有的缓存结构，但使用shared_ptr
-    std::unordered_map<keyType, ListIterator> cache_map;
-    std::list<std::pair<keyType, ValuePtr>> cache_list;
-    size_t CAPACITY = 5;
+    // 缓存节点带上"这条数据占多少字节"，供预算淘汰用
+    struct Node {
+        Key key;
+        ValuePtr value;
+        size_t bytes = 0;
+    };
+    using ListIterator = typename std::list<Node>::iterator;
+
+    std::unordered_map<Key, ListIterator> cache_map;
+    std::list<Node> cache_list;
+    size_t CAPACITY = 10;         // 条数上限
+    size_t byteBudget = SIZE_MAX; // 总字节上限（SIZE_MAX = 不限）
+    size_t bytesTotal = 0;
+    size_t minEntries = 2;        // 条数下限
 
     // 预读取相关的成员
     struct PreloadTask {
-        keyType key;
+        Key key;
         std::uint64_t generation;
     };
 
     std::thread preload_thread;
     std::queue<PreloadTask> preload_queue;
-    std::unordered_map<keyType, std::uint64_t> preload_pending;
+    std::unordered_map<Key, std::uint64_t> preload_pending;
     mutable std::shared_mutex cache_mutex;  // 使用读写锁提高性能
     std::mutex preload_mutex;
     std::condition_variable preload_cv;
@@ -67,8 +95,8 @@ private:
             lock.unlock();
 
 
-            valueType value = loader(task.key);
-            auto value_ptr = std::make_shared<valueType>(std::move(value));
+            ImageAsset value = loader(task.key);
+            auto value_ptr = std::make_shared<ImageAsset>(std::move(value));
 
             lock.lock();
             if (!stop_preload && task.generation == preload_generation) {
@@ -80,34 +108,60 @@ private:
         }
     }
 
+    // 按预算回收：从最久未用的那头开始踢，但跳过外部还持有引用的条目（踢了也不省内存），
+    // 且不把缓存踢到 minEntries 之下。一圈都有人持有时直接放弃，不空转。
+    void trimLocked() {
+        while (bytesTotal > byteBudget && cache_map.size() > minEntries) {
+            auto victim = cache_list.end();
+            for (auto it = cache_list.end(); it != cache_list.begin();) {
+                --it;
+                if (it->value.use_count() == 1) {
+                    victim = it;
+                    break;
+                }
+            }
+            if (victim == cache_list.end())
+                return; // 剩下的都被外面持有：没得回收
+            bytesTotal -= victim->bytes;
+            cache_map.erase(victim->key);
+            cache_list.erase(victim);
+        }
+    }
+
     // 内部put函数，不加锁版本
-    void putInternal(const keyType& key, ValuePtr value_ptr) {
+    void putInternal(const Key& key, ValuePtr value_ptr) {
+        const size_t bytes = value_ptr->memoryBytes();
         auto it = cache_map.find(key);
         if (it != cache_map.end()) {
-            it->second->second = value_ptr;
+            bytesTotal += bytes - it->second->bytes;
+            it->second->bytes = bytes;
+            it->second->value = value_ptr;
             cache_list.splice(cache_list.begin(), cache_list, it->second);
         }
         else {
             if (cache_map.size() >= CAPACITY) {
-                cache_map.erase(cache_list.back().first);
+                bytesTotal -= cache_list.back().bytes;
+                cache_map.erase(cache_list.back().key);
                 cache_list.pop_back();
             }
-            cache_list.emplace_front(key, value_ptr);
+            cache_list.push_front(Node{ key, value_ptr, bytes });
             cache_map[key] = cache_list.begin();
+            bytesTotal += bytes;
         }
+        trimLocked();
     }
 
 public:
-    LRU() {
-        preload_thread = std::thread(&LRU::preloadWorker, this);
+    ImageAssetCache() {
+        preload_thread = std::thread(&ImageAssetCache::preloadWorker, this);
     }
 
-    virtual ~LRU() {
+    virtual ~ImageAssetCache() {
         stopPreloadWorker();
     }
 
     // 停止预读线程（幂等）。派生类必须在自己的析构函数里先调用一次：
-    // 预读线程跑的是派生类的 loader()、用的是派生类成员，等 ~LRU() 才停线程时
+    // 预读线程跑的是派生类的 loader()、用的是派生类成员，等 ~ImageAssetCache() 才停线程时
     // 派生部分（含其成员）已经销毁，在途的那次解码会访问已释放的内存。
     void stopPreloadWorker() {
         stop_preload = true;
@@ -118,19 +172,20 @@ public:
     }
 
     // 禁用拷贝构造和赋值
-    LRU(const LRU&) = delete;
-    LRU& operator=(const LRU&) = delete;
+    ImageAssetCache(const ImageAssetCache&) = delete;
+    ImageAssetCache& operator=(const ImageAssetCache&) = delete;
 
-    virtual valueType loader(const keyType&) = 0;
+    // 解码一条数据（在预读线程里跑，实现必须线程安全）
+    virtual ImageAsset loader(const Key&) = 0;
 
-    std::shared_ptr<valueType> getDataPtr(const keyType& key) {
+    std::shared_ptr<ImageAsset> getDataPtr(const Key& key) {
         int cnt_16ms = 0;
         while (true) {
             std::unique_lock<std::shared_mutex> lock(cache_mutex);
             auto it = cache_map.find(key);
             if (it != cache_map.end()) {
                 cache_list.splice(cache_list.begin(), cache_list, it->second);
-                return it->second->second;
+                return it->second->value;
             }
             lock.unlock();
 
@@ -141,22 +196,22 @@ public:
         return nullptr;
     }
 
-    std::shared_ptr<valueType> getSafePtr(const keyType& key) {
+    std::shared_ptr<ImageAsset> getSafePtr(const Key& key) {
         requestPreload(key);
         return getDataPtr(key);
     }
 
     // 非阻塞查缓存：未命中立即返回空（不等待在途预读），供渐进加载每帧轮询
-    std::shared_ptr<valueType> tryGetPtr(const keyType& key) {
+    std::shared_ptr<ImageAsset> tryGetPtr(const Key& key) {
         std::unique_lock<std::shared_mutex> lock(cache_mutex);
         auto it = cache_map.find(key);
         if (it == cache_map.end())
             return nullptr;
         cache_list.splice(cache_list.begin(), cache_list, it->second);
-        return it->second->second;
+        return it->second->value;
     }
 
-    std::shared_ptr<valueType> getSafePtr(const keyType& key, const keyType& nextKey) {
+    std::shared_ptr<ImageAsset> getSafePtr(const Key& key, const Key& nextKey) {
         if (key == nextKey)
             requestPreload(key);
         else
@@ -166,7 +221,7 @@ public:
     }
 
     // 请求预读取指定的key
-    void requestPreload(const keyType& key) {
+    void requestPreload(const Key& key) {
         std::lock_guard<std::mutex> lock(preload_mutex);
 
         if (preload_pending.contains(key))
@@ -186,18 +241,18 @@ public:
     }
 
     // 批量预读取
-    void requestPreloadBatch(const std::vector<keyType>& keys) {
+    void requestPreloadBatch(const std::vector<Key>& keys) {
         std::lock_guard<std::mutex> lock(preload_mutex);
         bool hasNewTask = false;
 
         for (const auto& key : keys) {
-            if (preload_pending.find(key) != preload_pending.end()) {
+            if (preload_pending.contains(key)) {
                 continue;
             }
 
             {
                 std::shared_lock<std::shared_mutex> cache_lock(cache_mutex);
-                if (cache_map.find(key) != cache_map.end()) {
+                if (cache_map.contains(key)) {
                     continue;
                 }
             }
@@ -212,8 +267,8 @@ public:
         }
     }
 
-    void put(const keyType& key, valueType&& value) {
-        auto value_ptr = std::make_shared<valueType>(std::move(value));
+    void put(const Key& key, ImageAsset&& value) {
+        auto value_ptr = std::make_shared<ImageAsset>(std::move(value));
         std::unique_lock<std::shared_mutex> lock(cache_mutex);
         putInternal(key, value_ptr);
     }
@@ -226,6 +281,7 @@ public:
 
         cache_map.clear();
         cache_list.clear();
+        bytesTotal = 0;
 
         std::queue<PreloadTask> empty_queue;
         preload_queue.swap(empty_queue);
@@ -237,6 +293,25 @@ public:
         return cache_map.size();
     }
 
+    // 缓存里所有条目合计占用的字节（估算值，见 ImageAsset::memoryBytes）
+    size_t bytes() const {
+        std::shared_lock<std::shared_mutex> lock(cache_mutex);
+        return bytesTotal;
+    }
+
+    size_t byteBudgetBytes() const {
+        std::shared_lock<std::shared_mutex> lock(cache_mutex);
+        return byteBudget;
+    }
+
+    // 总字节上限（0 视为不限）。调小会立刻回收一次；已经超预算但"没得回收"时保持超着
+    // （剩下的都被外面持有，或者已经只剩 minEntries 条）。
+    void setByteBudget(size_t budget) {
+        std::unique_lock<std::shared_mutex> lock(cache_mutex);
+        byteBudget = budget == 0 ? SIZE_MAX : budget;
+        trimLocked();
+    }
+
     void setCapacity(size_t capacity) {
         if (capacity < 3 || capacity > 4096)
             capacity = 3;
@@ -245,8 +320,15 @@ public:
         CAPACITY = capacity;
 
         while (cache_map.size() > CAPACITY) {
-            cache_map.erase(cache_list.back().first);
+            bytesTotal -= cache_list.back().bytes;
+            cache_map.erase(cache_list.back().key);
             cache_list.pop_back();
         }
+    }
+
+    // 条数下限（默认 2）：预算再紧也要留下的条目数
+    void setMinEntries(size_t entries) {
+        std::unique_lock<std::shared_mutex> lock(cache_mutex);
+        minEntries = entries < 1 ? 1 : entries;
     }
 };

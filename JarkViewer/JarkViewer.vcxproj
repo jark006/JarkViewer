@@ -239,7 +239,6 @@
     <ClInclude Include="include\framework.h" />
     <ClInclude Include="include\jarkUtils.h" />
     <ClInclude Include="include\Localization.h" />
-    <ClInclude Include="include\LRU.h" />
     <ClInclude Include="include\MappedFileReader.h" />
     <ClInclude Include="include\stringRes.h" />
     <ClInclude Include="include\targetver.h" />
@@ -440,6 +439,7 @@
     <ClInclude Include="include\ffmpeg\libswscale\swscale.h" />
     <ClInclude Include="include\ffmpeg\libswscale\version.h" />
     <ClInclude Include="include\ffmpeg\libswscale\version_major.h" />
+    <ClInclude Include="include\ImageAssetCache.h" />
     <ClInclude Include="include\jxl\cms.h" />
     <ClInclude Include="include\jxl\cms_interface.h" />
     <ClInclude Include="include\jxl\codestream_header.h" />

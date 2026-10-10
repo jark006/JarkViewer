@@ -64,6 +64,14 @@ python tools/gen_testdata.py <输出目录>
 # 1:1 不做重采样、余量复用边界，以及超过 SHRT_MAX 的超宽位图放大不再触发 OpenCV 的 remap 断言）
 ./x64/Release/JarkViewer.exe --probe --resample-test
 
+# 图像缓存自检（纯合成、不需要语料：预算淘汰 / LRU 顺序 / 外部持有的条目踢了也不释放 /
+# 单条超预算不空转 / 最少留 2 张 / 预算 = 物理内存的 50%）
+./x64/Release/JarkViewer.exe --probe --cache-test
+
+# 图像缓存的实机回归：连翻 N 张，工作集必须收敛在预算内、翻回上一张不重新解码
+# （语料与程序都放在 %TEMP% 的独立副本里，不会动到用户自己的设置与缓存）
+pwsh tools/test_cache_budget.ps1 -Exe x64/Release/JarkViewer.exe -Image <一张中等大小的图> -Copies 12
+
 # 实时频谱自检（纯合成，不需要语料：频段映射/电平标定/直流阻断/衰减单调/"按播放位置取帧"）
 ./x64/Release/JarkViewer.exe --probe --spectrum-test
 
@@ -116,7 +124,7 @@ pwsh tools/catch_crash.ps1 -Exe x64/Release/JarkViewer.exe -AppArgs="--probe --v
 pwsh tools/build-opencv.ps1 -Install
 pwsh tools/build-zlib-ng.ps1 -Install
 
-# 源码不变量检查（字符串表 // N 编号、格式清单与 README 交叉核对、PSD 顺序、LRU 析构、
+# 源码不变量检查（字符串表 // N 编号、格式清单与 README 交叉核对、PSD 顺序、图像缓存析构、
 # 菜单加速键、版本号一致、两个 VS 工程的文件列表齐不齐；只读源码、秒级出结果，提交前可单独跑）
 pwsh tools/check_source_invariants.ps1
 
@@ -148,6 +156,7 @@ pwsh tools/verify_source_invariant_checks.ps1
 | --- | --- |
 | 解码路由 / 格式嗅探 / EXIF | `--probe <gen_testdata.py 的语料>`（含错扩展名、无扩展名、损坏文件） |
 | 画布几何 / 旋转 / 缩放平滑 | `--probe --navigation-test`、`--probe --resample-test` |
+| 图像缓存 / 内存占用 | `--probe --cache-test`、`tools/test_cache_budget.ps1` |
 | 色彩管理 | `--probe --color-test` |
 | SVG 与预处理 | `--probe --svg-test` |
 | 文件列表 / 排序 / 重命名 | `--probe --sort-test` |
@@ -255,7 +264,14 @@ pwsh tools/verify_source_invariant_checks.ps1
 
 - `JarkViewer/src/main.cpp` 定义 `JarkViewerApp` 和 `wWinMain`。入口初始化 Exiv2 BMFF、禁用 IME、初始化 COM，然后创建窗口、解析命令行图片路径并进入主循环。
 - `JarkViewer/include/D3D11App.h` 与 `JarkViewer/src/D3D11App.cpp` 提供 Win32 窗口、消息分发、Direct3D 11 设备/交换链和 `PresentCanvas()`。业务层通过继承并实现鼠标、键盘、拖放、右键菜单和绘制回调；窗口句柄刚创建、D3D 设备尚未建时另有一次 `OnWindowCreated()` 回调——主窗口在这里就把首图解码派发出去（只派发不等待），和随后几十毫秒的设备/交换链创建并行。等待与收尾仍走 `initOpenFile`：它靠 `startupFilePrepared_` 标志跳过重扫（重扫里的 `imgDB.clear()` 会把在途解码作废），命令行 `--lang` 也因此要提前到 `InitWindow` 之前应用（窗口一就绪就会扫目录、放占位并派发解码）。
-- `JarkViewer/include/ImageDatabase.h` 与 `JarkViewer/src/ImageDatabase.cpp` 负责图片加载、格式分派、EXIF 处理和 LRU 缓存。核心路径是 `ImageDatabase::loader()` → `myLoader()` → **按文件头（魔数）嗅探格式后再分派**：`FormatSniffer` 判定真实格式 → `decodeByFormat()` 调用 JXL/WP2/AVIF/HEIF/RAW/SVG/PSD/OpenCV/WIC/FFmpeg 等解码器 → 统一转为 OpenCV `cv::Mat`；嗅探失败或解码失败时再用扩展名路由兜底，最后才是 OpenCV/WIC 通用兜底。EXIF 后处理统一由 `applyExifInfo()` 按 `ExifPolicy`（None/SimpleOnly/Full/FullWithOrientation）完成，不再散落在各格式分支里。
+- `JarkViewer/include/ImageDatabase.h` 与 `JarkViewer/src/ImageDatabase.cpp` 负责图片加载、格式分派、EXIF 处理和图像缓存。核心路径是 `ImageDatabase::loader()` → `myLoader()` → **按文件头（魔数）嗅探格式后再分派**：`FormatSniffer` 判定真实格式 → `decodeByFormat()` 调用 JXL/WP2/AVIF/HEIF/RAW/SVG/PSD/OpenCV/WIC/FFmpeg 等解码器 → 统一转为 OpenCV `cv::Mat`；嗅探失败或解码失败时再用扩展名路由兜底，最后才是 OpenCV/WIC 通用兜底。EXIF 后处理统一由 `applyExifInfo()` 按 `ExifPolicy`（None/SimpleOnly/Full/FullWithOrientation）完成，不再散落在各格式分支里。
+- `JarkViewer/include/ImageAssetCache.h` 是图像缓存（`ImageDatabase` 的基类；键 = 文件路径、值 = `ImageAsset`，带一个后台预读线程）。原先是通用模板 `LRU<keyType, valueType>`，但全项目只有看图这一处用，已按本项目**特化**（键/值定死，"占多少字节"直接问值自己，不再挂一层虚函数）。容量三个口径：
+  - **条数上限 10 张**（`CAPACITY`，兜住"海量小图把索引撑爆"）与**字节上限 = 物理内存的 50%**（`ImageDatabase::defaultCacheBudgetBytes()`，下限 512MB，`GlobalMemoryStatusEx`）**先到先算**；
+  - **条数下限 2 张**（`minEntries`）：翻页时"当前图 + 上一张"是最常见的一组，少到 1 张就退化成每翻一张都重解码；预算连两张都装不下时也照样留住两条；
+  - **淘汰从最久未用那头开始，但跳过外部还持有引用的条目**（`use_count() > 1`）：踢了也不释放内存（shared_ptr 还在别处），只白丢一次命中；当前显示的图被 `curPar.imageAssetPtr` 持有，天然轮不到它。一圈都有人持有时直接停，不空转。
+  为什么非要有字节这条：按条数留 4 张 43890x38875 的扫描件（每张解码后 6.36GB）就是 25GB，32GB 机器直接爆。**"这条占多少字节"问 `ImageAsset::memoryBytes()`**（定义在 `jarkUtils.cpp`）：同一块像素被多个成员共享时按 `data` 指针去重（实况/动图的 `primaryFrame` 与 `frames[0]` 是浅拷贝），lunasvg 的文档内存没法估、不计。条数上限里**主页占位图也占一格**，所以实际能留 9 张图。
+  **配套两条**：① 当前图大到"两张装不进预算"时**不再预取邻图**（`JarkViewerApp::shouldPrefetchNeighbor()`，"当前图 × 2 > 预算"即跳过）——预算只管得住"可以不持有的"，当前图必须留，硬解下一张就是内存翻倍，而那种图的翻页本来就要重解码一两分钟；② 平滑重采样块的视图指纹里带 `CurImageParameter::sourceToken`（每次 `Init` 自增）：淘汰变积极之后会出现"旧图释放 → 新图落在同一地址 + 尺寸/画布/缩放/平移/旋转全相同"（同尺寸扫描件翻页时的缩放值就是同一个），只用位图裸指针撞键会复用上一张的重采样块。
+  自检：`--probe --cache-test`（合成断言，去掉字节回收会报 6 项 FAIL）+ `tools/test_cache_budget.ps1`（实机翻页看工作集曲线，实测 12 张 53421x1600（各 326MB）在第 9 张后收敛在 3405MB）。
 - `JarkViewer/include/FormatSniffer.h` 与 `JarkViewer/src/FormatSniffer.cpp` 是纯文件头嗅探模块（不依赖任何第三方库）：扩展名与文件头冲突时以文件头为准，但 RAW/视频/LIVP/LEP/TGA 等扩展名携带文件头无法表达的信息（`isExtensionAuthoritative()`）时优先按扩展名路由。`JarkThumbnailProvider` 里的同名模块与其同源，后续计划合并为两个工程共用的模块。
 - 界面改动可用 `tools/capture_window.ps1` 做视觉验证：`-Keys "{F1}"` 注入按键（窗口都在主窗口内，不再需要 `-Window` 选择）、`-Keys2 "{ESC}i"` + `-Keys2DelayMs` 送第二批按键（开窗、点击、再按键这类时序）、`-Hover "x,y"` 悬停、`-Drag "x1,y1,x2,y2[;...]"` 拖动或点击（物理客户区坐标）、`-RightClick "x,y"` + `-MenuKeys "b{ENTER}"` 右键菜单（菜单是独立弹窗，要配 `-Screen` 才截得到）、`-DragHold` 拖到最后一个点**不松手**再截图（验证"拖动中"才有的画面，如马赛克/裁剪的拖框）。ImGui 的窗口默认居中于主窗口。编辑窗口的文字工具另有 `tools/test_editor_text.ps1`：选文字工具 → 点锚点 → 点侧栏文字框 → 投递 Unicode `WM_CHAR`（等价于输入法上屏后的字符），一张图同时验证锚点光标、文字预览和中文能进输入框。主界面导航另有 `tools/test_navigation.ps1`：动态按 DPI 换算客户区坐标，依次验证鸟瞰拖动、拖出客户区释放、悬停展开缩略图带、点击直接换图、滚轮只滚条带不穿透、移出后隐藏、设置窗口往返；加 `-CheckSettings` 时还会点「清理缓存」「显示鸟瞰图」并重启核对设置文件字节（该分支要求 `-Exe` 指向 `%TEMP%` 下的独立副本，避免动到用户的设置与缓存）。
 - 视频相关改动除 `--probe` 外，可用 `--probe --audio-test <文件>` 验证音频链路：它以音量 0 提交音频并观察播放时钟是否按采样率推进（不发出声音）。
@@ -509,8 +525,8 @@ pwsh tools/verify_source_invariant_checks.ps1
     旧设置该字节为 0 即默认开启；占 `blackFullscreenBackground` 之后的原对齐填充字节，
     不改变 4096 布局）关掉即退回全最近邻。
 - `JarkViewer/include/VectorImage.h` 与 `JarkViewer/src/VectorImage.cpp` 负责矢量图（SVG）的按需光栅化：`ImageAsset::vectorSource` 持有 lunasvg 文档与文档尺寸（intrinsic），位图分辨率随缩放变化（`vectorTargetEdge()` + `refreshVectorRaster()`，滞后阈值 1.25 避免缩放动画中反复渲染，长边上限 4096）。主窗口在画面稳定后（`DrawScene` 空闲分支）调用 `refreshVectorRasterIfNeeded()` 升级分辨率。lunasvg 的位图是 **ARGB32 预乘**（内存 B,G,R,A），`renderVectorImage()` 一律**手工反预乘**成直通 alpha（直接调 `convertToRGBA()` 会换成 R,G,B,A 字节序，画布按 B 读第一个字节会红蓝互换）。`<text>` 要先 `jark::ensureVectorFonts()` 注册系统字体（lunasvg 没有内置字体，不注册就什么都画不出来）。
-  `JarkViewer/include/SVGPreprocessor.h`（还在 `JarkThumbnailProvider` 里有一份同源的）在解码前做三件 lunasvg 做不到的事，顺序不能换：① `<switch>` 选择——`foreignObject` 与 `requiredFeatures` 里的 Extensibility 一律判为**不支持**，否则 draw.io 导出的画布会选中画不出来的 foreignObject、同时把后面等价的 `<text>` 兜底删掉（表现是方框连线都在、文字一个字都没有，见 issue #33/#51）；② 收集 `--x: value`（`:root` 规则表与内联 style 都覆盖）；③ 把 `var(--x[, fallback])` / `light-dark(a, b)` 折叠成字面量——lunasvg 不认识 CSS Color 5 的这些函数，颜色值判为无效时会把**整个图元丢掉不画**（draw.io 图整幅空白）。`light-dark` 取**亮色分支**：位图会进 LRU 缓存，随主题变化的颜色没有意义，亮色分支在深浅主题下都保持可读。
-  **放大超过 4096 上限后按可视区域出高清块**（`VECTOR_DETAIL_MAX_EDGE` / `VectorImage::detailFrame`）：全幅位图（鸟瞰、缩略图、打印/批处理仍用它）已经榨不出细节，这时用 `renderVectorImageRegion()` 只光栅化当前可视区域+25% 余量（`VectorImage.cpp` 把"文档→旋转后名义空间"的仿射系数写进 `Document::render(bitmap, matrix)` 的矩阵里一次完成，所以位图直接就是旋转后的名义空间，取样不必再套旋转）。`CanvasRenderer` 侧只多了 `ViewState::sourceLeft/Top/Width/Height`（归一化区域）与 `sourcePreRotated`：采样原点按区域左上角平移、采样密度按"位图像素 / 该区域的名义像素"算，元素级循环一行没改。**复用判断只看可视区域（不含余量）**，否则余量会被逐帧的微小移动吃掉、每帧重光栅化；可视区域跑出旧块外的那一帧退回全幅位图（糊但不缺块），稳定后自动重出。切图时释放上一张的高清块（`lastDetailVector_`），避免 LRU 里每张 SVG 各攒几十 MB。
+  `JarkViewer/include/SVGPreprocessor.h`（还在 `JarkThumbnailProvider` 里有一份同源的）在解码前做三件 lunasvg 做不到的事，顺序不能换：① `<switch>` 选择——`foreignObject` 与 `requiredFeatures` 里的 Extensibility 一律判为**不支持**，否则 draw.io 导出的画布会选中画不出来的 foreignObject、同时把后面等价的 `<text>` 兜底删掉（表现是方框连线都在、文字一个字都没有，见 issue #33/#51）；② 收集 `--x: value`（`:root` 规则表与内联 style 都覆盖）；③ 把 `var(--x[, fallback])` / `light-dark(a, b)` 折叠成字面量——lunasvg 不认识 CSS Color 5 的这些函数，颜色值判为无效时会把**整个图元丢掉不画**（draw.io 图整幅空白）。`light-dark` 取**亮色分支**：位图会进图像缓存，随主题变化的颜色没有意义，亮色分支在深浅主题下都保持可读。
+  **放大超过 4096 上限后按可视区域出高清块**（`VECTOR_DETAIL_MAX_EDGE` / `VectorImage::detailFrame`）：全幅位图（鸟瞰、缩略图、打印/批处理仍用它）已经榨不出细节，这时用 `renderVectorImageRegion()` 只光栅化当前可视区域+25% 余量（`VectorImage.cpp` 把"文档→旋转后名义空间"的仿射系数写进 `Document::render(bitmap, matrix)` 的矩阵里一次完成，所以位图直接就是旋转后的名义空间，取样不必再套旋转）。`CanvasRenderer` 侧只多了 `ViewState::sourceLeft/Top/Width/Height`（归一化区域）与 `sourcePreRotated`：采样原点按区域左上角平移、采样密度按"位图像素 / 该区域的名义像素"算，元素级循环一行没改。**复用判断只看可视区域（不含余量）**，否则余量会被逐帧的微小移动吃掉、每帧重光栅化；可视区域跑出旧块外的那一帧退回全幅位图（糊但不缺块），稳定后自动重出。切图时释放上一张的高清块（`lastDetailVector_`），避免图像缓存里每张 SVG 各攒几十 MB。
   **lunasvg 的能力边界**（判断"要不要换渲染库"先看这几条，实测语料 `car.svg`/`13.svg`/`AA_5.svg`/draw.io 图都能出图）：支持 `mask(含渐变遮罩)/pattern/marker/clipPath/嵌套 svg/各类渐变/<text>`；**不支持 SVG filter**（`feGaussianBlur`/`feDropShadow` 等一律忽略——图元照画、只是没有滤镜效果）与 **`textPath`**（整段不渲染）。`--probe --svg-test` 里两条断言盯着这个边界：filter 用例断言"图元仍被绘制"（比"没模糊"严重得多的是整块消失），textPath 断言"不渲染任何文字"（真补上支持时这条会失败，提醒改文档）。换库（resvg/ThorVG）需要新做一套 MSVC x64 静态库、且静态库包还没发布，除非出现"整幅画不出来"的真实报告，否则维持现状 + 定向补 `SVGPreprocessor`。
 - `JarkViewer/include/ColorManager.h` 与 `src/ColorManager.cpp` 是色彩管理（lcms2）：把解码出的像素从**图像内嵌 profile** 转到**目标 profile**。有两条路，目标不同**不能混**：
   - 查看器/编辑/打印走 `ImageDatabase::loader()` → `applyToImageAsset()`：目标取**当前显示器 ICC**（`GetICMProfileW`，进程内缓存），显示器没设 profile 就退回 sRGB（内置）。
@@ -556,7 +572,7 @@ pwsh tools/verify_source_invariant_checks.ps1
 - UI 文本来自 `stringRes`：**两张表同名不同文案**——`UIStringTable[stringID][语言]` 供 ImGui/画布，`UIStringTableWide[stringID][语言]` 供 Win32（窗口标题、菜单、消息框），写 `getUIStringW(id)` 时一定要核对**宽表**里那个 ID 是什么（历史上出过把消息框正文写成"关于 (&A)"菜单项的事故）。`getUIStringW` 返回 `UIStringWide`（自带缓冲区、可隐式转 `const wchar_t*`）：旧实现共用同一个 thread_local 缓冲，`MessageBoxW(h, getUIStringW(a), getUIStringW(b))` 后一次转换会冲掉前一次的指针内容（标题乱码）。需要指针活过当前语句时（如 `BROWSEINFO.lpszTitle`）用 `.str()` 存一份 `std::wstring`；丢给 `std::format`/`wstring_view` 参数时要显式 `.c_str()`。**新增文案追加到对应表尾**，并在使用处写成具名常量（各窗口文件里已有 `kStr*` 常量块）。改动后再跑一次 `--probe --lang-test`，它会打印窄表与宽表各若干条文案用于确认 ID 没有错位。
 - 发布包里的 OpenCV 预编译库带有源码改动：移除 `imgcodecs` 分辨率限制，并将 HighGUI Win32 窗口光标从 `IDC_CROSS` 改为 `IDC_ARROW`；替换或重建 OpenCV 时要保留这些行为（补丁与参数见「构建前提」）。
 - 不要提交 `.vcxproj.user`、`.vs/` 或机器相关的本地库路径。
-- **渐进加载**：当前图的解码不阻塞主循环——`requestCurrentImage()` 用 `LRU::tryGetPtr` 非阻塞查缓存，未命中就挂起，主循环每帧 `updatePendingLoad()` 轮询，就绪后 `adoptCurrentImage()` 收尾。等待期间：启动/主页场景用主页画面垫底（`allowPreviewSwap_`），缩略图（ThumbnailService，持久缓存命中时毫秒级）先到就先顶上当模糊预览；切图场景保留旧图停留（相邻图通常已被预取，点翻页零等待）。客户区左上角画「加载中 X.Xs」浮标（逐帧跳秒——画面稳定分支要按 `pendingLoad_` 持续出帧），超过 60 秒退回一次阻塞等待兜底。**新增"载入当前图"路径时一律用 `requestCurrentImage()`**，不要再直接调 `getSafePtr`（会退回"翻页等解码"）。
+- **渐进加载**：当前图的解码不阻塞主循环——`requestCurrentImage()` 用 `ImageAssetCache::tryGetPtr` 非阻塞查缓存，未命中就挂起，主循环每帧 `updatePendingLoad()` 轮询，就绪后 `adoptCurrentImage()` 收尾。等待期间：启动/主页场景用主页画面垫底（`allowPreviewSwap_`），缩略图（ThumbnailService，持久缓存命中时毫秒级）先到就先顶上当模糊预览；切图场景保留旧图停留（相邻图通常已被预取，点翻页零等待）。客户区左上角画「加载中 X.Xs」浮标（逐帧跳秒——画面稳定分支要按 `pendingLoad_` 持续出帧），超过 60 秒退回一次阻塞等待兜底。**新增"载入当前图"路径时一律用 `requestCurrentImage()`**，不要再直接调 `getSafePtr`（会退回"翻页等解码"）。
 - **动图播放计时**（`DrawScene` 的动画块）：帧推进的剩余时间 `delayRemain` 按**微秒**累计并跨帧保留（欠帧时 `while (delayRemain <= 0)` 循环推进、推进后把超出的部分留给下一帧），不要退回"整毫秒截断"或"每帧重置余量"——主循环每帧 10~16ms，零头被截掉/丢弃会逐帧累积成慢放（100ms 的帧实测会播成 103~109ms）；起播、暂停恢复、切图后要经 `animClockArmed` 重新对齐计时起点，否则加载或暂停的耗时会被算进第一帧（首帧长时间不动）。
 - **实况照片的视频有三种拿法，缺一不可**（`ImageDatabase::loadMotionPhoto` / `loadLivp`，顺序即优先级）：
   1. 按「文件大小 - `Item:Length`/`MicroVideoOffset`」反推起点，再在期望起点附近用 MP4 首个 `ftyp` 盒校正真实起点（`locateMotionPhotoVideoStart()`）——尾部视频不一定紧贴文件末尾（DJI 等导出带尾块），起点偏几十字节会让采样偏移整体错位，表现为"能识别出视频轨但解码全是乱码"。

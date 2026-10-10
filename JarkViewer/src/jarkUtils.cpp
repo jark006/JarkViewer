@@ -2,12 +2,38 @@
 
 #include "jarkUtils.h"
 
+#include "MediaPlayer.h"  // VideoSource（实况照片/视频源）定义
+#include "VectorImage.h"  // VectorImage 定义
+
 #include <shlwapi.h>
 #pragma comment(lib, "shlwapi.lib")
 
 #include <cstdint>
 #include <fstream>
 #include <mutex>
+#include <unordered_set>
+
+size_t ImageAsset::memoryBytes() const noexcept {
+    size_t total = sizeof(ImageAsset) + iccProfile.capacity() +
+        exifInfo.capacity() + placeholderDetail.capacity() * sizeof(wchar_t);
+
+    // 同一块像素可能被多个成员共用（实况/动图的 primaryFrame 与 frames[0] 是浅拷贝），
+    // 按像素首地址去重；子矩阵（ROI）只按自己可见的部分算，估算偏小一侧。
+    std::unordered_set<const void*> seen;
+    const auto addMat = [&total, &seen](const cv::Mat& mat) {
+        if (mat.empty() || !seen.insert(mat.data).second)
+            return;
+        total += mat.total() * mat.elemSize();
+    };
+    addMat(primaryFrame);
+    for (const auto& frame : frames)
+        addMat(frame);
+    if (vectorSource)
+        addMat(vectorSource->detailFrame); // lunasvg 的文档内存没法估，不计
+    if (videoSource)
+        total += videoSource->data.capacity() + videoSource->extension.capacity() * sizeof(wchar_t);
+    return total;
+}
 
 
 namespace {

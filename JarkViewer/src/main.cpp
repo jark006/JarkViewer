@@ -69,6 +69,10 @@ struct CurImageParameter {
 
     int64_t zoomTarget;     // 设定的缩放比例
     int64_t zoomCur;        // 动画播放过程的缩放比例，动画完毕后的值等于zoomTarget
+    // 当前图源的身份（每次 Init 自增）。平滑重采样块的键里要带上它：只用位图的裸指针
+    // 做键时，缓存淘汰变积极之后会出现"旧图释放 → 新图正好落在同一地址 + 尺寸/视图参数
+    // 全都相同"（同尺寸扫描件翻页时的缩放值就是同一个），于是复用了上一张的重采样块。
+    uint64_t sourceToken = 0;
     int curFrameIdx;        // 小于0则单张静态图像，否则为动画当前帧索引
     int curFrameIdxMax;     // 若是动画则为帧数量
     int curFrameDelay;      // 当前帧延迟
@@ -90,6 +94,7 @@ struct CurImageParameter {
 
     void Init(int winWidth = 0, int winHeight = 0) {
 
+        ++sourceToken; // 换图（以及重排视图）都算一次图源变更，见 sourceToken 的说明
         curFrameIdx = 0;
         curFrameDelay = 0;
 
@@ -1511,12 +1516,13 @@ public:
             int slideX = 0;
             int slideY = 0;
             int rotation = 0;
+            uint64_t sourceToken = 0; // 图源身份，见 CurImageParameter::sourceToken
 
             bool operator==(const Key& other) const {
                 return sourceData == other.sourceData && sourceSize == other.sourceSize &&
                     sourceType == other.sourceType && canvasSize == other.canvasSize &&
                     zoom == other.zoom && slideX == other.slideX && slideY == other.slideY &&
-                    rotation == other.rotation;
+                    rotation == other.rotation && sourceToken == other.sourceToken;
             }
         };
         Key key;
@@ -1552,7 +1558,7 @@ public:
         SmoothBlock& block = smoothBlock_;
         const SmoothBlock::Key key{
             srcImg.data, srcImg.size(), srcImg.type(), canvasSize,
-            view.zoom, view.slideX, view.slideY, view.rotation };
+            view.zoom, view.slideX, view.slideY, view.rotation, curPar.sourceToken };
 
         // 拖动窗口边框时画布尺寸每帧都在变：这一路先不重采样（否则每帧十几毫秒会拖慢缩放），
         // 等尺寸稳定下来再一次性算出来
@@ -2211,11 +2217,27 @@ public:
         playbackFrame = cv::Mat();
     }
 
+    // 当前图本身就大到"两张装不进缓存预算"时不再预取邻图：预算只管得住"可以不持有的"，
+    // 当前图必须留着，硬把下一张解出来就是内存翻倍；而这种图的翻页本来就要重解码一两分钟，
+    // 预取省下的那点时间远不值这个内存（巨幅扫描件连翻几张就爆内存，一半来自这里）。
+    bool shouldPrefetchNeighbor() const {
+        if (!curPar.imageAssetPtr)
+            return true;
+        const size_t budget = imgDB.byteBudgetBytes();
+        if (budget == SIZE_MAX)
+            return true;
+        const size_t current = curPar.imageAssetPtr->memoryBytes();
+        return current <= budget / 2; // 两张放得下（当前 + 预取的下一张）才预取
+    }
+
     // 请求加载当前图（非阻塞）：命中缓存立即返回；否则进入等待状态并返回空，
     // 主循环由 updatePendingLoad() 每帧轮询收尾（超过 60 秒退回一次阻塞等待兜底）。
     std::shared_ptr<ImageAsset> requestCurrentImage(const std::wstring& nextPath) {
         const std::wstring& path = imgFileList[curFileIdx];
-        imgDB.requestPreloadBatch({ path, nextPath });
+        if (shouldPrefetchNeighbor())
+            imgDB.requestPreloadBatch({ path, nextPath });
+        else
+            imgDB.requestPreloadBatch({ path });
         if (auto ptr = imgDB.tryGetPtr(path)) {
             pendingLoad_ = false;
             return ptr;
