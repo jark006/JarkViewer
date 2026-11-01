@@ -166,6 +166,8 @@ def main():
                                          "--exe", exe], 120))
         record(command("theme-controls", [sys.executable, "-I", REPO / "tools/test_theme_controls.py",
                                           "--exe", exe], 120))
+        record(command("help-page", [sys.executable, "-I", REPO / "tools/test_help_page.py",
+                                     "--exe", exe], 180))
         navigation = root / "navigation"
         navigation.mkdir()
         for index in range(7):

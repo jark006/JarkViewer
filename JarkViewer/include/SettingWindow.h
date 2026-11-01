@@ -376,31 +376,117 @@ private:
     // —— 帮助 ——
 
     void drawHelpPage() {
+        const float scale = jark::ui::UiHost::instance().scale();
+        ImGui::Spacing();
+        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.3f);
         ImGui::TextUnformatted(getUIString(kStrHelpTitle));
-        ImGui::Separator();
+        ImGui::PopFont();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", getUIString(kStrHelpIntro));
+        ImGui::PopStyleColor();
         ImGui::Spacing();
 
-        // 文案是若干行「按键：说明」，同一行内用两个全角空格分组。
-        // 整段 TextUnformatted 出来是一大坨，这里切成表格按列对齐，像一张速查表。
-        // 列数固定 2：列再多，像"窗口左右边缘：上一张 / 下一张"这种长条目就会被单元格裁掉，
-        // 多出来的分组换到下一行即可。
-        const std::string body = getUIString(kStrHelpBody);
-        const std::vector<std::string_view> lines = splitViews(body, "\n");
-
-        if (ImGui::BeginTable("helpShortcuts", kHelpColumns,
-            ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
-            for (const auto& line : lines) {
-                if (line.empty())
-                    continue;
-
-                for (const auto& cell : splitViews(line, kHelpGroupSeparator)) {
-                    ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(cell.data(), cell.data() + cell.size());
-                }
-                ImGui::TableNextRow();
+        const uint32_t categories[] = { kStrHelpBrowse, kStrHelpTools, kStrHelpPlayback };
+        const float width = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2) / 3;
+        bool categoryChanged = false;
+        for (int index = 0; index < IM_ARRAYSIZE(categories); ++index) {
+            if (index)
+                ImGui::SameLine();
+            const bool selected = helpCategory_ == index;
+            if (selected)
+                ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+            if (ImGui::Button(getUIString(categories[index]), { width, 36.0f * scale })) {
+                categoryChanged = helpCategory_ != index;
+                helpCategory_ = index;
             }
-            ImGui::EndTable();
+            if (selected)
+                ImGui::PopStyleColor();
         }
+        ImGui::Spacing();
+
+        // 分类导航固定在上方，正文独立滚动；换分类回到页首，长翻译只纵向换行。
+        if (ImGui::BeginChild("helpContent", { 0, 0 }, ImGuiChildFlags_None,
+            ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
+            if (categoryChanged)
+                ImGui::SetScrollY(0);
+            if (helpCategory_ == 0) {
+                drawHelpSection("helpMouse", kStrHelpMouse, kStrHelpMouseRows);
+                drawHelpSection("helpKeyboard", kStrHelpKeyboard, kStrHelpBrowseRows);
+                ImGui::TextWrapped("%s", getUIString(kStrHelpBrowseTip));
+            }
+            else if (helpCategory_ == 1) {
+                drawHelpSection("helpTools", kStrHelpTools, kStrHelpToolRows);
+                ImGui::TextWrapped("%s", getUIString(kStrHelpToolsTip));
+            }
+            else {
+                ImGui::TextWrapped("%s", getUIString(kStrHelpPlaybackTip));
+                ImGui::Spacing();
+                drawHelpSection("helpAnimation", kStrHelpAnimation, kStrHelpAnimationRows);
+                drawHelpSection("helpPlayer", kStrHelpPlayer, kStrHelpPlayerRows);
+            }
+        }
+        ImGui::EndChild();
+    }
+
+    static void drawHelpKeys(std::string_view keys) {
+        const float scale = jark::ui::UiHost::instance().scale();
+        const float available = ImGui::GetContentRegionAvail().x;
+        float usedWidth = 0.0f;
+        bool first = true;
+        for (const auto key : splitViews(keys, "|")) {
+            const float textWidth = (std::max)(1.0f, available - 16.0f * scale);
+            const auto textSize = ImGui::CalcTextSize(key.data(), key.data() + key.size(), false, textWidth);
+            const ImVec2 size{ (std::min)(available, textSize.x + 16.0f * scale), textSize.y + 8.0f * scale };
+            if (!first && usedWidth + 6.0f * scale + size.x <= available) {
+                ImGui::SameLine(0, 6.0f * scale);
+                usedWidth += 6.0f * scale;
+            }
+            else {
+                usedWidth = 0.0f;
+            }
+            const auto pos = ImGui::GetCursorScreenPos();
+            auto* drawList = ImGui::GetWindowDrawList();
+            const ImVec2 end{ pos.x + size.x, pos.y + size.y };
+            drawList->AddRectFilled(pos, end, ImGui::GetColorU32(ImGuiCol_FrameBg), 4.0f * scale);
+            drawList->AddRect(pos, end, ImGui::GetColorU32(ImGuiCol_Separator), 4.0f * scale);
+            drawList->AddText(nullptr, ImGui::GetFontSize(), { pos.x + 8.0f * scale, pos.y + 4.0f * scale },
+                ImGui::GetColorU32(ImGuiCol_Text), key.data(), key.data() + key.size(), textWidth);
+            ImGui::Dummy(size);
+            usedWidth += size.x;
+            first = false;
+        }
+    }
+
+    static void drawHelpSection(const char* id, uint32_t title, uint32_t body) {
+        const float scale = jark::ui::UiHost::instance().scale();
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 14.0f * scale, 12.0f * scale });
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, { 6.0f * scale, 7.0f * scale });
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImGui::GetStyleColorVec4(ImGuiCol_Separator));
+        if (ImGui::BeginChild(id, { 0, 0 }, ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY |
+            ImGuiChildFlags_AlwaysAutoResize, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+            ImGui::SeparatorText(getUIString(title));
+            if (ImGui::BeginTable("shortcuts", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerH)) {
+                ImGui::TableSetupColumn("action", ImGuiTableColumnFlags_WidthStretch, 0.46f);
+                ImGui::TableSetupColumn("keys", ImGuiTableColumnFlags_WidthStretch, 0.54f);
+                for (const auto line : splitViews(getUIString(body), "\n")) {
+                    const size_t separator = line.find('\t');
+                    if (separator == std::string_view::npos)
+                        continue;
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::TextWrapped("%.*s", static_cast<int>(separator), line.data());
+                    ImGui::TableNextColumn();
+                    drawHelpKeys(line.substr(separator + 1));
+                }
+                ImGui::EndTable();
+            }
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleColor(2);
+        ImGui::PopStyleVar(2);
+        ImGui::Spacing();
     }
 
     // 按分隔符切片（返回视图，不复制字符串）
@@ -537,18 +623,30 @@ private:
         "OpenCV · FFmpeg · libjxl · libheif · libavif · LibRaw · Exiv2 · LunaSVG · "
         "psd_sdk · Dear ImGui · stb · QOI · libwebp2 · DirectXTex · minizip · Lepton";
 
-    // 帮助页文案（窄表新增条目）
+    // 帮助页文案；每行用 TAB 分隔「操作 / 按键」，| 分隔可替代的输入方式。
     static constexpr uint32_t kStrHelpTitle = 127;
-    static constexpr uint32_t kStrHelpBody = 128;
-
-    // 帮助文案里同一行内的分组分隔符（两个全角空格），以及速查表的列数
-    static constexpr std::string_view kHelpGroupSeparator = "　　";
-    static constexpr int kHelpColumns = 2;
+    static constexpr uint32_t kStrHelpIntro = 197;
+    static constexpr uint32_t kStrHelpBrowse = 198;
+    static constexpr uint32_t kStrHelpTools = 199;
+    static constexpr uint32_t kStrHelpPlayback = 200;
+    static constexpr uint32_t kStrHelpMouse = 201;
+    static constexpr uint32_t kStrHelpKeyboard = 202;
+    static constexpr uint32_t kStrHelpAnimation = 203;
+    static constexpr uint32_t kStrHelpPlayer = 204;
+    static constexpr uint32_t kStrHelpMouseRows = 205;
+    static constexpr uint32_t kStrHelpBrowseRows = 206;
+    static constexpr uint32_t kStrHelpToolRows = 207;
+    static constexpr uint32_t kStrHelpAnimationRows = 208;
+    static constexpr uint32_t kStrHelpPlayerRows = 209;
+    static constexpr uint32_t kStrHelpBrowseTip = 210;
+    static constexpr uint32_t kStrHelpToolsTip = 211;
+    static constexpr uint32_t kStrHelpPlaybackTip = 212;
 
     bool visible_ = false;
     bool focusRequested_ = false;
     int activeTab_ = 0;
     int focusRequestedTab_ = -1;
+    int helpCategory_ = 0;
 
     bool lastColorManagement_ = false;
     uint32_t lastUiMode_ = 0;

@@ -95,6 +95,9 @@ pwsh tools/test_cache_budget.ps1 -Exe x64/Release/JarkViewer.exe -Image <一张�
 # 打印预览实机回归（抖动像素、窗口缩放、反相/模式切换、滑块悬停滚轮；独立 TEMP 副本，会操作鼠标键盘）
 python -I tools/test_print_preview.py --exe x64/Release/JarkViewer.exe
 
+# 帮助页回归（六种语言的操作条目、分类切换/滚动、深浅主题与窄窗口；独立 TEMP 副本）
+python -I tools/test_help_page.py --exe x64/Release/JarkViewer.exe
+
 # 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
 ./x64/Release/JarkViewer.exe --probe --navigation-test
 ./x64/Release/JarkViewer.exe --probe --thumbnail-test [--out-dir 临时目录]
@@ -293,6 +296,7 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
 | 主界面导航浮层 | `--probe --navigation-test`、`tools/test_navigation.ps1` |
 | 编辑与标注 | `--probe --annotate`、`tools/test_editor_text.ps1` |
 | 打印位图 / 打印方向 / 抖动预览 | `--probe --print-test --out <报告>`、`python -I tools/test_print_preview.py --exe x64/Release/JarkViewer.exe` |
+| 帮助页内容 / 排版 | `python -I tools/test_help_page.py --exe x64/Release/JarkViewer.exe` |
 | 命令行参数 / 语言 / 设置读写 | `tools/test_language_override.ps1` |
 | 字符串表 / 格式清单 / 工程文件列表 | `tools/check_source_invariants.ps1` + `tools/verify_source_invariant_checks.ps1` |
 
@@ -432,9 +436,13 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
   码位浏览器，截一张图看（`--revert` 还原）；码位猜错会画成豆腐块。
   业务侧只需实现 `D3D11App::DrawUi()` 提交界面，主循环在 `PresentFrame()` 里完成
   “画布贴后缓冲 → ImGui 一帧 → Present”。
-- 设置窗口的帮助页把文案（`kStrHelpBody`，一行行「按键：说明」、行内用两个全角空格分组）切成
-  **2 列**表格排版：列数不能再多，单元格宽度按窗口默认宽度算，3 列以上"窗口左右边缘：上一张 /
-  下一张"这类长条目会被裁掉；关于页顶部的软件图标是 `IDB_PNG_ABOUT_ICON`
+- 设置窗口的帮助页按“浏览图片 / 文件与工具 / 播放控制”分类，分类按钮固定、正文独立滚动。
+  窄表 205–209 的每行以 `\t` 分隔“操作 / 输入方式”、`|` 分隔替代输入；六种语言逐行对应。
+  `drawHelpSection()` 用高度自适应卡片及两列表格展示，`drawHelpKeys()` 绘制可折行的按键标签，
+  不按自然语言标点或空格拆列。宽表与窄表旧 ID 均保留，旧帮助正文 128 不再用于排版。
+  `tools/test_help_page.py` 验证六种语言的 42 项操作及深浅主题、分类切换、滚动和窄窗口；
+  快捷键内容须对照主窗口与播放器的实际输入处理，不能将两种窗口的空格/方向键语义混写。
+  关于页顶部的软件图标是 `IDB_PNG_ABOUT_ICON`
   （`file/aboutIcon.png`，从旧版设置页贴图 `settingRes.png` 里抠出来的透明底图标，纹理槽 4），
   深浅主题通用，不需要两套图。常规页最上面的勾选项按 **2 列**排布（现在 11 项，末行只有左列一项。
   ImGui 没有等宽列：第二列起点 = 第一列（偶数下标项）最长文本的实际文本宽 + 勾选框宽 + 列间距，

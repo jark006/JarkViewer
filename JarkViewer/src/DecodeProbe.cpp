@@ -308,7 +308,8 @@ namespace {
     // 语言自检：逐一切换语言并打印若干条文案，验证字符串表与回退逻辑
     std::string runLanguageTest() {
         std::string report;
-        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 156, 165, 190, 191, 192, 193 }; // 含新增导航/缓存/占位界面/音频画面/信息面板文案
+        const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 156, 165, 190, 191, 192, 193,
+            196, 197, 198, 199, 200 }; // 含导航/音频/打印提示/分类帮助文案
         const uint32_t wideIds[] = { 1, 13, 30, 49 };            // 窗口标题/窗口创建失败/删除到回收站/批量无图提示
 
         const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;
@@ -324,6 +325,9 @@ namespace {
             for (const uint32_t id : wideIds)
                 report += std::format("{} | ", jarkUtils::wstringToUtf8(getUIStringW(id).c_str()));
             report += std::format("\n     EXIF 标签文案：{}", jark::prefersChineseResources() ? "中文" : "英文");
+            // 供帮助页回归核对实际二进制中的六种语言，避免只检查源码却运行旧程序。
+            for (uint32_t id = 205; id <= 209; ++id)
+                report += std::format("\n[help:{}]\n{}\n[/help]", id, getUIString(id));
         }
 
         GlobalVar::settingParameter.UI_LANG = savedLanguage;

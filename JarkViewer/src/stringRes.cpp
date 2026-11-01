@@ -153,7 +153,7 @@ std::string_view UIStringTable[STRING_MAX_NUM][jark::kLanguageCount] = {
     {"序号位数", "序號位數", "Digits", "桁数", "자릿수", "Разрядность номера"},
     {"打印", "列印", "Print", "印刷", "인쇄", "Печать"}, // 126
 
-    // —— 帮助页（改成文字排版，不再用资源图）——
+    // —— 帮助页标题与旧版正文（128 保留编号；分类帮助追加在表尾）——
     {"快捷键与操作", "快速鍵與操作", "Shortcuts and controls", "ショートカットと操作", "단축키와 조작", "Горячие клавиши и управление"},
     {"滚轮：缩放　　中键：EXIF 信息　　右键：菜单　　左键拖动：平移\n"
      "窗口左右边缘：上一张 / 下一张　　窗口四角：旋转 / 打印 / 设置\n"
@@ -260,6 +260,62 @@ std::string_view UIStringTable[STRING_MAX_NUM][jark::kLanguageCount] = {
     {"起始序号", "起始序號", "Start number", "開始番号", "시작 번호", "Начальный номер"}, // 194（批量处理·重命名的序号起点，不再借用「开始处理」70）
     {"视频硬件解码", "影片硬體解碼", "Hardware video decoding", "動画のハードウェアデコード", "동영상 하드웨어 디코딩", "Аппаратное декодирование видео"}, // 195（设置页勾选，存储字段取反：disableVideoHardwareDecode）
     {"滚轮可微调", "滾輪可微調", "Fine-tune with wheel", "ホイールで微調整", "휠로 미세 조정", "Точная настройка колёсиком"}, // 196（打印预览滑块右侧提示）
+    {"按操作场景查找鼠标手势与快捷键。", "依操作情境查找滑鼠手勢與快速鍵。", "Find mouse controls and shortcuts by task.", "操作別にマウス操作とショートカットを確認できます。", "작업별 마우스 조작과 단축키를 확인하세요.", "Действия мышью и сочетания клавиш по задачам."}, // 197
+    {"浏览图片", "瀏覽圖片", "Browse images", "画像を見る", "이미지 탐색", "Просмотр"}, // 198
+    {"文件与工具", "檔案與工具", "Files & tools", "ファイルとツール", "파일 및 도구", "Файлы и инструменты"}, // 199
+    {"播放控制", "播放控制", "Playback", "再生操作", "재생 조작", "Воспроизведение"}, // 200
+    {"鼠标操作", "滑鼠操作", "Mouse controls", "マウス操作", "마우스 조작", "Действия мышью"}, // 201
+    {"键盘快捷键", "鍵盤快速鍵", "Keyboard shortcuts", "キーボード操作", "키보드 단축키", "Сочетания клавиш"}, // 202
+    {"动图与实况照片", "動圖與實況照片", "Animations & Live Photos", "アニメーションとライブフォト", "애니메이션 및 라이브 포토", "Анимация и «живые» фото"}, // 203
+    {"视频与音频播放器", "影片與音訊播放器", "Video & audio player", "動画・音声プレーヤー", "동영상 및 오디오 플레이어", "Видео- и аудиоплеер"}, // 204
+    {"以光标位置为中心缩放\t图像区域滚轮\n平移图片\t按住左键拖动\n上一张 / 下一张\t左右边缘单击或滚轮\n显示图像信息（EXIF）\t中键单击\n打开功能菜单\t右键单击\n切换全屏\t双击图像\n向左 / 向右旋转\t左上角 / 右上角\n打印 / 设置\t左下角 / 右下角",
+     "以游標位置為中心縮放\t影像區域滾輪\n平移圖片\t按住左鍵拖曳\n上一張 / 下一張\t左右邊緣點擊或滾輪\n顯示影像資訊（EXIF）\t中鍵點擊\n開啟功能選單\t右鍵點擊\n切換全螢幕\t雙擊影像\n向左 / 向右旋轉\t左上角 / 右上角\n列印 / 設定\t左下角 / 右下角",
+     "Zoom around the pointer\tWheel over image\nPan the image\tLeft-button drag\nPrevious / next image\tClick or wheel at side edges\nShow image info (EXIF)\tMiddle click\nOpen the context menu\tRight click\nToggle fullscreen\tDouble click image\nRotate left / right\tTop-left / top-right corner\nPrint / settings\tBottom-left / bottom-right corner",
+     "カーソル位置を中心にズーム\t画像上でホイール\n画像を移動\t左ボタンでドラッグ\n前 / 次の画像\t左右端でクリック・ホイール\n画像情報（EXIF）を表示\t中ボタンクリック\nメニューを開く\t右クリック\n全画面を切り替え\t画像をダブルクリック\n左 / 右に回転\t左上 / 右上の隅\n印刷 / 設定\t左下 / 右下の隅",
+     "포인터를 중심으로 확대/축소\t이미지 위에서 휠\n이미지 이동\t왼쪽 버튼으로 드래그\n이전 / 다음 이미지\t좌우 가장자리 클릭 또는 휠\n이미지 정보(EXIF) 표시\t가운데 클릭\n메뉴 열기\t오른쪽 클릭\n전체 화면 전환\t이미지 두 번 클릭\n왼쪽 / 오른쪽 회전\t왼쪽 위 / 오른쪽 위 모서리\n인쇄 / 설정\t왼쪽 아래 / 오른쪽 아래 모서리",
+     "Масштаб у указателя\tКолесо над изображением\nПеремещение изображения\tПеретаскивание левой кнопкой\nПредыдущее / следующее фото\tЩелчок или колесо у краёв\nИнформация EXIF\tСредняя кнопка\nКонтекстное меню\tПравая кнопка\nПолный экран\tДвойной щелчок\nПоворот влево / вправо\tВерхний левый / правый угол\nПечать / настройки\tНижний левый / правый угол"}, // 205
+    {"上一张 / 下一张\t← / →|PgUp / PgDn\n第一张 / 最后一张\tHome / End\n放大 / 缩小\t↑ / ↓\n原始尺寸 / 适应窗口\t5\n向左 / 向右旋转\tQ / E\n平移图片\tW A S D\n显示图像信息（EXIF）\tI|Tab\n切换全屏\tF|F11\n开始 / 停止幻灯片\tP",
+     "上一張 / 下一張\t← / →|PgUp / PgDn\n第一張 / 最後一張\tHome / End\n放大 / 縮小\t↑ / ↓\n原始尺寸 / 適應視窗\t5\n向左 / 向右旋轉\tQ / E\n平移圖片\tW A S D\n顯示影像資訊（EXIF）\tI|Tab\n切換全螢幕\tF|F11\n開始 / 停止幻燈片\tP",
+     "Previous / next image\t← / →|PgUp / PgDn\nFirst / last image\tHome / End\nZoom in / out\t↑ / ↓\nActual size / fit window\t5\nRotate left / right\tQ / E\nPan the image\tW A S D\nShow image info (EXIF)\tI|Tab\nToggle fullscreen\tF|F11\nStart / stop slideshow\tP",
+     "前 / 次の画像\t← / →|PgUp / PgDn\n最初 / 最後の画像\tHome / End\n拡大 / 縮小\t↑ / ↓\n原寸 / ウィンドウに合わせる\t5\n左 / 右に回転\tQ / E\n画像を移動\tW A S D\n画像情報（EXIF）を表示\tI|Tab\n全画面を切り替え\tF|F11\nスライドショー開始 / 停止\tP",
+     "이전 / 다음 이미지\t← / →|PgUp / PgDn\n첫 / 마지막 이미지\tHome / End\n확대 / 축소\t↑ / ↓\n원본 크기 / 창에 맞춤\t5\n왼쪽 / 오른쪽 회전\tQ / E\n이미지 이동\tW A S D\n이미지 정보(EXIF) 표시\tI|Tab\n전체 화면 전환\tF|F11\n슬라이드쇼 시작 / 중지\tP",
+     "Предыдущее / следующее фото\t← / →|PgUp / PgDn\nПервое / последнее фото\tHome / End\nУвеличить / уменьшить\t↑ / ↓\nИсходный размер / по окну\t5\nПоворот влево / вправо\tQ / E\nПеремещение изображения\tW A S D\nИнформация EXIF\tI|Tab\nПолный экран\tF|F11\nНачать / остановить слайд-шоу\tP"}, // 206
+    {"打开文件\tCtrl+O|拖入文件\n复制图像\tCtrl+C\n复制 EXIF 信息\tC\n重命名当前图片\tCtrl+R\n移到回收站\tDelete\n编辑与标注\tCtrl+E\n打印预览与另存为\tCtrl+P\n批量处理当前目录\tCtrl+B\n将动图逐帧导出为 PNG\tCtrl+S\n常规 / 关联 / 帮助 / 关于\tF1 / F2 / F3 / F4\n退出程序\tCtrl+W",
+     "開啟檔案\tCtrl+O|拖入檔案\n複製影像\tCtrl+C\n複製 EXIF 資訊\tC\n重新命名目前圖片\tCtrl+R\n移至資源回收筒\tDelete\n編輯與標註\tCtrl+E\n列印預覽與另存新檔\tCtrl+P\n批次處理目前目錄\tCtrl+B\n將動圖逐格匯出為 PNG\tCtrl+S\n一般 / 關聯 / 說明 / 關於\tF1 / F2 / F3 / F4\n結束程式\tCtrl+W",
+     "Open a file\tCtrl+O|Drop a file\nCopy image\tCtrl+C\nCopy EXIF information\tC\nRename current image\tCtrl+R\nMove to recycle bin\tDelete\nEdit and annotate\tCtrl+E\nPrint preview and Save As\tCtrl+P\nBatch-process current folder\tCtrl+B\nExport animation frames as PNG\tCtrl+S\nGeneral / associations / help / about\tF1 / F2 / F3 / F4\nQuit the app\tCtrl+W",
+     "ファイルを開く\tCtrl+O|ファイルをドロップ\n画像をコピー\tCtrl+C\nEXIF 情報をコピー\tC\n画像の名前を変更\tCtrl+R\nごみ箱へ移動\tDelete\n編集と注釈\tCtrl+E\n印刷プレビュー・名前を付けて保存\tCtrl+P\n現在のフォルダーを一括処理\tCtrl+B\nアニメーションを PNG 連番で保存\tCtrl+S\n一般 / 関連付け / ヘルプ / 情報\tF1 / F2 / F3 / F4\n終了\tCtrl+W",
+     "파일 열기\tCtrl+O|파일 끌어 놓기\n이미지 복사\tCtrl+C\nEXIF 정보 복사\tC\n현재 이미지 이름 바꾸기\tCtrl+R\n휴지통으로 이동\tDelete\n편집 및 주석\tCtrl+E\n인쇄 미리보기 및 다른 이름으로 저장\tCtrl+P\n현재 폴더 일괄 처리\tCtrl+B\n애니메이션 프레임을 PNG로 저장\tCtrl+S\n일반 / 파일 연결 / 도움말 / 정보\tF1 / F2 / F3 / F4\n앱 종료\tCtrl+W",
+     "Открыть файл\tCtrl+O|Перетащить файл\nКопировать изображение\tCtrl+C\nКопировать EXIF\tC\nПереименовать изображение\tCtrl+R\nПереместить в корзину\tDelete\nРедактор и аннотации\tCtrl+E\nПредпросмотр печати и сохранение\tCtrl+P\nПакетная обработка папки\tCtrl+B\nСохранить кадры анимации в PNG\tCtrl+S\nОбщие / ассоциации / помощь / о программе\tF1 / F2 / F3 / F4\nВыход\tCtrl+W"}, // 207
+    {"动图暂停 / 继续\tK|Space\n暂停时上一帧 / 下一帧\tJ / L\n实况照片播放 / 停止\tSpace\n重播实况照片并出声\t悬停“实况”角标",
+     "動圖暫停 / 繼續\tK|Space\n暫停時上一格 / 下一格\tJ / L\n實況照片播放 / 停止\tSpace\n重播實況照片並播放聲音\t停留於「實況」角標",
+     "Pause / resume animation\tK|Space\nPrevious / next frame while paused\tJ / L\nPlay / stop a Live Photo\tSpace\nReplay Live Photo with sound\tHover the LIVE badge",
+     "アニメーションの一時停止 / 再開\tK|Space\n一時停止中に前 / 次のコマ\tJ / L\nライブフォトの再生 / 停止\tSpace\nライブフォトを音付きで再生\tライブ表示にカーソルを合わせる",
+     "애니메이션 일시정지 / 재개\tK|Space\n일시정지 중 이전 / 다음 프레임\tJ / L\n라이브 포토 재생 / 중지\tSpace\n라이브 포토를 소리와 함께 다시 재생\t라이브 배지에 마우스 올리기",
+     "Пауза / продолжение анимации\tK|Space\nКадр назад / вперёд на паузе\tJ / L\nВоспроизвести / остановить «живое» фото\tSpace\nПовторить «живое» фото со звуком\tНавести указатель на LIVE"}, // 208
+    {"播放 / 暂停\tSpace|单击画面\n后退 / 前进 5 秒\tA / D|← / →\n增大 / 减小音量\tW / S|↑ / ↓|滚轮\n暂停时上一帧 / 下一帧\tA / D|← / →\n开头 / 结尾\tHome / End\n跳转到指定位置\t拖动底部进度条\n显示媒体信息\tI|Tab\n切换全屏\tF|F11|双击画面\n打开其他文件\tCtrl+O\n退出播放器\tEsc|Ctrl+W",
+     "播放 / 暫停\tSpace|點擊畫面\n後退 / 前進 5 秒\tA / D|← / →\n增大 / 減小音量\tW / S|↑ / ↓|滾輪\n暫停時上一格 / 下一格\tA / D|← / →\n開頭 / 結尾\tHome / End\n跳至指定位置\t拖曳底部進度列\n顯示媒體資訊\tI|Tab\n切換全螢幕\tF|F11|雙擊畫面\n開啟其他檔案\tCtrl+O\n結束播放器\tEsc|Ctrl+W",
+     "Play / pause\tSpace|Click the picture\nSeek back / forward 5 seconds\tA / D|← / →\nVolume up / down\tW / S|↑ / ↓|Wheel\nPrevious / next frame while paused\tA / D|← / →\nBeginning / end\tHome / End\nSeek to a position\tDrag the bottom seek bar\nShow media information\tI|Tab\nToggle fullscreen\tF|F11|Double click\nOpen another file\tCtrl+O\nQuit the player\tEsc|Ctrl+W",
+     "再生 / 一時停止\tSpace|画面をクリック\n5 秒戻る / 進む\tA / D|← / →\n音量を上げる / 下げる\tW / S|↑ / ↓|ホイール\n一時停止中に前 / 次のコマ\tA / D|← / →\n先頭 / 末尾\tHome / End\n指定位置に移動\t下部のシークバーをドラッグ\nメディア情報を表示\tI|Tab\n全画面を切り替え\tF|F11|ダブルクリック\n別のファイルを開く\tCtrl+O\nプレーヤーを終了\tEsc|Ctrl+W",
+     "재생 / 일시정지\tSpace|화면 클릭\n5초 뒤로 / 앞으로\tA / D|← / →\n볼륨 높이기 / 낮추기\tW / S|↑ / ↓|휠\n일시정지 중 이전 / 다음 프레임\tA / D|← / →\n처음 / 끝\tHome / End\n지정 위치로 이동\t하단 탐색 막대 드래그\n미디어 정보 표시\tI|Tab\n전체 화면 전환\tF|F11|두 번 클릭\n다른 파일 열기\tCtrl+O\n플레이어 종료\tEsc|Ctrl+W",
+     "Воспроизведение / пауза\tSpace|Щелчок по кадру\nНазад / вперёд на 5 секунд\tA / D|← / →\nГромче / тише\tW / S|↑ / ↓|Колесо\nКадр назад / вперёд на паузе\tA / D|← / →\nНачало / конец\tHome / End\nПереход к позиции\tПеретащить шкалу внизу\nИнформация о медиа\tI|Tab\nПолный экран\tF|F11|Двойной щелчок\nОткрыть другой файл\tCtrl+O\nВыйти из плеера\tEsc|Ctrl+W"}, // 209
+    {"把鼠标移到窗口底部，可展开缩略图带；拖动右下角鸟瞰图可快速定位。静态图按空格切下一张，幻灯片播放时按 Esc 停止。",
+     "將滑鼠移到視窗底部可展開縮圖列；拖曳右下角鳥瞰圖可快速定位。靜態圖按空白鍵切至下一張，幻燈片播放時按 Esc 停止。",
+     "Hover at the bottom to reveal thumbnails; drag the bottom-right navigator to move around. Space advances a still image. Esc stops a slideshow.",
+     "下端にカーソルを合わせるとサムネイル列が開きます。右下のナビゲーターをドラッグして移動できます。静止画では Space で次へ、スライドショー中は Esc で停止します。",
+     "창 하단에 마우스를 올리면 미리보기 목록이 펼쳐집니다. 오른쪽 아래 탐색기를 드래그해 이동하세요. 정지 이미지는 Space로 다음 장으로 이동하며, 슬라이드쇼는 Esc로 중지합니다.",
+     "Наведите указатель вниз для миниатюр; перетаскивайте навигатор справа внизу для перемещения. Space открывает следующее фото, Esc останавливает слайд-шоу."}, // 210
+    {"打印预览中，悬停亮度或对比度滑块并滚动，每格微调 1。编辑与标注完成后，可另存为新文件或覆盖原图。关闭当前工具窗口可按 Esc。",
+     "列印預覽中，停留於亮度或對比度滑桿並滾動，每格微調 1。編輯與標註完成後，可另存新檔或覆寫原圖。按 Esc 可關閉目前工具視窗。",
+     "In print preview, hover a brightness or contrast slider and scroll to adjust by 1. After editing, save a new file or overwrite the original. Esc closes the current tool window.",
+     "印刷プレビューでは明るさ・コントラストのスライダー上でホイールを回すと 1 ずつ調整できます。編集後は別名保存や上書きができます。Esc でツール画面を閉じます。",
+     "인쇄 미리보기의 밝기 또는 대비 슬라이더에 마우스를 올리고 휠을 돌리면 1씩 조정됩니다. 편집 후 새 파일로 저장하거나 원본을 덮어쓸 수 있습니다. Esc로 도구 창을 닫습니다.",
+     "В предпросмотре печати колесо над ползунком яркости или контраста меняет значение на 1. После редактирования сохраните новый файл или замените исходный. Esc закрывает окно инструмента."}, // 211
+    {"动图与实况照片在看图窗口中播放；视频与音频使用独立播放器。纯音频的左右键按 5 秒跳转。",
+     "動圖與實況照片在看圖視窗中播放；影片與音訊使用獨立播放器。純音訊的左右鍵以 5 秒跳轉。",
+     "Animations and Live Photos play in the image viewer. Video and audio open a separate player. For audio, left/right seeks by 5 seconds.",
+     "アニメーションとライブフォトは画像画面で再生します。動画・音声は専用プレーヤーで開きます。音声の左右キーは 5 秒単位の移動です。",
+     "애니메이션과 라이브 포토는 이미지 창에서 재생되며, 동영상과 오디오는 별도 플레이어에서 열립니다. 오디오의 좌우 키는 5초씩 이동합니다.",
+     "Анимация и «живые» фото воспроизводятся в окне просмотра. Видео и аудио открываются в отдельном плеере. Для аудио стрелки перематывают на 5 секунд."}, // 212
 };
 
 // 供 Win32 API（窗口标题/消息框/右键菜单）使用的字符串表，ID 与窄表相互独立
