@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="ico.png" alt="JarkViewer" width="100">
+  <img src="images/ico.png" alt="JarkViewer" width="100">
 </p>
 
 <h1 align="center">🖼️ JarkViewer 看图</h1>
@@ -35,7 +35,7 @@
 - **编辑与批处理**：裁剪、标注、格式转换、缩放、旋转与重命名。
 - **媒体播放**：独立视频 / 音频播放器，支持视频硬件解码、进度拖动与音频频谱。
 
-![JarkViewer 主窗口，展示 EXIF 信息、同目录缩略图带与鸟瞰图](preview.png)
+![JarkViewer 主窗口，展示 EXIF 信息、同目录缩略图带与鸟瞰图](images/preview.png)
 
 主窗口：左侧为 EXIF 信息，底部为同目录缩略图带，右下角为鸟瞰图。
 
@@ -169,7 +169,7 @@ scoop install extras/jarkviewer
 
 鼠标悬停在亮度或对比度滑块上时，可用滚轮微调：每格增减 1，范围为 0–200。
 
-![黑白文档与黑白抖动模式的原图及处理效果对比](printerPreview.png)
+![黑白文档与黑白抖动模式的原图及处理效果对比](images/printerPreview.png)
 
 左侧对比为黑白文档模式，右侧对比为黑白抖动模式；每组均先展示原图，再展示处理结果。
 

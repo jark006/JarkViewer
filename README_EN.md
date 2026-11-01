@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="ico.png" alt="JarkViewer" width="100">
+  <img src="images/ico.png" alt="JarkViewer" width="100">
 </p>
 
 <h1 align="center">🖼️ JarkViewer</h1>
@@ -35,7 +35,7 @@
 - **Editing and batch processing**: crop, annotate, convert formats, resize, rotate and rename.
 - **Media playback**: a standalone video / audio player with hardware video decoding, seeking and an audio spectrum display.
 
-![JarkViewer main window showing EXIF information, folder thumbnails and the navigator](preview.png)
+![JarkViewer main window showing EXIF information, folder thumbnails and the navigator](images/preview.png)
 
 Main window: EXIF information on the left, folder thumbnails at the bottom, and the navigator in the bottom-right corner.
 
@@ -169,7 +169,7 @@ Press `Ctrl + P` or click the bottom-left corner of the window to open print pre
 
 Hover over the brightness or contrast slider to adjust it with the wheel: each notch changes the value by 1, within 0–200.
 
-![Original images compared with Document and Dithering print modes](printerPreview.png)
+![Original images compared with Document and Dithering print modes](images/printerPreview.png)
 
 The left pair demonstrates Document mode; the right pair demonstrates Dithering. Each pair shows the original first, followed by the processed result.
 
