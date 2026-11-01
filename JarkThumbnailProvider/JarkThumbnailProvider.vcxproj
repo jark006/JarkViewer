@@ -97,6 +97,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\JarkViewer\include\PsdDecoder.h" />
     <ClInclude Include="include\BitmapOut.h" />
     <ClInclude Include="include\ClassFactory.h" />
     <ClInclude Include="include\FormatSniffer.h" />
@@ -105,6 +106,7 @@
     <ClInclude Include="include\ThumbTypes.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\JarkViewer\src\PsdDecoder.cpp" />
     <ClCompile Include="src\BitmapOut.cpp" />
     <ClCompile Include="src\ClassFactory.cpp" />
     <ClCompile Include="src\dllmain.cpp" />

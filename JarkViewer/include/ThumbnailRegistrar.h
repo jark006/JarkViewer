@@ -123,7 +123,7 @@ private:
         L"eip", L"erf", L"exr", L"fff", L"gpr", L"hdr", L"heic", L"heif",
         L"iiq", L"jp2", L"jxl", L"jxr", L"k25", L"kdc", L"lep", L"livp",
         L"mdc", L"mef", L"mos", L"mrw", L"nef", L"nrw", L"orf", L"pbm",
-        L"pcx", L"pef", L"pfm", L"pgm", L"pic", L"pnm", L"ppm", L"psd",
+        L"pcx", L"pef", L"pfm", L"pgm", L"pic", L"pnm", L"ppm", L"psb", L"psd",
         L"psdt", L"ptx", L"pxm", L"qoi", L"r3d", L"raf", L"ras", L"raw",
         L"rw2", L"rwl", L"rwz", L"sr", L"sr2", L"srf", L"srw", L"svg",
         L"tga", L"wp2", L"x3f"

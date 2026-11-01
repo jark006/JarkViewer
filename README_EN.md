@@ -118,12 +118,14 @@ Hover over the brightness or contrast slider to fine-tune it with the mouse whee
 
 ## 📂 Format Support
 
--   **Static**: `apng avif avifs blp bmp dds dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr lep livp pbm pcx pfm pgm pic png pnm ppm psd psdt pxm qoi ras sr svg tga tif tiff webp wp2`
+-   **Static**: `apng avif avifs blp bmp dds dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr lep livp pbm pcx pfm pgm pic png pnm ppm psb psd psdt pxm qoi ras sr svg tga tif tiff webp wp2`
 -   **Animated**: `gif webp png apng jxl avif`
 -   **Live**: `livp (IOS LivePhoto) jpg/heic/heif (Android MicroVideo/MotionPhoto)`
 -   **Video** (selecting a video file from the command line / drag-and-drop / "Open" enters the standalone player window; does not appear in the page-through list of its folder): `3gp avi evo flv m2ts m4v mkv mov mp4 mts mxf ts vob webm wmv`
 -   **Audio** (same standalone player window, just without a picture; likewise does not appear in the page-through list): `aac ac3 aif aiff amr ape au caf dsf dts flac m4a m4b mka mp2 mp3 mpc oga ogg opus tak tta w64 wav wma wv`
 -   **RAW**: `3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
+
+PSD/PSB prefers the saved compatibility composite, supporting 8/16-bit RGB, grayscale and CMYK (with embedded ICC color conversion), plus Raw, RLE, ZIP and ZIP prediction compression. Without a saved composite, ordinary RGB layers can be composited with visibility, offsets, transparency and layer opacity preserved. Files with groups, masks, adjustment layers, layer effects or special blend modes still need to be saved in Photoshop with “Maximize Compatibility” enabled.
 
 ## 🗃️ Features
 

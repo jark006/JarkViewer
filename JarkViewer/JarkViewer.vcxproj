@@ -178,6 +178,7 @@
     <ClCompile Include="src\ImageAnnotator.cpp" />
     <ClCompile Include="src\ImageDatabase.cpp" />
     <ClCompile Include="src\ImageResampler.cpp" />
+    <ClCompile Include="src\PsdDecoder.cpp" />
     <ClCompile Include="src\TextRenderer.cpp" />
     <ClCompile Include="src\VectorImage.cpp" />
     <ClCompile Include="src\videoDecoder.cpp" />
@@ -222,6 +223,7 @@
     <ClInclude Include="include\ImageAnnotator.h" />
     <ClInclude Include="include\ImageDatabase.h" />
     <ClInclude Include="include\ImageResampler.h" />
+    <ClInclude Include="include\PsdDecoder.h" />
     <ClInclude Include="include\SVGPreprocessor.h" />
     <ClInclude Include="include\TextRenderer.h" />
     <ClInclude Include="include\VectorImage.h" />

@@ -306,6 +306,7 @@ FileFormat fileFormatFromExtension(std::wstring_view ext) noexcept {
         { L"tif", FileFormat::Tiff },
         { L"avifs", FileFormat::Avif },
         { L"psdt", FileFormat::Psd },
+        { L"psb", FileFormat::Psd },
         { L"pbm", FileFormat::Pnm },
         { L"pgm", FileFormat::Pnm },
         { L"ppm", FileFormat::Pnm },

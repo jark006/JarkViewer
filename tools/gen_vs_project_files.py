@@ -36,7 +36,7 @@ OWN_GROUPS = {
            "EditorWindow", "RenameWindow"},
     "Image": {"ImageDatabase", "FormatSniffer", "VectorImage", "SVGPreprocessor",
               "CanvasRenderer", "ImageResampler", "TextRenderer", "ImageAnnotator",
-              "ImageAdjust", "ColorManager", "blpDecoder", "videoDecoder"},
+              "ImageAdjust", "ColorManager", "PsdDecoder", "blpDecoder", "videoDecoder"},
     "Media": {"MediaDecoder", "MediaPlayer", "AudioOutput", "VideoPlayback",
               "AudioSpectrumAnalyzer"},
     "Metadata": {"exifParse", "AiPrompt"},

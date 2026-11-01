@@ -263,7 +263,7 @@ public:
         L"apng", L"avif", L"avifs", L"blp", L"bmp", L"dds", L"dib", L"exr",
         L"gif", L"hdr", L"heic", L"heif", L"ico", L"icon", L"jfif", L"jp2",
         L"jpe", L"jpeg", L"jpg", L"jxl", L"jxr", L"lep", L"livp", L"pbm",
-        L"pcx", L"pfm", L"pgm", L"pic", L"png", L"pnm", L"ppm", L"psd",
+        L"pcx", L"pfm", L"pgm", L"pic", L"png", L"pnm", L"ppm", L"psb", L"psd",
         L"psdt", L"pxm", L"qoi", L"ras", L"sr", L"svg", L"tga", L"tif",
         L"tiff", L"webp", L"wp2",
     };

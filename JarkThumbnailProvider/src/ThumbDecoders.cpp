@@ -1,6 +1,7 @@
 #include "ThumbDecoders.h"
 
 #include "FormatSniffer.h"
+#include "PsdDecoder.h"
 
 #include <algorithm>
 #include <array>
@@ -1446,6 +1447,17 @@ bool decodeThumbnail(std::span<const uint8_t> data, uint32_t maxEdge, ThumbBitma
             return decodeLivp(data, maxEdge, out);
         case Format::Wp2:
             return decodeWp2(data, out);
+        case Format::Psd: {
+            jark::PsdBitmap bitmap;
+            if (!jark::decodePsdComposite(data, bitmap, 512ULL * 1024 * 1024) ||
+                !checkedDimensions(bitmap.width, bitmap.height))
+                return false;
+            out.width = bitmap.width;
+            out.height = bitmap.height;
+            out.hasAlpha = bitmap.hasAlpha;
+            out.bgra = std::move(bitmap.bgra);
+            return true;
+        }
         case Format::Qoi:
             return decodeQoi(data, out);
         case Format::Blp:

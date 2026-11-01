@@ -11,6 +11,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\JarkViewer\include\PsdDecoder.h"><Filter>include</Filter></ClInclude>
     <ClInclude Include="include\BitmapOut.h"><Filter>include</Filter></ClInclude>
     <ClInclude Include="include\ClassFactory.h"><Filter>include</Filter></ClInclude>
     <ClInclude Include="include\FormatSniffer.h"><Filter>include</Filter></ClInclude>
@@ -19,6 +20,7 @@
     <ClInclude Include="include\ThumbTypes.h"><Filter>include</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\JarkViewer\src\PsdDecoder.cpp"><Filter>src</Filter></ClCompile>
     <ClCompile Include="src\BitmapOut.cpp"><Filter>src</Filter></ClCompile>
     <ClCompile Include="src\ClassFactory.cpp"><Filter>src</Filter></ClCompile>
     <ClCompile Include="src\dllmain.cpp"><Filter>src</Filter></ClCompile>

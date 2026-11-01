@@ -101,6 +101,12 @@ Get-Content -LiteralPath "$corpus/decode.txt" -Encoding utf8
 
 生成集包含故意损坏、错扩展名、无扩展名和方向样本，不能要求每个文件解码成功；需要按预期核对失败原因。要自动汇总预期结果，使用下面的审计入口。
 
+PSD/PSB 专项回归（Pillow / numpy）：生成不同位深、颜色模式、透明/专色通道和压缩组合，直接加载本轮缩略图 DLL 检查像素，同时验证探针、批量导出与坏输入拒绝。无兼容性合成图的生成样本另覆盖层叠顺序、隐藏、负坐标、越界裁剪、opacity/fill opacity、直通 alpha 和 16 位 `Lr16`；真实纯白合成图必须保持纯白。指定真实样本目录时，合成图按内嵌 ICC 与 Pillow 的独立解码结果比对，无合成图的样本使用同名 PNG 参考，并核对原文件哈希和修改时间；PSB 只在内存重包装合成图供 Pillow 读取。全部输出放在命令打印的 TEMP 目录。
+
+```powershell
+python -I tools/test_psd_decode.py --real-corpus D:/Downloads/test/psd
+```
+
 媒体改动还应覆盖带/无音轨、短音轨、纯音频、竖拍旋转、长 GOP、4K、大于 256 MiB 文件及截断输入。`--video-test` 的 seek 是异步的，先 pump 再采样基准；短片恢复断言的下界按媒体时长夹取，不能把自然播完当失败。
 
 ## 专项 GUI 命令

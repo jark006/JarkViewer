@@ -118,12 +118,14 @@
 
 ## 📂 格式支持
 
-- **静态**：`apng avif avifs blp bmp dds dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr lep livp pbm pcx pfm pgm pic png pnm ppm psd psdt pxm qoi ras sr svg tga tif tiff webp wp2`
+- **静态**：`apng avif avifs blp bmp dds dib exr gif hdr heic heif ico icon jfif jp2 jpe jpeg jpg jxl jxr lep livp pbm pcx pfm pgm pic png pnm ppm psb psd psdt pxm qoi ras sr svg tga tif tiff webp wp2`
 - **动态**：`gif webp png apng jxl avif`
 - **实况**：`livp(IOS LivePhoto) jpg/heic/heif(Android MicroVideo/MotionPhoto)`
 - **视频**（命令行/拖放/「打开」选中视频文件会进入独立播放器界面；不出现在同目录的翻页列表里）：`3gp avi evo flv m2ts m4v mkv mov mp4 mts mxf ts vob webm wmv`
 - **音频**（同样进独立播放器界面，只是没有画面；不出现在同目录的翻页列表里）：`aac ac3 aif aiff amr ape au caf dsf dts flac m4a m4b mka mp2 mp3 mpc oga ogg opus tak tta w64 wav wma wv`
 - **RAW**：`3fr ari arw bay cap cr2 cr3 crw dcr dcs dng drf eip erf fff gpr iiq k25 kdc mdc mef mos mrw nef nrw orf pef ptx r3d raf raw rw2 rwl rwz sr2 srf srw x3f`
+
+PSD/PSB 优先读取兼容性合成图，支持 8/16 位 RGB、灰度与 CMYK（使用内嵌 ICC 转换颜色），以及 Raw、RLE、ZIP 和 ZIP prediction 压缩。未保存合成图时，可合成普通 RGB 图层，保留隐藏状态、位置偏移、透明度及图层不透明度；含组、蒙版、调整层、图层效果或特殊混合模式的文件仍需在 Photoshop 中启用“最大兼容性”后保存。
 
 ## 🗃️ 特性
 

@@ -14,6 +14,7 @@
 #include "MappedFileReader.h"
 #include "MediaDecoder.h"
 #include "MediaPlayer.h"
+#include "PsdDecoder.h"
 #include "VectorImage.h"
 
 #include <intrin.h>
@@ -3317,10 +3318,18 @@ ImageAsset ImageDatabase::decodeByFormat(jark::FileFormat format, const wstring&
     }
 
     case jark::FileFormat::Psd: {
-        // psd_sdk 优先、stb 兜底。顺序不能反：stb 解「16 位 + RLE」的 PSD 会返回成功但
-        // 内容错位（RLE 按每通道 pixelCount 个字节解，16 位应为 pixelCount*2），
-        // 从第二个通道起全部错位、透明通道整层为零，全图不可见且不报错，
-        // 放在前面的话兜底永远轮不到。回归防护见 --probe 自检与源码约定。
+        jark::PsdBitmap bitmap;
+        if (jark::decodePsdComposite(buf, bitmap)) {
+            ImageAsset asset{ ImageFormat::Still,
+                cv::Mat(bitmap.height, bitmap.width, CV_8UC4, bitmap.bgra.data()).clone() };
+            asset.iccProfile = std::move(bitmap.iccProfile);
+            applyExifInfo(asset, path, buf, ExifPolicy::FullWithOrientation);
+            return asset;
+        }
+        // 8/16 位失败不能回退去读“未保存合成图”的白色占位；旧 RGB 路径仅兜底其它位深。
+        if (buf.size() >= 26 && buf[22] == 0 && (buf[23] == 8 || buf[23] == 16))
+            return {};
+        // psd_sdk 必须在 stb 前：stb 的 16 位 RLE 会静默解出错误透明度。
         auto img = loadPSD(path, buf);
         if (img.empty())
             img = loadSTB(path, buf);

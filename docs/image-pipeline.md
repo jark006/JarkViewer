@@ -6,7 +6,9 @@
 
 入口为 `ImageDatabase::loader()` → `myLoader()` → `FormatSniffer` / `decodeByFormat()`。通常按文件头识别真实格式，失败后用扩展名路由，再走 OpenCV / WIC 通用兜底。RAW、视频、LIVP、LEP、TGA 等扩展名包含额外语义，由 `isExtensionAuthoritative()` 决定优先级，不能简单改成所有格式都只信魔数。
 
-- PSD 保持 psd_sdk 优先、stb 兜底；反过来会让部分 16 位 RLE 图静默全透明。
+- PSD/PSB 优先共用 `PsdDecoder`，从映射字节读取兼容性合成图；PSB 的图层区长度为 64 位、RLE 行长度为 32 位。支持 8/16 位 RGB、灰度、CMYK 与 Raw/RLE/ZIP/ZIP prediction。CMYK 反相墨量先还原，再用内嵌 ICC 转 sRGB（无有效 ICC 时用算术转换），输出附 sRGB profile，避免显示/批处理再次套用 CMYK 标签。
+- 图像资源 1057（Version Info）的 `hasRealMergedData=false` 表示文件尾部只是占位，不能当作成功的白图；此时按从底到顶的记录顺序合成普通 8/16 位 RGB 图层，处理隐藏、偏移/画布裁剪、独立透明通道、图层 opacity 和 fill opacity。图层像素是直通 alpha，不进行合成图的白底消光还原；正的额外通道也不能误作透明度。16 位信息可在 `Lr16` 附加块中。组、有效蒙版、调整层、图层效果、剪贴和特殊混合模式暂不重建，返回失败，需保存兼容性合成图。不能仅凭全白像素猜测合成图缺失。
+- 8/16 位解码失败后不再回退读取占位合成图。其它位深的旧 RGB PSD 仍保留 psd_sdk → stb 兜底；顺序不能反，否则部分 16 位 RLE 图会静默全透明。缩略图工程使用同一解码器。
 - EXIF 后处理统一由 `applyExifInfo()` 按 `ExifPolicy` 执行，避免在各格式分支重复旋转/补元数据。
 - 解码入口兜住 C++ 异常并返回失败结果，不能让异常越过后台线程入口终止进程。短文件名和无扩展名也能按内容解码。
 - 解码失败保持 `primaryFrame` 为空，以 `PlaceholderKind` 区分 UnsupportedFormat / DecodeFailed / FileMissing；不能把提示图当作成功解码的像素交给批处理。

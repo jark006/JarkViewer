@@ -417,6 +417,9 @@
     <ClCompile Include="src\ImageResampler.cpp">
       <Filter>Image</Filter>
     </ClCompile>
+    <ClCompile Include="src\PsdDecoder.cpp">
+      <Filter>Image</Filter>
+    </ClCompile>
     <ClCompile Include="src\TextRenderer.cpp">
       <Filter>Image</Filter>
     </ClCompile>
@@ -543,6 +546,9 @@
       <Filter>Image</Filter>
     </ClInclude>
     <ClInclude Include="include\ImageResampler.h">
+      <Filter>Image</Filter>
+    </ClInclude>
+    <ClInclude Include="include\PsdDecoder.h">
       <Filter>Image</Filter>
     </ClInclude>
     <ClInclude Include="include\SVGPreprocessor.h">
