@@ -358,6 +358,14 @@ Report (($mainCpp -match 'const bool loaded = loadedAsset != nullptr') -and
     ($mainCpp -match 'animationMode = \(!loaded \|\| direction == 0\)')) `
     "切图动画使用 move 前记录的缓存命中状态"
 
+# 17. 自检必须尊重脚本的重定向，不能把第三方海量 stderr 诊断强制刷回控制台。
+$probeCpp = Read-Source "JarkViewer/src/DecodeProbe.cpp"
+$probeConsole = [regex]::Match($probeCpp, '(?s)int runDecodeProbe\(.*?installCrashDumpHandler\(\);').Value
+Report ($probeConsole -match '(?s)if \(!outputRedirected\).*?freopen_s\([^\r\n]*stdout') `
+    "自检仅在 stdout 未重定向时连接控制台"
+Report ($probeConsole -notmatch 'freopen_s\([^\r\n]*CONOUT\$[^\r\n]*stderr') `
+    "自检不把 stderr 重定向覆盖成 CONOUT$（避免诊断输出污染计时）"
+
 Write-Host ""
 if ($script:failed) {
     Write-Host "源码不变量检查存在失败项" -ForegroundColor Red

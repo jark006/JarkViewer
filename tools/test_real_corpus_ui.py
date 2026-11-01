@@ -56,7 +56,7 @@ def main():
         return export_images(root, rows)
     selected = {}
     for row in rows:
-        if row["status"] != "pass" or row["relative"] == "wp2/AndroidWallpaper.wp2":
+        if row["status"] != "pass":
             continue
         # 每种扩展名与每个目录各覆盖至少一张，再补齐下列特定语义的样本。
         selected.setdefault(row["extension"], row)

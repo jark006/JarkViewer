@@ -195,6 +195,13 @@ Test-Break "批处理 TLS 解码器错误创建预读子线程" @{
 Test-Break "切图动画误查 move 后的指针" @{
     "JarkViewer/src/main.cpp" = @("animationMode = (!loaded || direction == 0)", "animationMode = (!loadedAsset || direction == 0)")
 }
+Test-Break "自检 stdout 忽略重定向" @{
+    "JarkViewer/src/DecodeProbe.cpp" = @("if (!outputRedirected)", "if (true)")
+}
+Test-Break "自检 stderr 被强制接到控制台" @{
+    "JarkViewer/src/DecodeProbe.cpp" = @('freopen_s(&stream, "CONOUT$", "w", stdout);',
+        ('freopen_s(&stream, "CONOUT$", "w", stdout);' + "`n" + '            freopen_s(&stream, "CONOUT$", "w", stderr);'))
+}
 
 & pwsh -NoProfile -File $checkScript *> $null
 $restored = ($LASTEXITCODE -eq 0)

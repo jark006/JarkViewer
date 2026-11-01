@@ -155,6 +155,11 @@ def main():
 
     if args.gui:
         from PIL import Image, ImageDraw
+        stdio_image = args.real_corpus / "wp2/AndroidWallpaper.wp2" if args.real_corpus else corpus / "still.png"
+        if not stdio_image.is_file():
+            stdio_image = corpus / "still.png"
+        record(command("probe-redirection", [sys.executable, "-I", REPO / "tools/test_probe_redirection.py",
+                                              "--exe", exe, "--image", stdio_image], 90))
         record(command("batch-lifecycle", [sys.executable, "-I", REPO / "tools/test_batch_lifecycle.py",
                                             "--exe", exe], 60))
         navigation = root / "navigation"
