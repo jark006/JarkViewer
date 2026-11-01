@@ -3111,11 +3111,19 @@ namespace {
 } // namespace
 
 int runDecodeProbe(const std::vector<std::wstring>& argv) {
-    // GUI 子系统默认没有控制台，附着到父进程控制台以便直接看到结果
+    // GUI 子系统可附着父控制台，但不能覆盖调用脚本指定的管道/文件/NUL 重定向。
+    // 尤其不要把 stderr 重新打开为 CONOUT$：当前预编译 libwebp2 带 WP2_TRACE，
+    // 一张图能输出几十 MB 的逐符号诊断，刷控制台的耗时会被误算成解码耗时。
+    const HANDLE outputHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+    const DWORD outputType = GetFileType(outputHandle);
+    DWORD outputMode = 0;
+    const bool outputRedirected = outputType == FILE_TYPE_DISK || outputType == FILE_TYPE_PIPE ||
+        (outputType == FILE_TYPE_CHAR && !GetConsoleMode(outputHandle, &outputMode));
     if (::AttachConsole(ATTACH_PARENT_PROCESS)) {
-        FILE* stream = nullptr;
-        freopen_s(&stream, "CONOUT$", "w", stdout);
-        freopen_s(&stream, "CONOUT$", "w", stderr);
+        if (!outputRedirected) {
+            FILE* stream = nullptr;
+            freopen_s(&stream, "CONOUT$", "w", stdout);
+        }
         ::SetConsoleOutputCP(CP_UTF8);
     }
 
