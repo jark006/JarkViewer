@@ -162,6 +162,8 @@ def main():
                                               "--exe", exe, "--image", stdio_image], 90))
         record(command("batch-lifecycle", [sys.executable, "-I", REPO / "tools/test_batch_lifecycle.py",
                                             "--exe", exe], 60))
+        record(command("print-preview", [sys.executable, "-I", REPO / "tools/test_print_preview.py",
+                                         "--exe", exe], 120))
         navigation = root / "navigation"
         navigation.mkdir()
         for index in range(7):

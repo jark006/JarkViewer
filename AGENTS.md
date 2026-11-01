@@ -89,8 +89,11 @@ pwsh tools/test_cache_budget.ps1 -Exe x64/Release/JarkViewer.exe -Image <一张�
 # Exif UserComment 编码自检（AI 生图提示词的 UNICODE/ASCII/无前缀 × UTF-16 大小端/BOM/中文）
 ./x64/Release/JarkViewer.exe --probe --exif-test
 
-# 打印位图自检（经实际 GDI 缩放绘制后逐像素核对上下方向/颜色、24bpp 行对齐及非连续 ROI；不提交打印作业）
+# 打印位图与抖动预览自检（GDI 方向/颜色/行距、物理像素布局、缩放后抖动/反相/源图不变；不提交打印作业）
 ./x64/Release/JarkViewer.exe --probe --print-test --out "$env:TEMP/print-test.txt"
+
+# 抖动预览实机回归（大图/竖图/小图、调整窗口尺寸、反相与模式切换；独立 TEMP 副本，会操作鼠标键盘）
+python -I tools/test_print_preview.py --exe x64/Release/JarkViewer.exe
 
 # 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
 ./x64/Release/JarkViewer.exe --probe --navigation-test
@@ -289,7 +292,7 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
 | 窗口几何与保存 | `tools/test_placement_memory.ps1` |
 | 主界面导航浮层 | `--probe --navigation-test`、`tools/test_navigation.ps1` |
 | 编辑与标注 | `--probe --annotate`、`tools/test_editor_text.ps1` |
-| 打印位图 / 打印方向 | `--probe --print-test --out <报告>` |
+| 打印位图 / 打印方向 / 抖动预览 | `--probe --print-test --out <报告>`、`python -I tools/test_print_preview.py --exe x64/Release/JarkViewer.exe` |
 | 命令行参数 / 语言 / 设置读写 | `tools/test_language_override.ps1` |
 | 字符串表 / 格式清单 / 工程文件列表 | `tools/check_source_invariants.ps1` + `tools/verify_source_invariant_checks.ps1` |
 
@@ -583,6 +586,12 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
   `ptr(y)` 正序复制，不能再倒序取行，否则打印（含 Microsoft Print to PDF）会上下翻转。
   24bpp DIB 仍需按 4 字节对齐目标行距；`--probe --print-test` 经 GDI 绘制后逐像素核对，
   覆盖宽 1–8 像素及非连续 ROI，纳入 `test_refactor_audit.py` 的 `print` 项。
+- 黑白抖动预览必须**先缩放到显示区域的物理像素尺寸，再调整与抖动，最后按 1:1 绘制**。
+  `ditherPreviewLayout()` 将起点、居中偏移与尺寸对齐到 framebuffer 像素；显示使用最近邻采样，
+  随后恢复线性采样。不能把固定 1400px 的抖动图再缩放到窗口，否则黑白点混成灰色、干扰纹理。
+  窗口尺寸改变也要作废预览缓存；打印仍按打印机分辨率先缩放再抖动，另存仍按源图尺寸处理。
+  `--print-test` 覆盖多种像素缩放与极端比例；`tools/test_print_preview.py` 用独立误差扩散参考
+  逐像素核对真实窗口，覆盖大图/竖图/小图、窗口缩放、反相和模式切换，接入 `--gui` 的 `print-preview` 项。
 - 主窗口（`D3D11App`/`JarkViewerApp`）是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()`
   给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新）；ImGui 侧由 `UiHost` 统一缩放。
 - 交换链使用**翻转模型**（`DXGI_SWAP_EFFECT_FLIP_DISCARD` + 双缓冲）。旧的

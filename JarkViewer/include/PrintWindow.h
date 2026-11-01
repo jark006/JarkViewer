@@ -115,6 +115,60 @@ public:
             }
         }
         if (screenDc) ReleaseDC(nullptr, screenDc);
+
+        const auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+        for (const auto source : { cv::Size(4000, 3000), cv::Size(3000, 4000),
+            cv::Size(10000, 1), cv::Size(1, 10000) }) {
+            for (float scale : { 1.0f, 1.25f, 1.5f, 2.0f }) {
+                const ImVec2 origin{ 13.25f, 47.5f }, available{ 731.5f, 487.25f };
+                const auto layout = ditherPreviewLayout(source, origin, available, { scale, scale });
+                const bool aligned = std::abs(layout.position.x * scale - std::round(layout.position.x * scale)) < 0.001f &&
+                    std::abs(layout.position.y * scale - std::round(layout.position.y * scale)) < 0.001f;
+                const bool fits = layout.position.x >= origin.x && layout.position.y >= origin.y &&
+                    layout.position.x + layout.size.x <= origin.x + available.x + 0.001f &&
+                    layout.position.y + layout.size.y <= origin.y + available.y + 0.001f;
+                check(!layout.pixels.empty() && aligned && fits &&
+                    std::abs(layout.size.x * scale - layout.pixels.width) < 0.001f &&
+                    std::abs(layout.size.y * scale - layout.pixels.height) < 0.001f,
+                    std::format("抖动预览按物理像素对齐且不越界：{}x{}，缩放 {}", source.width, source.height, scale));
+            }
+        }
+        check(ditherPreviewLayout({ 4000, 3000 }, {}, { 800, 600 }, { 1, 1 }).pixels == cv::Size(800, 600) &&
+            ditherPreviewLayout({ 4000, 3000 }, {}, { 1000, 750 }, { 1, 1 }).pixels == cv::Size(1000, 750),
+            "窗口尺寸变化后使用新的预览像素尺寸");
+        check(ditherPreviewLayout({ 3000, 4000 }, {}, { 800, 600 }, { 1, 1 }).pixels == cv::Size(450, 600),
+            "竖图预览保持宽高比");
+        check(ditherPreviewLayout({ 10000, 1 }, {}, { 800, 600 }, { 1, 1 }).pixels == cv::Size(800, 1) &&
+            ditherPreviewLayout({ 1, 10000 }, {}, { 800, 600 }, { 1, 1 }).pixels == cv::Size(1, 600),
+            "极端长宽比预览短边至少为 1 像素");
+        check(ditherPreviewLayout({ 100, 100 }, {}, { 0, 600 }, { 1, 1 }).pixels.empty(),
+            "空预览区域不创建位图");
+
+        PrintWindow preview;
+        cv::Mat backing(67, 103, CV_8UC3);
+        cv::randu(backing, 40, 220);
+        preview.sourceImage_ = backing(cv::Rect(1, 1, 97, 61));
+        const auto original = preview.sourceImage_.clone();
+        preview.colorMode_ = static_cast<uint32_t>(jark::ColorMode::Dither);
+        preview.brightness_ = 80;
+        preview.contrast_ = 100;
+        for (const auto size : { cv::Size(43, 27), cv::Size(97, 61), cv::Size(149, 94) }) {
+            const auto image = preview.makePreviewImage(size);
+            cv::Mat gray;
+            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+            check(image.size() == size && cv::countNonZero((gray != 0) & (gray != 255)) == 0,
+                std::format("先缩放再抖动，预览只含黑白像素：{}x{}", size.width, size.height));
+            preview.invert_ = true;
+            const auto inverted = preview.makePreviewImage(size);
+            cv::Mat restored;
+            cv::bitwise_not(inverted, restored);
+            check(cv::norm(image, restored, cv::NORM_INF) == 0, "预览反相逐像素互补");
+            preview.invert_ = false;
+        }
+        check(cv::norm(preview.sourceImage_, original, cv::NORM_INF) == 0, "预览不修改非连续源图像素");
         return std::format("---- 打印自检：{} 通过, {} 失败 ----\n{}", passed, failed, report);
     }
 
@@ -248,12 +302,31 @@ private:
     }
 
     void drawPreview() {
-        refreshPreviewIfNeeded();
-        if (!previewTexture_)
+        const ImVec2 available = ImGui::GetContentRegionAvail();
+        if (sourceImage_.empty() || available.x <= 1.0f || available.y <= 1.0f)
             return;
 
-        const ImVec2 available = ImGui::GetContentRegionAvail();
-        if (available.x <= 1.0f || available.y <= 1.0f)
+        if (static_cast<jark::ColorMode>(colorMode_) == jark::ColorMode::Dither) {
+            const auto layout = ditherPreviewLayout(sourceImage_.size(), ImGui::GetCursorScreenPos(),
+                available, ImGui::GetIO().DisplayFramebufferScale);
+            if (layout.pixels.empty())
+                return;
+            refreshPreviewIfNeeded(layout.pixels);
+            if (!previewTexture_)
+                return;
+
+            // 点阵已按实际显示尺寸生成，不能再经过非整数缩放或线性过滤。
+            ImGui::SetCursorScreenPos(layout.position);
+            auto* drawList = ImGui::GetWindowDrawList();
+            auto& platform = ImGui::GetPlatformIO();
+            drawList->AddCallback(platform.DrawCallback_SetSamplerNearest, nullptr);
+            ImGui::Image(previewTexture_, layout.size);
+            drawList->AddCallback(platform.DrawCallback_SetSamplerLinear, nullptr);
+            return;
+        }
+
+        refreshPreviewIfNeeded();
+        if (!previewTexture_)
             return;
 
         // 等比缩放显示
@@ -269,32 +342,64 @@ private:
         ImGui::Image(previewTexture_, { width, height });
     }
 
-    void refreshPreviewIfNeeded() {
-        if (!previewDirty_ || sourceImage_.empty())
+    struct DitherPreviewLayout {
+        ImVec2 position{};
+        ImVec2 size{};
+        cv::Size pixels;
+    };
+
+    static DitherPreviewLayout ditherPreviewLayout(cv::Size source, ImVec2 origin,
+        ImVec2 available, ImVec2 framebufferScale) {
+        if (source.empty() || framebufferScale.x <= 0 || framebufferScale.y <= 0)
+            return {};
+        // 内缩到完整物理像素，包含居中偏移；高 DPI 或半像素起点不能让点阵落在像素缝上。
+        const int left = static_cast<int>(std::ceil(origin.x * framebufferScale.x));
+        const int top = static_cast<int>(std::ceil(origin.y * framebufferScale.y));
+        const int width = static_cast<int>(std::floor((origin.x + available.x) * framebufferScale.x)) - left;
+        const int height = static_cast<int>(std::floor((origin.y + available.y) * framebufferScale.y)) - top;
+        if (width <= 0 || height <= 0)
+            return {};
+        const double factor = (std::min)(static_cast<double>(width) / source.width,
+            static_cast<double>(height) / source.height);
+        const cv::Size pixels(std::clamp(static_cast<int>(std::round(source.width * factor)), 1, width),
+            std::clamp(static_cast<int>(std::round(source.height * factor)), 1, height));
+        return { { (left + (width - pixels.width) / 2) / framebufferScale.x, top / framebufferScale.y },
+            { pixels.width / framebufferScale.x, pixels.height / framebufferScale.y }, pixels };
+    }
+
+    cv::Mat makePreviewImage(cv::Size size) const {
+        cv::Mat resized;
+        if (size == sourceImage_.size()) {
+            // 调整会就地修改，小图也必须复制，不能让预览效果叠加到原图。
+            resized = sourceImage_.clone();
+        }
+        else {
+            cv::resize(sourceImage_, resized, size, 0, 0,
+                size.area() < sourceImage_.size().area() ? cv::INTER_AREA : cv::INTER_LINEAR);
+        }
+        jark::applyImageAdjustments(resized, brightness_, contrast_, colorMode_, invert_);
+        return resized;
+    }
+
+    void refreshPreviewIfNeeded(cv::Size size = {}) {
+        if (sourceImage_.empty())
             return;
 
+        if (size.empty()) {
+            // 其它颜色模式保留固定上限，再由界面等比缩放显示。
+            const int previewEdge = 1400;
+            const int maxEdge = (std::max)(sourceImage_.cols, sourceImage_.rows);
+            const double factor = (std::min)(1.0, static_cast<double>(previewEdge) / maxEdge);
+            size = { (std::max)(1, static_cast<int>(std::round(sourceImage_.cols * factor))),
+                (std::max)(1, static_cast<int>(std::round(sourceImage_.rows * factor))) };
+        }
+        if (!previewDirty_ && size == cv::Size(previewWidth_, previewHeight_))
+            return;
         previewDirty_ = false;
 
-        // 预览按窗口宽度缩放，避免大图每帧全尺寸处理
-        const int previewEdge = 1400;
         cv::Mat resized;
         try {
-            const int maxEdge = (std::max)(sourceImage_.cols, sourceImage_.rows);
-            if (maxEdge > previewEdge) {
-                const double factor = static_cast<double>(previewEdge) / maxEdge;
-                // 短边夹到至少 1 像素：极端长宽比（如 10000x1）按比例算出 0 会让 resize 抛异常
-                cv::resize(sourceImage_, resized, cv::Size(
-                    (std::max)(1, static_cast<int>(std::round(sourceImage_.cols * factor))),
-                    (std::max)(1, static_cast<int>(std::round(sourceImage_.rows * factor)))),
-                    0, 0, cv::INTER_AREA);
-            }
-            else {
-                // 小图直接用原图缩放的副本（调整是就地做的，不能改到 sourceImage_，
-                // 否则预览会叠加前一次的效果，另存/打印也跟着错）
-                resized = sourceImage_.clone();
-            }
-
-            jark::applyImageAdjustments(resized, brightness_, contrast_, colorMode_, invert_);
+            resized = makePreviewImage(size);
         }
         catch (const cv::Exception& e) {
             JARK_LOG("print preview failed: {}", e.what());
