@@ -183,6 +183,19 @@ Test-Break "软解排到硬解前面（硬解段被挪到软解之后）" @{
 
 Write-Host ""
 # 全部还原后再跑一遍完整检查，确认真文件恢复了
+Test-Break "缓存停止丢失 wait 同步锁" @{
+    "JarkViewer/include/ImageAssetCache.h" = @("std::lock_guard lock(preload_mutex);", "// removed stop lock")
+}
+Test-Break "批处理预览线程未 join" @{
+    "JarkViewer/include/BatchWindow.h" = @("previewThread_.join();", "// removed preview join")
+}
+Test-Break "批处理 TLS 解码器错误创建预读子线程" @{
+    "JarkViewer/src/BatchProcessor.cpp" = @("thread_local ImageDatabase database(false);", "thread_local ImageDatabase database(true);")
+}
+Test-Break "切图动画误查 move 后的指针" @{
+    "JarkViewer/src/main.cpp" = @("animationMode = (!loaded || direction == 0)", "animationMode = (!loadedAsset || direction == 0)")
+}
+
 & pwsh -NoProfile -File $checkScript *> $null
 $restored = ($LASTEXITCODE -eq 0)
 

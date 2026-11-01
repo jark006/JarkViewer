@@ -14,12 +14,12 @@ param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [Parameter(Mandatory = $true)][string]$Image,
     [Parameter(Mandatory = $true)][string]$Out,
-    [int]$TextToolX = 2146,   # text tool button in the toolbar
-    [int]$TextToolY = 233,
-    [int]$AnchorX = 1486,     # anchor point on the canvas
-    [int]$AnchorY = 940,
-    [int]$TextBoxX = 2350,    # sidebar text box
-    [int]$TextBoxY = 790
+    [int]$TextToolX = -1,    # -1: 按 DPI 与居中的编辑器位置计算
+    [int]$TextToolY = -1,
+    [int]$AnchorX = -1,
+    [int]$AnchorY = -1,
+    [int]$TextBoxX = -1,
+    [int]$TextBoxY = -1
 )
 
 # --- PowerShell 7 (pwsh) only -------------------------------------------------------------
@@ -51,6 +51,9 @@ public class JarkText {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int height, bool repaint);
     public const uint LEFTDOWN = 0x0002, LEFTUP = 0x0004, WM_CHAR = 0x0102;
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
@@ -89,12 +92,30 @@ public class JarkText {
 
 [void][JarkText]::SetProcessDPIAware()
 
-$proc = Start-Process -FilePath $Exe -ArgumentList $Image -PassThru
+$ErrorActionPreference = 'Stop'
+$proc = Start-Process -FilePath $Exe -ArgumentList ('"'+$Image+'"') -PassThru
 try {
     Start-Sleep -Seconds 4
     $hwnd = $proc.MainWindowHandle
     if ($hwnd -eq [IntPtr]::Zero) { throw "main window not found" }
     if (-not [JarkText]::ForceForeground($hwnd)) { throw "cannot focus the main window" }
+    $scale=[JarkText]::GetDpiForWindow($hwnd)/96.0
+    if($TextToolX -lt 0) {
+        # 固定足够容纳单行工具栏的视口，避免旧脚本的 4K 坐标在 1080p 上点到窗口之外仍报成功。
+        $work=[System.Windows.Forms.Screen]::FromHandle($hwnd).WorkingArea
+        [void][JarkText]::MoveWindow($hwnd,$work.X,$work.Y,
+            [Math]::Min($work.Width,[int](1280*$scale)),[Math]::Min($work.Height,[int](900*$scale)),$true)
+        Start-Sleep -Milliseconds 500
+        $client=New-Object JarkText+RECT
+        [void][JarkText]::GetClientRect($hwnd,[ref]$client)
+        $editorWidth=[Math]::Min(1100*$scale,$client.Right-8*$scale)
+        $editorHeight=[Math]::Min(760*$scale,$client.Bottom-8*$scale)
+        if($editorWidth -lt 1050*$scale){ throw 'Text test requires room for a single-row editor toolbar' }
+        $left=($client.Right-$editorWidth)/2; $top=($client.Bottom-$editorHeight)/2
+        $TextToolX=[int]($left+816*$scale); $TextToolY=[int]($top+55*$scale)
+        $AnchorX=[int]($left+250*$scale); $AnchorY=[int]($top+300*$scale)
+        $TextBoxX=[int]($left+$editorWidth-150*$scale); $TextBoxY=[int]($top+330*$scale)
+    }
     Start-Sleep -Milliseconds 400
 
     # 编辑器是主窗口里的 ImGui 窗口（不再是独立窗口），所以直接对主窗口点按即可
@@ -107,6 +128,17 @@ try {
     Start-Sleep -Milliseconds 400
     [JarkText]::Click($hwnd, $TextBoxX, $TextBoxY)     # sidebar text box
     Start-Sleep -Milliseconds 600
+
+    function Capture-Editor {
+        $r=New-Object JarkText+RECT
+        [void][JarkText]::GetWindowRect($hwnd,[ref]$r)
+        $bitmap=New-Object System.Drawing.Bitmap(($r.Right-$r.Left),($r.Bottom-$r.Top))
+        $graphics=[System.Drawing.Graphics]::FromImage($bitmap); $dc=$graphics.GetHdc()
+        try { if(-not [JarkText]::PrintWindow($hwnd,$dc,2)){ throw 'PrintWindow failed' } }
+        finally { $graphics.ReleaseHdc($dc); $graphics.Dispose() }
+        return ,$bitmap
+    }
+    $before=Capture-Editor
 
     # Unicode WM_CHAR: what the window receives after the IME commits a composition
     foreach ($code in @(0x6D4B, 0x8BD5)) {   # 测 试
@@ -126,9 +158,20 @@ try {
     $graphics.ReleaseHdc($hdc)
     $graphics.Dispose()
     $bitmap.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
+    $changed=0; $red=0
+    for($y=0;$y -lt $height;$y++) {
+        for($x=0;$x -lt $width;$x++) {
+            $old=$before.GetPixel($x,$y); $new=$bitmap.GetPixel($x,$y)
+            if([Math]::Abs([int]$old.R-$new.R)+[Math]::Abs([int]$old.G-$new.G)+[Math]::Abs([int]$old.B-$new.B) -gt 60) {
+                $changed++
+                if($new.R -gt 180 -and $new.G -lt 130 -and $new.B -lt 130){ $red++ }
+            }
+        }
+    }
+    $before.Dispose()
     $bitmap.Dispose()
-
-    "captured size=${width}x${height} out=$Out"
+    if($changed -lt 40 -or $red -lt 15){ throw "CJK input/live preview missing: changed=$changed red=$red screenshot=$Out" }
+    "PASS: CJK input and red canvas preview changed=$changed red=$red size=${width}x${height} out=$Out"
 }
 finally {
     if (-not $proc.HasExited) { $proc.Kill() }

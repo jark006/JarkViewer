@@ -124,10 +124,11 @@ try {
     Start-Sleep -Seconds 3
     Save-Shot '04-strip'
     $capacity=[Math]::Clamp([int][Math]::Floor(($bandWidth-52*$s)/(100*$s)),1,64)
+    if($capacity -gt 1 -and $capacity % 2 -eq 0){ $capacity-- } # 与 NavigationOverlay 的奇数格一致
     $cellWidth=($bandWidth-52*$s)/$capacity
     $cellY=$h-61*$s
     $before=[NavigationCheck]::Title($hwnd)
-    Click-At ($left+26*$s+$cellWidth*1.5) $cellY
+    Click-At ($w/2+$cellWidth) $cellY # 点当前图右侧相邻格；宽窗口两侧可能留空
     $after=[NavigationCheck]::Title($hwnd)
     if($before -eq $after){ throw 'Thumbnail click did not change image' }
     Save-Shot '05-selected'

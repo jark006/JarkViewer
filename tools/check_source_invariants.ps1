@@ -339,6 +339,25 @@ Report (($hwConfigAnchor -ge 0) -and ($hwDeviceAnchor -ge 0) -and ($hwAttachAnch
 Report (($hwAttachAnchor -ge 0) -and ($softOpenAnchor -ge 0) -and ($hwAttachAnchor -lt $softOpenAnchor)) `
     "硬解排在软解之前（软解是回退，不是主路）"
 
+# 15. 缓存退出与批处理线程必须完成回收，缓存停止通知要与 wait 共用锁。
+$cacheHeader = Read-Source "JarkViewer/include/ImageAssetCache.h"
+$stopBody = [regex]::Match($cacheHeader, '(?s)void stopPreloadWorker\(\).*?(?=// 禁用拷贝)').Value
+Report ($stopBody -match '(?s)lock\(preload_mutex\).*?stop_preload = true.*?notify_all.*?join\(') `
+    "缓存停止持有 wait 的同一把锁，通知后 join"
+$batchHeader = Read-Source "JarkViewer/include/BatchWindow.h"
+Report (($batchHeader -notmatch '\.detach\(') -and ($batchHeader -match 'worker_\.join\(') -and
+    ($batchHeader -match 'previewThread_\.join\(') -and
+    ((Read-Source "JarkViewer/src/main.cpp") -match 'BatchWindow::instance\(\)\.shutdown\(\)')) `
+    "批处理工作线程与预览线程在看图窗口析构前回收"
+Report ((Read-Source "JarkViewer/src/BatchProcessor.cpp") -match 'thread_local ImageDatabase database\(false\)') `
+    "批处理 TLS 同步解码器不创建子线程（避免 loader lock 下 join）"
+
+# 16. 缓存命中状态在 move 前记录，不能检查已经移空的 loadedAsset。
+$mainCpp = Read-Source "JarkViewer/src/main.cpp"
+Report (($mainCpp -match 'const bool loaded = loadedAsset != nullptr') -and
+    ($mainCpp -match 'animationMode = \(!loaded \|\| direction == 0\)')) `
+    "切图动画使用 move 前记录的缓存命中状态"
+
 Write-Host ""
 if ($script:failed) {
     Write-Host "源码不变量检查存在失败项" -ForegroundColor Red

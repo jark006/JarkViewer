@@ -330,7 +330,8 @@ namespace {
     }
 
     // 批量处理自检：对给定文件执行一次批量任务并输出结果
-    std::string runBatchTest(const std::vector<std::wstring>& files, const jark::BatchOptions& options) {
+    std::string runBatchTest(const std::vector<std::wstring>& files, const jark::BatchOptions& options,
+        bool& ok) {
         std::string report = std::format("批量任务: {} 个文件, 任务类型 {}, 输出格式 {}, 质量 {}\n",
             files.size(), static_cast<int>(options.task),
             jarkUtils::wstringToUtf8(options.outputExtension.empty() ?
@@ -343,6 +344,7 @@ namespace {
 
         const auto begin = std::chrono::steady_clock::now();
         const auto result = jark::runBatch(files, options);
+        ok = !result.hasFailure();
         const auto elapsedMs = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - begin).count();
 
@@ -351,6 +353,132 @@ namespace {
         for (const auto& message : result.messages)
             report += std::format("  {}\n", jarkUtils::wstringToUtf8(message));
 
+        return report;
+    }
+
+    // 文件写入与批处理回归只操作独立临时目录，用像素/字节核对防止“返回成功但丢原图”。
+    std::string runBatchRegressionTest() {
+        std::string report;
+        int passed = 0, failed = 0;
+        const auto check = [&](bool ok, std::string_view name) {
+            ok ? ++passed : ++failed;
+            report += std::format("[{}] {}\n", ok ? "ok" : "FAIL", name);
+        };
+        const auto directory = std::filesystem::temp_directory_path() /
+            std::format(L"JarkViewer-batch-{}-{}", GetCurrentProcessId(), GetTickCount64());
+        if (!std::filesystem::create_directory(directory))
+            return "[FAIL] cannot create isolated test directory";
+        struct Cleanup {
+            std::filesystem::path directory;
+            ~Cleanup() { std::error_code error; std::filesystem::remove_all(directory, error); }
+        } cleanup{ directory };
+        const auto read = [](const std::filesystem::path& path) {
+            std::ifstream file(path, std::ios::binary);
+            return std::vector<uint8_t>(std::istreambuf_iterator<char>(file), {});
+        };
+        const auto save = [&](const std::filesystem::path& path, cv::Scalar color) {
+            cv::Mat image(12, 20, CV_8UC3, color);
+            std::vector<uint8_t> data;
+            return cv::imencode(path.extension().string(), image, data) &&
+                jarkUtils::writeFileAtomically(path.wstring(), data);
+        };
+        const auto aJpg = directory / L"same.jpg";
+        const auto aPng = directory / L"same.png";
+        check(save(aJpg, { 0, 0, 255 }) && save(aPng, { 255, 0, 0 }), "create red JPEG and blue PNG");
+        const auto blueBytes = read(aPng);
+        const auto redBytes = read(aJpg);
+        check(!jarkUtils::writeFileAtomically(aPng.wstring(), redBytes, false) && read(aPng) == blueBytes,
+            "no-overwrite preserves an existing target");
+        HANDLE locked = CreateFileW(aPng.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const bool lockedWrite = jarkUtils::writeFileAtomically(aPng.wstring(), redBytes);
+        if (locked != INVALID_HANDLE_VALUE) CloseHandle(locked);
+        check(locked != INVALID_HANDLE_VALUE && !lockedWrite && read(aPng) == blueBytes,
+            "failed replacement of a locked target preserves original bytes");
+        SetFileAttributesW(aPng.c_str(), FILE_ATTRIBUTE_READONLY);
+        const bool readonlyWrite = jarkUtils::writeFileAtomically(aPng.wstring(), redBytes);
+        SetFileAttributesW(aPng.c_str(), FILE_ATTRIBUTE_NORMAL);
+        check(!readonlyWrite && read(aPng) == blueBytes, "read-only target survives a failed save");
+        check(!jarkUtils::writeFileAtomically((directory / L"missing" / L"out.png").wstring(), blueBytes),
+            "missing destination directory reports failure");
+
+        BatchOptions options;
+        options.overwrite = true;
+        const auto collision = runBatch({ aJpg.wstring(), aPng.wstring() }, options);
+        const auto redOutput = cv::imdecode(read(directory / L"same_1.png"), cv::IMREAD_COLOR);
+        check(collision.succeeded == 2 && collision.failed == 0 && !redOutput.empty() &&
+            redOutput.at<cv::Vec3b>(0, 0)[2] > 250, "colliding conversion outputs retain the red source");
+        check(read(aPng) == blueBytes && read(aJpg) == redBytes,
+            "overwrite never destroys another input in the same batch");
+
+        const auto deepPath = directory / L"rgba16.png";
+        cv::Mat deep(2, 2, CV_16UC4, cv::Scalar(0, 0, 65535, 32768));
+        std::vector<uint8_t> deepBytes;
+        check(cv::imencode(".png", deep, deepBytes) &&
+            jarkUtils::writeFileAtomically(deepPath.wstring(), deepBytes), "create half-transparent 16-bit red PNG");
+        BatchOptions deepOptions;
+        deepOptions.outputDirectory = (directory / L"depth-output").wstring();
+        const auto deepResult = runBatch({ deepPath.wstring() }, deepOptions);
+        const auto deepOutput = cv::imdecode(read(directory / L"depth-output" / L"rgba16.png"), cv::IMREAD_COLOR);
+        check(deepResult.succeeded == 1 && !deepOutput.empty() &&
+            cv::norm(deepOutput, cv::Mat(2, 2, CV_8UC3, cv::Scalar(127, 127, 255)), cv::NORM_INF) <= 1,
+            "16-bit alpha is normalized before color management and white compositing");
+
+        options.task = BatchTask::Scale;
+        options.scaleMode = ScaleMode::Percent;
+        options.scalePercent = 50;
+        options.overwrite = false;
+        auto result = runBatch({ aPng.wstring() }, options);
+        check(result.skipped == 1 && result.failed == 0 && read(aPng) == blueBytes,
+            "in-place conversion/scale respects no-overwrite");
+        options.outputDirectory = (directory / L"scaled").wstring();
+        result = runBatch({ aPng.wstring() }, options);
+        const auto scaled = cv::imdecode(read(directory / L"scaled" / L"same.png"), cv::IMREAD_COLOR);
+        check(result.succeeded == 1 && scaled.size() == cv::Size(10, 6), "percent scale writes expected dimensions");
+
+        options.task = BatchTask::Rotate;
+        options.outputDirectory.clear();
+        options.rotationDegrees = 90;
+        result = runBatch({ aPng.wstring() }, options);
+        const auto rotated = cv::imdecode(read(aPng), cv::IMREAD_COLOR);
+        check(result.succeeded == 1 && rotated.size() == cv::Size(12, 20),
+            "explicit in-place rotation still replaces the original");
+
+        options = {};
+        options.outputDirectory = (directory / L"invalid-format").wstring();
+        options.outputExtension = L"unsupported-encoder";
+        result = runBatch({ aJpg.wstring() }, options);
+        check(result.failed == 1 && read(aJpg) == redBytes, "encoder failure is counted and preserves input");
+        options = {};
+        options.task = BatchTask::Rename;
+        options.renamePrefix = L"../escape";
+        result = runBatch({ aJpg.wstring() }, options);
+        check(result.failed == 1 && std::filesystem::exists(aJpg), "rename prefix cannot move a file outside its directory");
+        options.renamePrefix = L"same";
+        options.renameStart = 1;
+        options.renameDigits = 1;
+        options.overwrite = true;
+        const auto renameInput = directory / L"same1.jpg";
+        check(save(renameInput, { 0, 255, 0 }), "create a second rename input");
+        const auto renameBytes = read(renameInput);
+        result = runBatch({ aJpg.wstring(), renameInput.wstring() }, options,
+            [](size_t current, size_t, const std::wstring&) { return current == 1; });
+        check(result.skipped >= 1 && read(renameInput) == renameBytes && read(aJpg) == redBytes,
+            "batch rename protects other source files even with overwrite enabled");
+
+        const auto shortPath = directory / L"x";
+        check(jarkUtils::writeFileAtomically(shortPath.wstring(), blueBytes), "create an extensionless image");
+        const auto oldDirectory = std::filesystem::current_path();
+        std::filesystem::current_path(directory);
+        ImageDatabase database;
+        auto shortImage = database.myLoader(L"x");
+        std::filesystem::current_path(oldDirectory);
+        check(!shortImage.primaryFrame.empty(), "one-character relative file name decodes by content");
+        bool temporaryLeft = false;
+        for (const auto& item : std::filesystem::directory_iterator(directory))
+            temporaryLeft |= item.path().filename().wstring().starts_with(L".jark-");
+        check(!temporaryLeft, "successful and failed saves leave no temporary files");
+        report += std::format("---- batch: {} ok, {} failed ----", passed, failed);
         return report;
     }
 
@@ -732,7 +860,7 @@ namespace {
         std::vector<uint8_t> data(size);
         file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
 
-        auto decoder = MediaDecoder::open(data);
+        auto decoder = MediaDecoder::open(data, MediaDecoder::StreamFilter::AudioOnly);
         if (!decoder || !decoder->info().hasAudio)
             return std::format("no audio stream in {}", jarkUtils::wstringToUtf8(path));
 
@@ -753,12 +881,21 @@ namespace {
                 std::chrono::steady_clock::now() - begin).count();
 
             if (!submittedAll) {
-                while (output->queuedFrames() < AudioOutput::kMaxQueuedFrames && decoder->readNext(chunk)) {
-                    if (chunk.type == MediaDecoder::Chunk::Type::Audio)
-                        output->submit(chunk.audio);
+                while (output->queuedFrames() < AudioOutput::kMaxQueuedFrames &&
+                    output->queuedBuffers() < AudioOutput::kMaxQueuedBuffers) {
+                    if (pending.empty()) {
+                        if (!decoder->readNext(chunk)) {
+                            submittedAll = true;
+                            break;
+                        }
+                        if (chunk.type != MediaDecoder::Chunk::Type::Audio || chunk.audio.empty())
+                            continue;
+                        pending = std::move(chunk.audio);
+                    }
+                    if (!output->submit(pending))
+                        break; // 提交失败保留这批，下一轮重试
+                    pending.clear();
                 }
-                if (chunk.type == MediaDecoder::Chunk::Type::End)
-                    submittedAll = true;
             }
 
             const int64_t played = output->playedFrames();
@@ -783,6 +920,22 @@ namespace {
         report += std::format("[audio-test] 用时 {:.0f}ms, 已播放 {} 帧 ({:.2f}s), 期望约 {:.0f} 帧, 比值 {:.3f}",
             totalMs, played, played / 48000.0, expectedFrames, ratio);
 
+        const double mediaMs = decoder->info().durationMs > 0
+            ? (std::min)(totalMs, static_cast<double>(decoder->info().durationMs)) : totalMs;
+        const double mediaRatio = mediaMs > 0 ? played / (mediaMs * 48.0) : 0.0;
+        report += std::format("\n[{}] 音频时钟交付率在 0.70..1.20 内（{:.3f}）",
+            mediaRatio >= 0.70 && mediaRatio <= 1.20 ? "ok" : "FAIL", mediaRatio);
+        output->pause();
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        output->flush();
+        const std::vector<int16_t> silence(4800 * MediaDecoder::kOutputChannels, 0);
+        const bool submitted = output->submit(silence);
+        report += std::format("\n[{}] seek 冲队列后提交 100ms 音频，队列按新的样本基线计数（{} 帧）",
+            submitted && output->queuedFrames() == 4800 ? "ok" : "FAIL", output->queuedFrames());
+        const auto pausedFrames = output->playedFrames();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        report += std::format("\n[{}] 暂停后提交与冲队列不自动起播",
+            output->playedFrames() == pausedFrames ? "ok" : "FAIL");
         return report;
     }
 
@@ -1423,8 +1576,9 @@ namespace {
             pump(500);
             const int64_t resumed = player->positionMs();
             check(!player->isPaused(), "恢复后 isPaused() 为假");
-            check(resumed >= paused1 + 200,
-                std::format("恢复 500ms 后位置 {}ms ≥ {}ms（从原位继续）", resumed, paused1 + 200));
+            const int64_t resumeFloor = duration > 0 ? (std::min)(paused1 + 200, duration) : paused1 + 200;
+            check(resumed >= resumeFloor,
+                std::format("恢复 500ms 后位置 {}ms ≥ {}ms（从原位继续）", resumed, resumeFloor));
 
             if (duration <= 0) {
                 report += "时长不可知：跳过 seek / 步进 / 结尾断言\n";
@@ -1471,6 +1625,31 @@ namespace {
             check(deliveredPts >= 0 && deliveredPts <= target && deliveredPts > target - 4 * frameMs,
                 std::format("交出的帧时间戳 {}ms 覆盖目标时刻（应落在 ({}ms, {}ms]）",
                     deliveredPts, target - 4 * frameMs, target));
+
+            // 新 seek 发布后第一张交付必须属于新位置，不能漏出旧队列里的帧。
+            // 暂停时后台仍会填满队列，交替往前/后跳能稳定覆盖这条竞态。
+            bool firstFramesCorrect = true;
+            for (int step = 0; step < 4; ++step) {
+                const int64_t newTarget = step % 2 == 0 ? duration / 4 : duration * 3 / 4;
+                player->seek(newTarget);
+                bool gotFrame = false;
+                const auto begin = std::chrono::steady_clock::now();
+                while (elapsedMsSince(begin) < 2000) {
+                    cv::Mat frame;
+                    if (player->acquireFrame(frame)) {
+                        const int64_t pts = player->currentFramePtsMs();
+                        firstFramesCorrect &= pts <= newTarget && pts > newTarget - 4 * frameMs;
+                        gotFrame = true;
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(3));
+                }
+                firstFramesCorrect &= gotFrame;
+                std::this_thread::sleep_for(std::chrono::milliseconds(40)); // 让后台重新填满队列
+            }
+            check(firstFramesCorrect, "连续双向 seek 的第一张交付没有旧位置的帧");
+            player->seek(target);
+            pump(250);
 
             // 5) 单帧步进：前进一帧、再退回原位（暂停态下画面必须跟着换）
             const int64_t before = player->currentFramePtsMs();
@@ -1602,7 +1781,8 @@ namespace {
 
                 const int64_t landedPos = scrub.positionMs();
                 pumpScrub(500);
-                check(scrub.isPlaying(), "落位后恢复播放（拖动前是在播的）");
+                check(scrub.isPlaying() || (scrub.atEnd() && scrub.positionMs() >= duration - 2 * frameMs),
+                    "落位后恢复播放，短片播完则停在末尾（拖动前是在播的）");
                 check(scrub.positionMs() > landedPos,
                     std::format("落位后时钟继续前进（{}ms → {}ms）", landedPos, scrub.positionMs()));
                 scrub.close();
@@ -2950,6 +3130,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool videoTest = false;
     bool languageTest = false;
     bool batchTest = false;
+    bool batchRegressionTest = false;
     bool annotateTest = false;
     bool navigationTest = false;
     bool colorTest = false;
@@ -2991,6 +3172,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--lang-test") {
             languageTest = true;
+            continue;
+        }
+        if (argv[i] == L"--batch-test") {
+            batchRegressionTest = true;
             continue;
         }
         if (argv[i] == L"--batch") {
@@ -3146,7 +3331,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && !cacheTest && thumbnailWriter < 0) {
+    if (targets.empty() && !batchRegressionTest && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && !cacheTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -3230,6 +3415,12 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }
 
+    if (batchRegressionTest) {
+        const auto text = runBatchRegressionTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+
     if (batchTest) {
         if (targets.empty()) {
             std::println("usage: JarkViewer.exe --probe --batch <file...> [--out-dir 目录] [--to 格式] [--quality N] [--rotate 90|180|270] [--flip-h|--flip-v] [--gray] [--invert] [--rename 前缀] [--overwrite]\n"
@@ -3240,15 +3431,16 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         if (!outputFormatGiven && batchOptions.task == jark::BatchTask::Scale)
             batchOptions.outputExtension.clear();
 
-        const auto text = runBatchTest(targets, batchOptions);
+        bool ok = false;
+        const auto text = runBatchTest(targets, batchOptions, ok);
         emit(text);
-        return 0;
+        return ok ? 0 : 1;
     }
 
     if (audioTest) {
         const auto text = runAudioTest(targets.front());
         emit(text);
-        return text.find("比值") == std::string::npos ? 1 : 0;
+        return text.find("比值") != std::string::npos && text.find("FAIL") == std::string::npos ? 0 : 1;
     }
 
     if (playbackTest) {
