@@ -33,6 +33,13 @@ public:
     }
 
     void open(std::vector<std::wstring> files) {
+        // 标题栏关闭不会取消正在处理的任务；重新打开只恢复显示，不能与 worker 争写结果。
+        if (running_) {
+            visible_ = focusRequested_ = true;
+            return;
+        }
+        if (worker_.joinable())
+            worker_.join();
         files_ = std::move(files);
         std::sort(files_.begin(), files_.end(), [](const std::wstring& a, const std::wstring& b) {
             return StrCmpLogicalW(a.c_str(), b.c_str()) < 0;
@@ -66,6 +73,22 @@ public:
 
     void close() { visible_ = false; }
     bool visible() const { return visible_; }
+
+    // 看图窗口退出/切到播放器前停止并回收，不能让 detached 线程跨过单例与日志析构。
+    void shutdown() {
+        cancelRequested_ = true;
+        if (worker_.joinable())
+            worker_.join();
+        if (previewThread_.joinable()) {
+            {
+                std::lock_guard lock(previewMutex_);
+                previewThread_.request_stop();
+            }
+            previewCv_.notify_all();
+            previewThread_.join();
+        }
+        visible_ = false;
+    }
 
     void draw() {
         if (!visible_)
@@ -110,6 +133,7 @@ public:
 
 private:
     BatchWindow() = default;
+    ~BatchWindow() { shutdown(); }
 
     static std::string title() {
         return jarkUtils::wstringToUtf8(getUIStringW(42).c_str()) + "###batch";
@@ -322,22 +346,29 @@ private:
     }
 
     void ensurePreviewThread() {
-        if (previewThreadStarted_)
+        if (previewThread_.joinable())
             return;
-        previewThreadStarted_ = true;
 
-        std::thread([this] {
-            for (;;) {
+        previewThread_ = std::jthread([this](std::stop_token stop) {
+            while (!stop.stop_requested()) {
                 std::wstring path;
                 {
                     std::unique_lock lock(previewMutex_);
-                    previewCv_.wait(lock, [this] { return !previewRequest_.empty(); });
+                    previewCv_.wait(lock, [this, stop] { return stop.stop_requested() || !previewRequest_.empty(); });
+                    if (stop.stop_requested())
+                        return;
                     path = std::move(previewRequest_);
                     previewRequest_.clear();
                 }
 
                 jark::ImageSize size;
-                const bool ok = jark::loadImageSize(path, size);
+                bool ok = false;
+                try {
+                    ok = jark::loadImageSize(path, size);
+                }
+                catch (const std::exception& error) {
+                    JARK_LOG("batch preview failed: {}", error.what());
+                }
 
                 std::lock_guard lock(previewMutex_);
                 if (previewPath_ == path) { // 期间换了样张就丢掉这次结果
@@ -345,7 +376,7 @@ private:
                     previewLoading_ = false;
                 }
             }
-            }).detach();
+            });
     }
 
     void drawOutputSection(float scale) {
@@ -483,22 +514,29 @@ private:
         result_ = {};
 
         const auto options = options_;
-        std::thread worker([this, targets, options]() {
-            result_ = jark::runBatch(targets, options,
-                [this](size_t current, size_t total, const std::wstring&) {
-                    progressValue_ = current;
-                    progressMax_ = total ? total : 1;
-                    return !cancelRequested_.load();
-                });
-            finished_ = true;
-            running_ = false;
+        if (worker_.joinable())
+            worker_.join();
+        worker_ = std::jthread([this, targets, options]() {
+            try {
+                result_ = jark::runBatch(targets, options,
+                    [this](size_t current, size_t total, const std::wstring&) {
+                        progressValue_ = current;
+                        progressMax_ = total ? total : 1;
+                        return !cancelRequested_.load();
+                    });
+            }
+            catch (const std::exception& error) {
+                result_.failed++;
+                result_.messages.push_back(jarkUtils::utf8ToWstring(error.what()));
+            }
             {
                 // 处理可能改写了源文件（就地缩放等），预览要重新取尺寸
                 std::lock_guard lock(previewMutex_);
                 previewPath_.clear();
             }
+            finished_ = true;
+            running_ = false; // 发布结果与预览状态，界面只在此后读取
             });
-        worker.detach();
     }
 
     // 输出格式（与 BatchProcessor 的 writeEncoded 支持范围一致）
@@ -586,6 +624,7 @@ private:
     std::atomic<bool> cancelRequested_{ false };
     std::atomic<size_t> progressValue_{ 0 };
     std::atomic<size_t> progressMax_{ 1 };
+    std::jthread worker_;
     jark::BatchResult result_;
     bool finished_ = false;
     bool startFailed_ = false;
@@ -597,5 +636,5 @@ private:
     std::wstring previewRequest_;
     jark::ImageSize previewSource_;
     bool previewLoading_ = false;
-    bool previewThreadStarted_ = false;
+    std::jthread previewThread_;
 };

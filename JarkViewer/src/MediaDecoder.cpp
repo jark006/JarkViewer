@@ -937,6 +937,8 @@ bool MediaDecoder::seek(int64_t ms) {
     if (impl.audioCodec) avcodec_flush_buffers(impl.audioCodec.get());
     av_packet_unref(impl.packet.get());
     if (impl.decodeFrame) av_frame_unref(impl.decodeFrame.get());
+    // 重采样器也持有上一位置的样本与滤波历史；只冲 avcodec 会把旧位置的尾音带过来。
+    impl.swrContext.reset();
     impl.demuxEof = false;
     impl.videoFlushSent = false;
     impl.audioFlushSent = false;

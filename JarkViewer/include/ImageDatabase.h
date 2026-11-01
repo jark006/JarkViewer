@@ -308,7 +308,8 @@ public:
     // 其余格式（JPEG/PNG/WebP/TIFF…）用这个补读。
     static std::vector<uint8_t> readIccProfile(const std::wstring& path);
 
-    ImageDatabase();
+    // 同步解码的线程局部实例传 false：TLS 析构时不能 join 子线程（Windows loader lock）。
+    explicit ImageDatabase(bool startPreloadWorker = true);
 
     // 缓存预算：物理内存的 50%（下限 512MB）。与"最多 10 张"（ImageAssetCache::CAPACITY）
     // 两个上限先到先算，并保证至少留住 2 张（minEntries）。

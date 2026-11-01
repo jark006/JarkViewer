@@ -33,7 +33,7 @@ size_t ImageDatabase::defaultCacheBudgetBytes() noexcept {
     return (std::max)(static_cast<size_t>(status.ullTotalPhys / 2), size_t(512) << 20);
 }
 
-ImageDatabase::ImageDatabase() {
+ImageDatabase::ImageDatabase(bool startPreloadWorker) : ImageAssetCache(startPreloadWorker) {
     setByteBudget(defaultCacheBudgetBytes());
 }
 
@@ -3445,7 +3445,7 @@ ImageAsset ImageDatabase::decodeFallback(const wstring& path, std::span<const ui
     return imageAsset;
 }
 
-ImageAsset ImageDatabase::myLoader(const wstring& path) {
+ImageAsset ImageDatabase::myLoader(const wstring& path) try {
     FunctionTimeCount FunctionTimeCount(__func__);
     JARK_LOG("loading: {}", jarkUtils::wstringToUtf8(path));
 
@@ -3457,11 +3457,6 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
         asset.placeholderDetail = path;
         return asset;
     };
-
-    if (path.length() < 4) {
-        JARK_LOG("path.length() < 4: {}", jarkUtils::wstringToUtf8(path));
-        return failedAsset(PlaceholderKind::FileMissing);
-    }
 
     auto fileReader = jark::MappedFileReader(path);
     if (fileReader.isEmpty()) {
@@ -3537,6 +3532,15 @@ ImageAsset ImageDatabase::myLoader(const wstring& path) {
     imageAsset.placeholder = (audioMedia ||
         (sniffedFormat == jark::FileFormat::Unknown && extFormat == jark::FileFormat::Unknown))
         ? PlaceholderKind::UnsupportedFormat : PlaceholderKind::DecodeFailed;
+    imageAsset.placeholderDetail = path;
+    return imageAsset;
+}
+catch (const std::exception& error) {
+    // 解码在预读/缩略图线程里执行；损坏输入抛出的异常不能越过线程入口终止整个进程。
+    JARK_LOG("decode exception: {} [{}]", jarkUtils::wstringToUtf8(path), error.what());
+    ImageAsset imageAsset;
+    imageAsset.format = ImageFormat::Still;
+    imageAsset.placeholder = PlaceholderKind::DecodeFailed;
     imageAsset.placeholderDetail = path;
     return imageAsset;
 }

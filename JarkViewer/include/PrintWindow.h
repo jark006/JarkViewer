@@ -268,10 +268,7 @@ private:
         if (!cv::imencode(isJpg ? ".jpg" : ".png", output, buffer))
             return;
 
-        std::ofstream file(filePath, std::ios::binary);
-        if (file.is_open()) {
-            file.write(reinterpret_cast<const char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
-            file.close();
+        if (jarkUtils::writeFileAtomically(filePath, buffer)) {
             rememberParameters();
         }
     }

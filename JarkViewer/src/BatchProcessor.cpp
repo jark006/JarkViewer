@@ -20,13 +20,17 @@ namespace {
 
     // 批量解码复用一个解码器；线程局部，避免与界面线程的缓存/预读互相干扰
     ImageDatabase& batchDecoder() {
-        static thread_local ImageDatabase database;
+        // myLoader 同步解码，不需要缓存预读线程。MSVC 的 TLS 析构发生在 loader lock 内，
+        // 此时 join 子线程会等它退出，而子线程退出也要 loader lock，必然互相等待。
+        static thread_local ImageDatabase database(false);
         return database;
     }
 
     // Windows 路径不区分大小写，比较/去重前统一转小写
     std::wstring pathKey(const std::filesystem::path& path) {
-        std::wstring key = path.wstring();
+        std::error_code error;
+        auto normalized = std::filesystem::weakly_canonical(path, error);
+        std::wstring key = (error ? std::filesystem::absolute(path).lexically_normal() : normalized).wstring();
         std::transform(key.begin(), key.end(), key.begin(), ::towlower);
         return key;
     }
@@ -40,7 +44,7 @@ namespace {
     }
 
     bool writeEncoded(const cv::Mat& image, const std::wstring& targetPath,
-        const std::wstring& extension, int quality, std::wstring& error) {
+        const std::wstring& extension, int quality, bool overwrite, std::wstring& error) {
         if (image.empty()) {
             error = L"图像为空";
             return false;
@@ -67,15 +71,8 @@ namespace {
             return false;
         }
 
-        std::ofstream file(targetPath, std::ios::binary | std::ios::trunc);
-        if (!file.is_open()) {
-            error = L"无法写入文件";
-            return false;
-        }
-
-        file.write(reinterpret_cast<const char*>(encoded.data()), static_cast<std::streamsize>(encoded.size()));
-        if (!file.good()) {
-            error = L"写入文件失败";
+        if (!jarkUtils::writeFileAtomically(targetPath, encoded, overwrite)) {
+            error = std::format(L"写入文件失败: 0x{:08X}", GetLastError());
             return false;
         }
 
@@ -95,6 +92,10 @@ namespace {
             error = L"无法解码";
             return {};
         }
+
+        // myLoader 保留原位深，颜色变换与白底合成都按 8 位通道取样；必须与查看器 loader
+        // 一样先归一化，否则 16 位 RGBA PNG 的 alpha 字节被错读，批量输出可能整张变白。
+        ImageDatabase::convertMatToCV_8U(*source);
 
         // 色彩管理：**落盘的文件带不上 profile**（OpenCV 写不了 ICC），所以统一转到 sRGB——
         // 否则 P3/AdobeRGB 的原始数值被去掉标签后会被当成 sRGB 读，颜色悄悄变了。
@@ -136,7 +137,7 @@ ImageSize scaledSize(ImageSize source, const BatchOptions& options) {
         return source;
 
     const auto scaled = [](double value) {
-        return (std::max)(1, static_cast<int>(std::lround(value)));
+        return static_cast<int>(std::llround(std::clamp(value, 1.0, static_cast<double>(INT_MAX))));
         };
 
     switch (options.scaleMode) {
@@ -168,7 +169,7 @@ ImageSize scaledSize(ImageSize source, const BatchOptions& options) {
 }
 
 bool processImageFile(const std::wstring& sourcePath, const std::wstring& targetPath,
-    const BatchOptions& options, std::wstring& errorMessage) {
+    const BatchOptions& options, std::wstring& errorMessage) try {
     errorMessage.clear();
 
     cv::Mat image = loadImage(sourcePath, errorMessage);
@@ -221,7 +222,13 @@ bool processImageFile(const std::wstring& sourcePath, const std::wstring& target
     if (extension.empty())
         extension = options.outputExtension;
 
-    return writeEncoded(image, targetPath, extension, options.jpegQuality, errorMessage);
+    const bool inPlaceRotation = options.task == BatchTask::Rotate && options.outputDirectory.empty();
+    return writeEncoded(image, targetPath, extension, options.jpegQuality,
+        options.overwrite || inPlaceRotation, errorMessage);
+}
+catch (const std::exception& exception) {
+    errorMessage = std::format(L"处理失败: {}", jarkUtils::utf8ToWstring(exception.what()));
+    return false;
 }
 
 BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions& options,
@@ -233,6 +240,10 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
 
     // 本次运行已产出的输出路径（小写），用于避免同名互相覆盖
     std::set<std::wstring> producedTargets;
+    // 即使允许覆盖输出，也不能毁掉同批次的另一个输入（例如 a.jpg + a.png → PNG）。
+    std::set<std::wstring> sourceKeys;
+    for (const auto& file : files)
+        sourceKeys.insert(pathKey(file));
 
     size_t index = 0;
     for (const auto& sourcePath : files) {
@@ -251,8 +262,14 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
 
         // —— 重命名 ——
         if (options.task == BatchTask::Rename) {
-            const std::wstring number = std::format(L"{:0{}}", options.renameStart + (int)index - 1,
-                (std::max)(1, options.renameDigits));
+            if (options.renamePrefix.find_first_of(L"\\/:*?\"<>|") != std::wstring::npos) {
+                ++result.failed;
+                result.messages.push_back(L"重命名前缀含非法字符");
+                continue;
+            }
+            const std::wstring number = std::format(L"{:0{}}",
+                static_cast<int64_t>(options.renameStart) + static_cast<int64_t>(index) - 1,
+                std::clamp(options.renameDigits, 1, 8));
             const std::filesystem::path target = source.parent_path() /
                 (options.renamePrefix + number + source.extension().wstring());
 
@@ -260,7 +277,8 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
                 ++result.skipped;
                 continue;
             }
-            if (!options.overwrite && std::filesystem::exists(target, errorCode)) {
+            if (sourceKeys.contains(pathKey(target)) ||
+                (!options.overwrite && std::filesystem::exists(target, errorCode))) {
                 ++result.skipped;
                 result.messages.push_back(std::format(L"目标已存在，跳过: {}", target.wstring()));
                 continue;
@@ -295,11 +313,13 @@ BatchResult runBatch(const std::vector<std::wstring>& files, const BatchOptions&
             // 自动加序号，避免后者覆盖前者
             const std::wstring stem = target.stem().wstring();
             const std::wstring targetExtension = target.extension().wstring();
-            for (int suffix = 1; producedTargets.contains(pathKey(target)); ++suffix)
+            const std::wstring sourceKey = pathKey(source);
+            for (int suffix = 1; producedTargets.contains(pathKey(target)) ||
+                (pathKey(target) != sourceKey && sourceKeys.contains(pathKey(target))); ++suffix)
                 target = directory / (stem + L"_" + std::to_wstring(suffix) + targetExtension);
         }
 
-        if (!inPlace && target != source && !options.overwrite &&
+        if (!inPlace && !options.overwrite &&
             std::filesystem::exists(target, errorCode)) {
             ++result.skipped;
             result.messages.push_back(std::format(L"目标已存在，跳过: {}", target.wstring()));

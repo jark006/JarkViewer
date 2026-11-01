@@ -329,6 +329,7 @@ public:
     }
 
     ~JarkViewerApp() {
+        BatchWindow::instance().shutdown();
         jark::ThumbnailService::instance().shutdown();
         navigation.releaseTextures();
     }
@@ -2096,6 +2097,7 @@ public:
             ? (curFileIdx + 1) % imgFileList.size()
             : (curFileIdx + imgFileList.size() - 1) % imgFileList.size();
         auto loadedAsset = requestCurrentImage(imgFileList[nextIndex]);
+        const bool loaded = loadedAsset != nullptr; // move 之后不能再拿指针判断是否命中缓存
         if (loadedAsset)
             curPar.imageAssetPtr = std::move(loadedAsset);
 
@@ -2103,7 +2105,8 @@ public:
         curPar.Init(winWidth, winHeight);
 
         // 未就绪时不播切图动画（保留旧图停留，等 adoptCurrentImage 换入新图）
-        const int animationMode = (!loadedAsset || direction == 0) ? 0 : GlobalVar::settingParameter.switchImageAnimationMode;
+        const int animationMode = (!loaded || direction == 0) ? 0 : GlobalVar::settingParameter.switchImageAnimationMode;
+        JARK_LOG("切图动画: mode={} loaded={} direction={}", animationMode, loaded, direction);
         if (animationMode == 1)
             direction > 0 ? mainCanvasSlideToNextAnimationVertical() : mainCanvasSlideToPreAnimationVertical();
         else if (animationMode == 2)
@@ -2380,14 +2383,7 @@ public:
         if (target.empty())
             return; // 用户取消
 
-        std::ofstream file(target, std::ios::binary | std::ios::trunc);
-        bool ok = file.is_open();
-        if (ok) {
-            file.write(reinterpret_cast<const char*>(source->data.data()),
-                static_cast<std::streamsize>(source->data.size()));
-            ok = file.good();
-            file.close();
-        }
+        const bool ok = jarkUtils::writeFileAtomically(target, source->data);
 
         if (!ok) {
             auto errMsg = std::format(L"{} 0x{:08X}", getUIStringW(61).c_str(),

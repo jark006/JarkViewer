@@ -9,6 +9,7 @@
 #pragma comment(lib, "shlwapi.lib")
 
 #include <cstdint>
+#include <atomic>
 #include <fstream>
 #include <mutex>
 #include <unordered_set>
@@ -89,6 +90,57 @@ std::string jarkUtils::bin2Hex(const void* bytes, const size_t len) {
         res[i * 3 + 1] = charList[value & 0x0f];
     }
     return res;
+}
+
+bool jarkUtils::writeFileAtomically(const std::wstring& path, std::span<const uint8_t> data,
+    bool overwrite) {
+    static std::atomic<uint64_t> sequence{ 0 };
+    const std::filesystem::path target(path);
+    std::wstring temporary;
+    HANDLE file = INVALID_HANDLE_VALUE;
+    for (int attempt = 0; attempt < 128; ++attempt) {
+        temporary = (target.parent_path() / std::format(L".jark-{}-{}.tmp",
+            GetCurrentProcessId(), sequence.fetch_add(1))).wstring();
+        file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE)
+            break;
+        if (GetLastError() != ERROR_FILE_EXISTS && GetLastError() != ERROR_ALREADY_EXISTS)
+            return false;
+    }
+    if (file == INVALID_HANDLE_VALUE)
+        return false;
+
+    DWORD error = ERROR_SUCCESS;
+    size_t offset = 0;
+    while (offset < data.size()) {
+        const DWORD count = static_cast<DWORD>((std::min)(data.size() - offset, size_t{ 1 } << 30));
+        DWORD written = 0;
+        if (!WriteFile(file, data.data() + offset, count, &written, nullptr)) {
+            error = GetLastError();
+            break;
+        }
+        if (written == 0) {
+            error = ERROR_WRITE_FAULT;
+            break;
+        }
+        offset += written;
+    }
+    if (error == ERROR_SUCCESS && !FlushFileBuffers(file))
+        error = GetLastError();
+    if (!CloseHandle(file) && error == ERROR_SUCCESS)
+        error = GetLastError();
+
+    // 不先删除目标：磁盘满、目标被锁定、只读等失败都不能把原图变成空文件。
+    if (error == ERROR_SUCCESS && !MoveFileExW(temporary.c_str(), path.c_str(),
+        MOVEFILE_WRITE_THROUGH | (overwrite ? MOVEFILE_REPLACE_EXISTING : 0)))
+        error = GetLastError();
+    if (error != ERROR_SUCCESS) {
+        DeleteFileW(temporary.c_str());
+        SetLastError(error);
+        return false;
+    }
+    return true;
 }
 
 cv::Scalar jarkUtils::to_cv_scalar(uint32_t color) {

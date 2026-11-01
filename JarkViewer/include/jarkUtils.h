@@ -606,6 +606,10 @@ public:
 
     static string bin2Hex(const void* bytes, const size_t len);
 
+    // 同目录临时文件写完并刷盘后才替换目标；失败保留原文件，GetLastError 返回原因。
+    static bool writeFileAtomically(const std::wstring& path, std::span<const uint8_t> data,
+        bool overwrite = true);
+
     static cv::Scalar to_cv_scalar(uint32_t color);
 
     static std::wstring ansiToWstring(string_view str);

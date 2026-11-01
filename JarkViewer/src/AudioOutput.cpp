@@ -73,6 +73,9 @@ struct AudioOutput::Impl {
     IXAudio2SourceVoice* sourceVoice = nullptr;
     AudioOutputVoiceCallback callback;
 
+    // UI 线程 pause/resume 与音频线程 submit/flush 必须作为完整操作互斥，
+    // 否则暂停刚 Stop 完，另一个线程还会按旧 autoStart 把 voice 再 Start 起来。
+    mutable std::mutex stateMutex;
     std::mutex pendingMutex;
     // 还挂在 voice 队列里、可能仍在被取样的缓冲区（背压按这个计数）
     std::unordered_map<void*, std::shared_ptr<SubmittedBuffer>> pendingBuffers;
@@ -109,8 +112,10 @@ struct AudioOutput::Impl {
     // 冲队列：把还在排队的缓冲区挪进「已退休」，等各自的 OnBufferEnd 上门再释放
     void retirePendingBuffers() {
         std::lock_guard<std::mutex> lock(pendingMutex);
-        for (auto& entry : pendingBuffers)
-            retiredBuffers.emplace(entry.first, std::move(entry.second));
+        for (auto& entry : pendingBuffers) {
+            if (!entry.second->consumed.load())
+                retiredBuffers.emplace(entry.first, std::move(entry.second));
+        }
         pendingBuffers.clear();
     }
 
@@ -187,6 +192,7 @@ std::unique_ptr<AudioOutput> AudioOutput::create(int sampleRate, int channels) {
 }
 
 bool AudioOutput::submit(std::span<const int16_t> samples) {
+    std::lock_guard stateLock(impl_->stateMutex);
     if (!impl_->sourceVoice || samples.empty())
         return false;
 
@@ -244,6 +250,7 @@ int64_t AudioOutput::playedFrames() const noexcept {
 }
 
 int64_t AudioOutput::queuedFrames() const noexcept {
+    std::lock_guard stateLock(impl_->stateMutex);
     const int64_t queued = impl_->submittedFrames.load() - playedFrames();
     return queued > 0 ? queued : 0;
 }
@@ -264,6 +271,7 @@ void AudioOutput::setVolume(float volume) noexcept {
 }
 
 void AudioOutput::pause() noexcept {
+    std::lock_guard stateLock(impl_->stateMutex);
     if (!impl_->sourceVoice)
         return;
 
@@ -275,6 +283,7 @@ void AudioOutput::pause() noexcept {
 }
 
 void AudioOutput::resume() noexcept {
+    std::lock_guard stateLock(impl_->stateMutex);
     if (!impl_->sourceVoice)
         return;
 
@@ -286,6 +295,7 @@ void AudioOutput::resume() noexcept {
 }
 
 void AudioOutput::flush() noexcept {
+    std::lock_guard stateLock(impl_->stateMutex);
     if (!impl_->sourceVoice)
         return;
 
@@ -294,7 +304,7 @@ void AudioOutput::flush() noexcept {
     impl_->sourceVoice->Stop(0);
     impl_->sourceVoice->FlushSourceBuffers();
     impl_->started = false;
-    impl_->submittedFrames.store(0);
+    impl_->submittedFrames.store(playedFrames()); // SamplesPlayed 不保证被 Flush 清零
     // 冲掉的只是「不再播」的记账；内存要等各自的 OnBufferEnd（见 retiredBuffers）
     impl_->retirePendingBuffers();
 
@@ -306,6 +316,7 @@ void AudioOutput::flush() noexcept {
 }
 
 void AudioOutput::stop() noexcept {
+    std::lock_guard stateLock(impl_->stateMutex);
     if (!impl_->sourceVoice)
         return;
 
@@ -313,7 +324,7 @@ void AudioOutput::stop() noexcept {
     impl_->sourceVoice->FlushSourceBuffers();
     impl_->started = false;
     impl_->autoStart = true; // 停掉之后回到默认语义：再提交就播
-    impl_->submittedFrames.store(0);
+    impl_->submittedFrames.store(playedFrames());
     impl_->retirePendingBuffers(); // 同上：剩下的等 OnBufferEnd，或等析构时引擎销毁
 }
 

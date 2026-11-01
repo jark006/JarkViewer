@@ -724,13 +724,11 @@ private:
             return false;
         }
 
-        std::ofstream file(path, std::ios::binary);
-        if (!file.is_open()) {
+        if (!jarkUtils::writeFileAtomically(path, encoded)) {
             setStatus(kStrSaveFailed);
             return false;
         }
 
-        file.write(reinterpret_cast<const char*>(encoded.data()), static_cast<std::streamsize>(encoded.size()));
         setStatus(kStrSaved);
         return true;
     }

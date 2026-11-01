@@ -181,8 +181,9 @@ private:
     }
 
 public:
-    ImageAssetCache() {
-        preload_thread = std::thread(&ImageAssetCache::preloadWorker, this);
+    explicit ImageAssetCache(bool startPreloadWorker = true) {
+        if (startPreloadWorker)
+            preload_thread = std::thread(&ImageAssetCache::preloadWorker, this);
     }
 
     virtual ~ImageAssetCache() {
@@ -193,7 +194,11 @@ public:
     // 预读线程跑的是派生类的 loader()、用的是派生类成员，等 ~ImageAssetCache() 才停线程时
     // 派生部分（含其成员）已经销毁，在途的那次解码会访问已释放的内存。
     void stopPreloadWorker() {
-        stop_preload = true;
+        {
+            // 与 wait 共用互斥锁：否则 notify 可能落在 predicate 检查与真正入睡之间，join 永久等不到。
+            std::lock_guard lock(preload_mutex);
+            stop_preload = true;
+        }
         preload_cv.notify_all();
         if (preload_thread.joinable()) {
             preload_thread.join();

@@ -89,7 +89,7 @@ struct MediaPlayer::Impl {
     bool sysRunning = false;
 
     // —— seek 命令 ——
-    // 先写目标、再递增序号（两个都是 seq_cst），解码线程读到新序号就能安全取走目标。
+    // 目标、模式与序号在 seekMutex 下成组发布，避免读到上一序号与下一目标的混合状态。
     // 只保留最新目标 = 拖动时在途的旧请求自动作废，不做累积记录。
     struct SeekCommand {
         int64_t targetMs = 0;
@@ -101,6 +101,8 @@ struct MediaPlayer::Impl {
     std::atomic<bool> seekExact{ true };
     uint64_t videoSeenSerial = 0;
     uint64_t audioSeenSerial = 0;
+    std::atomic<uint64_t> videoAppliedSerial{ 0 };
+    std::atomic<uint64_t> audioAppliedSerial{ 0 };
     std::mutex seekMutex;
     std::condition_variable seekSignal;
 
@@ -170,14 +172,22 @@ struct MediaPlayer::Impl {
     // —— seek 命令的发布与取用 ——
 
     void requestSeek(int64_t target, bool exact) {
-        seekTargetMs.store(target);
-        seekExact.store(exact);
-        seekSerial.fetch_add(1);
+        {
+            std::lock_guard seekLock(seekMutex);
+            std::lock_guard queueLock(queueMutex);
+            // 发布命令时就作废旧帧；否则 UI 会在 worker 真正处理 seek 前取出旧位置的帧，
+            // 把它误认为落点（暂停态 seek 偶尔向前跳两三帧就是这条竞态）。
+            videoQueue.clear();
+            seekTargetMs.store(target);
+            seekExact.store(exact);
+            seekSerial.fetch_add(1);
+        }
         seekSignal.notify_all();
         queueSpaceAvailable.notify_all();
     }
 
     bool takeSeek(uint64_t& seen, SeekCommand& command) {
+        std::lock_guard lock(seekMutex); // 序号、目标与精确模式必须属于同一条命令
         const uint64_t serial = seekSerial.load();
         if (serial == seen)
             return false;
@@ -317,6 +327,7 @@ struct MediaPlayer::Impl {
         if (!audio)
             rebaseClockForSystemClock(target); // 没有声卡：时钟基线由视频这一侧搬
 
+        videoAppliedSerial.store(videoSeenSerial);
         queueSpaceAvailable.notify_all();
         JARK_LOG("player: video seek -> {} ms ({})", target, command.exact ? "精确" : "关键帧预览");
     }
@@ -437,6 +448,7 @@ struct MediaPlayer::Impl {
             // 不补这一下，seek 之后时钟还按墙上时间从老位置往前跑，永远追不上目标
             rebaseClockForSystemClock(target);
 
+        audioAppliedSerial.store(audioSeenSerial);
         JARK_LOG("player: audio seek -> {} ms", target);
     }
 };
@@ -502,6 +514,8 @@ bool MediaPlayer::start(std::span<const uint8_t> data, float volume) {
     impl_->audioEof = false;
     impl_->videoSeenSerial = 0;
     impl_->audioSeenSerial = 0;
+    impl_->videoAppliedSerial.store(0);
+    impl_->audioAppliedSerial.store(0);
     impl_->seekSerial.store(0);
     impl_->seekTargetMs.store(0);
     impl_->seekExact.store(true);
@@ -586,6 +600,10 @@ bool MediaPlayer::isRunning() const noexcept {
 bool MediaPlayer::hasFinished() const noexcept {
     if (!impl_->videoDecoder && !impl_->audioDecoder)
         return false;
+    const uint64_t serial = impl_->seekSerial.load();
+    if ((impl_->videoDecoder && impl_->videoAppliedSerial.load() != serial) ||
+        (impl_->audioDecoder && impl_->audioAppliedSerial.load() != serial))
+        return false; // 尚未处理的新 seek 不能被上一位置的 EOF 判作播完
     if (!impl_->videoDecodeFinished.load() || !impl_->audioDecodeFinished.load())
         return false;
 
@@ -624,6 +642,10 @@ bool MediaPlayer::hasAudio() const noexcept {
 bool MediaPlayer::acquireFrame(cv::Mat& frame) {
     if (!impl_->videoDecoder)
         return false;
+    const uint64_t serial = impl_->seekSerial.load();
+    if (impl_->videoAppliedSerial.load() != serial ||
+        (impl_->audio && impl_->audioAppliedSerial.load() != serial))
+        return false; // 声画的落点与时钟基线都准备好之后才交帧
 
     const int64_t clock = impl_->clockMs();
 
