@@ -136,9 +136,111 @@ pwsh tools/check_source_invariants.ps1
 python -I tools/gen_vs_project_files.py
 # 反向验证上面这套检查：逐项制造错误确认真能抓到，跑完按原字节还原（新增检查项要同步加破坏）
 pwsh tools/verify_source_invariant_checks.ps1
+
+# 重构审计回归：生成语料 + 合成自检 + 文件写入/批处理 + 视频/音频/硬解 + 并发 seek。
+# --gui 追加界面回归（含批处理生命周期）；会操作鼠标键盘，运行时请勿同时操作测试窗口。
+# 程序、设置、缓存和输出均放在独立 TEMP 目录，末尾打印 results.json 所在目录。
+python -I tools/test_refactor_audit.py --gui --stress-rounds 8
+# 定向复测（依赖语料仍会生成；--cases 接受逗号分隔的名称/通配符）
+python -I tools/test_refactor_audit.py --gui --cases "batch*,color,annotate" --stress-rounds 0
+# 可选真实语料抽样（每个子目录最多三份 <=64MiB 的样本，原文件只读）
+python -I tools/test_refactor_audit.py --real-corpus D:/Downloads/test
 ```
 
 每次修改后至少保证 `buildRelease.ps1` 能干净编译通过；解码相关改动应先用 `--probe` 跑一遍 `tools/gen_testdata.py` 生成的语料（包含错扩展名、无扩展名、损坏文件、EXIF 方向、动图、视频等），再做人工冒烟（静态图加载、动图播放、EXIF 显示、打印预览和导出流程）。
+
+## 2026-11 重构审计补充
+
+审计范围为 `f9337c173eabcfe9c6ff2261d11799f571226ef9`（包含）到
+`01a292fa22b4263cd4da473c751fdf18459965bb`，共 126 个提交。除提交差异与关键调用链检查，
+验证入口统一在 `tools/test_refactor_audit.py`；每项保存退出码、耗时、断言数、失败与跳过原因。
+它先复制 exe 再运行，源码反向验证必须在构建结束后执行；界面脚本串行运行，每项使用自己的设置目录。
+
+本轮结果：Release 构建通过；完整回归 61 项（含语料生成步骤）、2064 条运行时断言通过，
+最后的 16 位透明图修复另跑 23 项定向验证通过（其中批处理自检 19 条断言）。
+源码反向验证 25 项、真实语料 45 份（41 份目录抽样 + 额外 4 份 DNG/CR3）、
+九种格式共 72 份截断输入、8 轮四路并发媒体回归均通过。
+RAW 复测（pwsh 先展开通配符）：
+`& ./x64/Release/JarkViewer.exe --probe @((Get-ChildItem D:/Downloads/test/bk/*.dng,D:/Downloads/test/bk/*.CR3 -File).FullName) --out "$env:TEMP/raw-report.txt"`。
+硬解回读故障注入的两段 H.264（含旋转）各 75 帧成功回退，PTS/尺寸一致、像素差为 0，
+验证后已按原字节还原源码并重新构建正常 Release。
+
+本轮补齐的约束与回归：
+
+- **文件写入与批量处理**：`jarkUtils::writeFileAtomically` 在目标同目录独占创建临时文件，
+  写完、刷盘、关闭成功后才替换目标。批量处理、编辑另存/覆盖、打印预览另存、实况视频导出都走它。
+  编码、磁盘写入、只读/锁定目标等失败不得先截断原图，也不能假报保存成功。
+  `--probe --batch-test --out <报告>` 用像素和原始字节检查同名输入保护、覆盖开关、失败保留原图、
+  显式就地旋转、重命名前缀不能携带目录、异常计数和临时文件清理。
+  “覆盖输出”不得覆盖同批次的另一张输入图，冲突时输出加序号；批量重命名遇到其它输入则跳过。
+  `myLoader` 保留的 16 位/浮点图必须先 `convertMatToCV_8U`，再进入批处理的 ICC 与白底合成，
+  否则按 8 位字节读取 16 位 alpha 会把半透明红色输出成全白；`--batch-test` 有已知像素落点断言。
+  `--probe --batch` 任务失败必须返回 1。
+- **线程收尾**：缓存停止时先持有 `preload_mutex` 设置停止标记，再通知、join；只用 atomic + notify
+  仍可能在 predicate 检查与 wait 入睡之间漏通知，退出永久阻塞。批处理与尺寸预览都用可回收的
+  `jthread`，`JarkViewerApp` 析构先 `BatchWindow::shutdown()`，不能让 detached 线程跨过单例/日志析构。
+  任务处理中重新打开批处理只恢复显示，不能清空 worker 正在写的结果。源码不变量 15 与反向破坏盯住它们。
+  批处理的 `thread_local ImageDatabase(false)` 必须关闭不用的预读线程：MSVC 在 Windows loader lock
+  下执行 TLS 析构，此时 join 子线程会与子线程退出时申请 loader lock 互相等待。
+  `python -I tools/test_batch_lifecycle.py --exe x64/Release/JarkViewer.exe` 实测尺寸预览退出、
+  活跃任务关闭重开再退出、源图不变与输出完整；它也纳入 `--gui` 审计回归。
+- **seek 的第一张交付**：发布命令时就清旧视频队列，序号/目标/模式在 `seekMutex` 下成组发布；
+  视频、音频两路完成新定位并设置时钟基线后才交帧、判 EOF。否则 UI 可能在 worker 收到命令之前
+  把旧帧当作新落点。`--video-test` 增加连续双向 seek 的首帧断言；seek 同时清重采样器历史。
+- **音频队列与暂停**：UI 的 pause/resume 和音频线程的 submit/flush 共用 `stateMutex`，整个操作互斥，
+  防止暂停刚 Stop 完又按旧 `autoStart` 起播。flush/stop 后按当下 `SamplesPlayed` 重建提交计数基线，
+  不能假定 Flush 会清零。退休队列直接释放已经收到 `OnBufferEnd` 的记录，避免 seek 累积无用内存。
+  `--audio-test` 同时按样本数和缓冲个数背压、提交失败保留重试，并断言时钟交付率、flush 后队列计数、
+  暂停中提交不自动起播；报告包含“比值”不再足以代表通过。
+- **渐进加载与异常**：切图是否命中缓存要在移动 `loadedAsset` 前记录，不能用 move 后的空指针
+  禁掉全部切图动画（源码不变量 16 + 反向破坏）。解码入口兜住 C++ 异常并返回失败占位，
+  不能让异常越过后台线程入口终止进程；短于四字符的相对文件名同样可以按内容解码。
+- **测试自身的可信度**：导航脚本按奇数格数算布局、点击当前图右侧相邻项，宽窗口两侧可能是空白。
+  编辑文字脚本按 DPI 与实际窗口位置算坐标，并比较输入前后的截图像素，必须同时有输入变化与红色
+  画布预览；原先写死的 4K 坐标在 1080p 上全部点空仍会“成功截图”。短片自然到达结尾时，
+  视频自检的恢复下界按媒体时长夹取，不能把已经播放完毕当作恢复失败。
+
+已知验证边界：SVG 的 filter/textPath 仍以既有能力边界为准；打印验证覆盖预览与编码/保存链路，
+不向真实打印机提交作业。Unicode `WM_CHAR` 回归覆盖上屏结果，候选窗组字仍需真输入法人工检查。
+实机 `wp2/AndroidWallpaper.wp2`（184379 字节，3000×1534）能够解码，但本机复测约 58–76 秒，
+这是单独的第三方解码性能待查项，不能把 40 秒超时误写成“图片解码失败”。
+
+### 完整真实图片语料实测（D:\Downloads\test）
+
+追加遍历测试了该目录的全部 **323 个文件、28 种扩展名、约 0.57 GiB**，不是目录抽样。
+逐文件在独立进程里运行 `--probe --full`，每个文件都有报告与超时界限，结果 **323/323 成功**；
+其中 55 个文件读出多帧，包含 GIF/APNG/AVIF/JXL/WebP/多页 TIFF。RAW 的 3 个 DNG 与 1 个 CR3、
+全部 76 个 SVG、PSD/BLP/DDS/LEP/JXR/ICO 均在覆盖范围内。
+
+- 23 个实际带视频的文件全部播放到结束（包括独立 MOV、Apple 侧车实况、LIVP、DJI/Samsung/Pixel
+  尾部实况）；另对独立 MOV 跑 seek 状态机与硬软解逐帧对照，共 **25/25** 项通过、跳过 0。
+  播放交付率 94%–100%、时钟/媒体时长比 0.992–1.014，均符合现有阈值。
+- 按格式、目录和特殊语义选 **50 个真实样本**，实开窗口并截图检查原图、信息面板、缩放、旋转，
+  动图额外比较间隔帧；全部通过且正常退出。测试必须等**原图尺寸**出现在标题后才截图，
+  不能把渐进加载的主页/256px 缩略图算作原图；独立播放器标题只有文件名，须单独判就绪。
+- 将其中 49 张图片转换为 PNG 到独立临时输出目录，**49/49 成功且编码完整**，动图/实况取静态首帧。
+  真实 P3 目录跑鸟瞰拖动/预览带选图/滚轮隔离/清缓存/设置重启持久化通过；真实 PSD 跑中文字工具
+  上屏与红色画布预览的像素断言通过。
+- 原图逐个记录 SHA-256、字节数与修改时间，全部测试结束后再核对，**323 个原文件均未改变**。
+  没有新增主体功能或改动该目录；程序、设置、缩略图缓存、导出与报告均使用 TEMP 内的独立副本。
+- 唯一显著慢样本仍是 `wp2/AndroidWallpaper.wp2`：此次完整语料测试耗时 **57.36 秒**，成功解出
+  3000×1534 的静态图。自动解码全部通过不等于所有 323 张图都与其它渲染器做过像素对照，
+  SVG 的 filter/textPath 等既有能力边界仍适用。
+
+可重跑流程（报告目录由第一条命令打印；填到后续 `<报告目录>`，界面脚本须串行运行）：
+
+```powershell
+python -I tools/test_real_corpus.py D:/Downloads/test --workers 2
+python -I tools/test_real_corpus_playback.py <报告目录>
+python -I tools/test_real_corpus_ui.py <报告目录>
+python -I tools/test_real_corpus_ui.py <报告目录> --export-only
+python -I tools/test_real_corpus.py --summarize <报告目录>
+```
+
+`report.html` 汇总逐文件解码/EXIF、播放断言和窗口截图链接，并提供文件名筛选；
+`inventory.json` / `results.json` / `metadata.json` 记录源文件哈希、结果、程序哈希与运行配置。
+最终合并时再次验证所有原图字节与修改时间。界面布局改变时同步 `test_real_corpus_ui.py` 与
+`test_editor_text.ps1` 等脚本的坐标/就绪条件，不能仅凭“成功截图”报通过。
 
 ## 开发流程与验证经验
 
@@ -270,7 +372,7 @@ pwsh tools/verify_source_invariant_checks.ps1
 
 ## 高层架构
 
-- `JarkViewer/src/main.cpp` 定义 `JarkViewerApp` 和 `wWinMain`。入口初始化 Exiv2 BMFF、禁用 IME、初始化 COM，然后创建窗口、解析命令行图片路径并进入主循环。
+- `JarkViewer/src/main.cpp` 定义 `JarkViewerApp` 和 `wWinMain`。入口初始化 Exiv2 BMFF 与 COM、解析命令行路径，然后按媒体类型构造窗口并进入主循环；IME 上下文由 `UiHost` 随文本输入焦点挂/摘。
 - `JarkViewer/include/D3D11App.h` 与 `JarkViewer/src/D3D11App.cpp` 提供 Win32 窗口、消息分发、Direct3D 11 设备/交换链和 `PresentCanvas()`。业务层通过继承并实现鼠标、键盘、拖放、右键菜单和绘制回调；窗口句柄刚创建、D3D 设备尚未建时另有一次 `OnWindowCreated()` 回调——主窗口在这里就把首图解码派发出去（只派发不等待），和随后几十毫秒的设备/交换链创建并行。等待与收尾仍走 `initOpenFile`：它靠 `startupFilePrepared_` 标志跳过重扫（重扫里的 `imgDB.clear()` 会把在途解码作废），命令行 `--lang` 也因此要提前到 `InitWindow` 之前应用（窗口一就绪就会扫目录、放占位并派发解码）。
 - `JarkViewer/include/ImageDatabase.h` 与 `JarkViewer/src/ImageDatabase.cpp` 负责图片加载、格式分派、EXIF 处理和图像缓存。核心路径是 `ImageDatabase::loader()` → `myLoader()` → **按文件头（魔数）嗅探格式后再分派**：`FormatSniffer` 判定真实格式 → `decodeByFormat()` 调用 JXL/WP2/AVIF/HEIF/RAW/SVG/PSD/OpenCV/WIC/FFmpeg 等解码器 → 统一转为 OpenCV `cv::Mat`；嗅探失败或解码失败时再用扩展名路由兜底，最后才是 OpenCV/WIC 通用兜底。EXIF 后处理统一由 `applyExifInfo()` 按 `ExifPolicy`（None/SimpleOnly/Full/FullWithOrientation）完成，不再散落在各格式分支里。
 - `JarkViewer/include/ImageAssetCache.h` 是图像缓存（`ImageDatabase` 的基类；键 = 文件路径、值 = `ImageAsset`，带一个后台预读线程）。原先是通用模板 `LRU<keyType, valueType>`，但全项目只有看图这一处用，已按本项目**特化**（键/值定死，"占多少字节"直接问值自己，不再挂一层虚函数）。容量三个口径：
@@ -559,7 +661,7 @@ pwsh tools/verify_source_invariant_checks.ps1
 
 1. `wWinMain` 读取命令行路径并调用 `JarkViewerApp::initOpenFile()`。
 2. `initOpenFile()` 扫描同目录下所有受支持图片扩展，按 Windows 自然排序建立 `imgFileList`。
-3. 当前图片通过 `ImageDatabase::getSafePtr()` 进入缓存；切换图片时会预取相邻图片。
+3. `requestCurrentImage()` 派发缓存加载并非阻塞查询；未命中时 `updatePendingLoad()` 轮询、`adoptCurrentImage()` 接管，相邻图片按字节预算决定是否预取。
 4. 鼠标、键盘、滚轮、拖放和菜单事件转成 `ActionENUM` 放入 `OperateQueue`。
 5. `JarkViewerApp::DrawScene()` 消费操作队列，更新缩放、平移、旋转、帧索引、EXIF 显示、打印/设置窗口等状态。
 6. 当前帧绘制到 CPU 端 `cv::Mat mainCanvas`，最后通过 `D3D11App::PresentCanvas()` 上传到 D3D11 纹理并显示。
@@ -590,4 +692,4 @@ pwsh tools/verify_source_invariant_checks.ps1
   3. **尾部找 MP4**（`locateTrailerMp4Start()`）：XMP 的长度字段缺失或明显不当的 Samsung "versionless / mpv2 trailer" 型（实测 `Item:Length` 写成 `68`，而尾部实挂 2.4MB 可解码 MP4；另一型只有 `MotionPhoto_Data` 标记 + `ftyp mp42`，文件以 `SEFT` 收尾）。规则：正文里必须**有实况照片标记**（`MotionPhoto_Data` / `Item:Semantic="MotionPhoto"` / `GCamera:MotionPhoto="1"`，否则普通 HEIC 的盒结构本身就长得像 MP4，会把图像数据当视频切出去）、候选 `ftyp` 盒的品牌不能是 HEIF/AVIF 系、且从它按盒长走链必须**见过 `moov`**、主体走到文件尾（容许末尾 ≤4KB 厂商尾块）。**没有这条兜底时这两类实况照片会静默退化成静态图**（`--probe --playback-test` 报"跳过：没有可播放的媒体流"，看上去像"这张本来就没视频"）。
 - **导出实况视频**（右键菜单「导出视频」，`JarkViewerApp::exportCurrentVideo()`）：`VideoSource::data` 本来就是完整容器（livp 解包的 `.mov`、Android 尾部切片、Samsung 尾部 MP4、或整个视频文件），落盘即用，不做转码；`VideoSource::extension` 记着原扩展名（livp 的 zip 条目名、视频文件的扩展名），另存对话框按它给默认名与过滤器。菜单项由 `D3D11App::hasExportableVideo()` 决定是否置灰（基类返回 false，主窗口按当前资源里有没有视频覆盖）。语料实测：8 个 livp/实况文件导出后 ffprobe + 全解码无一报错。
 - 主窗口渲染路径以 OpenCV `cv::Mat` 作为 CPU 画布，再交给 Direct3D 显示；避免在高频绘制路径中引入阻塞 I/O 或昂贵同步操作。
-- Debug 构建会分配控制台并启用 `JARK_LOG`；Release 下日志宏为空。
+- Debug 构建会分配控制台并默认启用 `JARK_LOG`；Release 默认关闭，`--log` 或 `JARKVIEWER_LOG=1` 可临时启用，关闭时日志参数不求值。
