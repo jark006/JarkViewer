@@ -98,6 +98,9 @@ python -I tools/test_print_preview.py --exe x64/Release/JarkViewer.exe
 # 帮助页回归（六种语言的操作条目、分类切换/滚动、深浅主题与窄窗口；独立 TEMP 副本）
 python -I tools/test_help_page.py --exe x64/Release/JarkViewer.exe
 
+# WASD 平移回归（四方向/旋转/鼠标隔离、常规页即时开关、重启保存与旧设置兼容；独立 TEMP 副本）
+python -I tools/test_wasd_pan.py --exe x64/Release/JarkViewer.exe
+
 # 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
 ./x64/Release/JarkViewer.exe --probe --navigation-test
 ./x64/Release/JarkViewer.exe --probe --thumbnail-test [--out-dir 临时目录]
@@ -284,6 +287,7 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
 | --- | --- |
 | 解码路由 / 格式嗅探 / EXIF | `--probe <gen_testdata.py 的语料>`（含错扩展名、无扩展名、损坏文件） |
 | 画布几何 / 旋转 / 缩放平滑 | `--probe --navigation-test`、`--probe --resample-test` |
+| WASD 平移方向 / 反向设置 | `python -I tools/test_wasd_pan.py --exe x64/Release/JarkViewer.exe` |
 | 图像缓存 / 内存占用 | `--probe --cache-test`、`tools/test_cache_budget.ps1` |
 | 色彩管理 | `--probe --color-test` |
 | SVG 与预处理 | `--probe --svg-test` |
@@ -444,10 +448,15 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
   快捷键内容须对照主窗口与播放器的实际输入处理，不能将两种窗口的空格/方向键语义混写。
   关于页顶部的软件图标是 `IDB_PNG_ABOUT_ICON`
   （`file/aboutIcon.png`，从旧版设置页贴图 `settingRes.png` 里抠出来的透明底图标，纹理槽 4），
-  深浅主题通用，不需要两套图。常规页最上面的勾选项按 **2 列**排布（现在 11 项，末行只有左列一项。
+  深浅主题通用，不需要两套图。常规页最上面的勾选项按 **2 列**排布（现在 12 项，每行两项。
   ImGui 没有等宽列：第二列起点 = 第一列（偶数下标项）最长文本的实际文本宽 + 勾选框宽 + 列间距，
   随语言自适应；增减勾选项时记得同步这个列宽推导）。「到最后一张时停住」「全屏时使用纯黑背景」
   都在这组里。
+  “WASD平移反向”（窄表 213）默认关闭，只反转主看图窗口 W/A/S/D 的位移符号，步幅与
+  按旋转后宽高夹取的规则保留。`reverseWasdPan` 从 reserve 首个 uint32 划出（偏移 1212），
+  后续 reserve 从 1216 开始，总长 4096、关联清单偏移 3296 不变；大于 1 的值读盘回落为 0。
+  回归：`python -I tools/test_wasd_pan.py --exe x64/Release/JarkViewer.exe`，覆盖实机四方向、
+  旋转、鼠标拖动、即时切换与重启持久化；`--navigation-test` / `--resample-test` 验证画布几何。
   **右键不再有"退出程序"这个可选项**（右键 = 只弹右键菜单）：设置页那行单选已删除，
   `SettingParameter` 里的旧字段原位改名成 `legacyRightClickAction`（删掉会改变结构体布局、
   把旧设置文件整体错读）。`ShowContextMenu(hwnd, x, y)` 收的是**客户区坐标**、内部自己

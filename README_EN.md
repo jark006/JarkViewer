@@ -35,7 +35,7 @@ One portable executable, everything statically linked — just double-click it.
 | Next / previous image | `Click/Wheel` on the left/right window edge, `←` `→`, `PgUp` `PgDn`, `Space` (next image when a still image is shown) |
 | Zoom | `Wheel` in the window center, `↑` `↓`; `5` (numpad `5`) toggles between 1:1 and fit-to-window |
 | Rotate | `Click/Wheel` on the top-left or top-right corner, `Q` `E` |
-| Pan | Mouse drag, `W` `A` `S` `D` |
+| Pan | Mouse drag, `W` `A` `S` `D`; enable **Settings → General → Reverse WASD panning** to reverse keyboard panning |
 | Image info (EXIF) | `Middle click`, `TAB` or `I` |
 | Fullscreen | `Double-click the window`, `F`, `F11` |
 | Slideshow | `P` (`ESC` stops it); order and interval are in Settings |

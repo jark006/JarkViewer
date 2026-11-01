@@ -168,6 +168,8 @@ def main():
                                           "--exe", exe], 120))
         record(command("help-page", [sys.executable, "-I", REPO / "tools/test_help_page.py",
                                      "--exe", exe], 180))
+        record(command("wasd-pan", [sys.executable, "-I", REPO / "tools/test_wasd_pan.py",
+                                    "--exe", exe], 120))
         navigation = root / "navigation"
         navigation.mkdir()
         for index in range(7):

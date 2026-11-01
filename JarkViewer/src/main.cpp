@@ -1092,6 +1092,9 @@ public:
             }
         }
         else {
+            // 只反转看图窗口的 WASD 位移，保留各轴边界与旋转后的尺寸计算。
+            const int panStep = ((winHeight + winWidth) / 16) *
+                (GlobalVar::settingParameter.reverseWasdPan ? -1 : 1);
             switch (keyValue)
             {
 
@@ -1148,7 +1151,7 @@ public:
             case 'W': {
                 const int newTargetYMax = (int)(((curPar.rotation == 0 or curPar.rotation == 2) ?
                     curPar.height : curPar.width) * curPar.zoomTarget / 2 / curPar.ZOOM_BASE);
-                int newTargetY = curPar.slideTarget.y + ((winHeight + winWidth) / 16);
+                int newTargetY = curPar.slideTarget.y + panStep;
                 newTargetY = std::clamp(newTargetY, -newTargetYMax, newTargetYMax);
                 curPar.slideTarget.y = newTargetY;
                 smoothShift = true;
@@ -1157,7 +1160,7 @@ public:
             case 'S': {
                 const int newTargetYMax = (int)(((curPar.rotation == 0 or curPar.rotation == 2) ?
                     curPar.height : curPar.width) * curPar.zoomTarget / 2 / curPar.ZOOM_BASE);
-                int newTargetY = curPar.slideTarget.y - ((winHeight + winWidth) / 16);
+                int newTargetY = curPar.slideTarget.y - panStep;
                 newTargetY = std::clamp(newTargetY, -newTargetYMax, newTargetYMax);
                 curPar.slideTarget.y = newTargetY;
                 smoothShift = true;
@@ -1166,7 +1169,7 @@ public:
             case 'A': {
                 const int newTargetXMax = (int)(((curPar.rotation == 0 || curPar.rotation == 2) ?
                     curPar.width : curPar.height) * curPar.zoomTarget / 2 / curPar.ZOOM_BASE);
-                int newTargetX = curPar.slideTarget.x + ((winHeight + winWidth) / 16);
+                int newTargetX = curPar.slideTarget.x + panStep;
                 newTargetX = std::clamp(newTargetX, -newTargetXMax, newTargetXMax);
                 curPar.slideTarget.x = newTargetX;
                 smoothShift = true;
@@ -1175,7 +1178,7 @@ public:
             case 'D': {
                 const int newTargetXMax = (int)(((curPar.rotation == 0 || curPar.rotation == 2) ?
                     curPar.width : curPar.height) * curPar.zoomTarget / 2 / curPar.ZOOM_BASE);
-                int newTargetX = curPar.slideTarget.x - ((winHeight + winWidth) / 16);
+                int newTargetX = curPar.slideTarget.x - panStep;
                 newTargetX = std::clamp(newTargetX, -newTargetXMax, newTargetXMax);
                 curPar.slideTarget.x = newTargetX;
                 smoothShift = true;

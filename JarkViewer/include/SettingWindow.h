@@ -149,6 +149,7 @@ private:
         bool showNavigator = !parameter.hideNavigator;
         bool smoothZoom = !parameter.disableZoomSmoothing;
         bool videoHardwareDecode = !parameter.disableVideoHardwareDecode;
+        bool reverseWasdPan = parameter.reverseWasdPan != 0;
         struct CheckItem {
             const char* label;
             bool* value;
@@ -165,6 +166,7 @@ private:
             { getUIString(kStrBlackFullscreen), &parameter.blackFullscreenBackground }, // 全屏纯黑背景
             { getUIString(kStrSmoothZoom), &smoothZoom }, // 界面上是"平滑"，存储取反
             { getUIString(kStrVideoHardwareDecode), &videoHardwareDecode }, // 视频硬解（默认开，存储取反）
+            { getUIString(kStrReverseWasdPan), &reverseWasdPan },
         };
         float secondColumn = 0.0f;
         for (int index = 0; index < IM_ARRAYSIZE(checkItems); index += 2)
@@ -180,6 +182,7 @@ private:
         parameter.hideNavigator = !showNavigator; // 循环后同步回存储（✕ 收起鸟瞰也是写这个字段）
         parameter.disableZoomSmoothing = !smoothZoom;
         parameter.disableVideoHardwareDecode = !videoHardwareDecode;
+        parameter.reverseWasdPan = reverseWasdPan ? 1u : 0u;
 
         ImGui::Spacing();
         drawRadioRow(20, { getUIString(21), getUIString(22), getUIString(23) }, &parameter.switchImageAnimationMode, 0);
@@ -612,6 +615,7 @@ private:
     static constexpr uint32_t kStrBlackFullscreen = 188;
     static constexpr uint32_t kStrSmoothZoom = 189; // 缩放平滑插值（存储字段取反：disableZoomSmoothing）
     static constexpr uint32_t kStrVideoHardwareDecode = 195; // 视频硬件解码（存储字段取反：disableVideoHardwareDecode）
+    static constexpr uint32_t kStrReverseWasdPan = 213;
     static constexpr uint32_t kStrNetdiskHint = 166;
     static constexpr uint32_t kStrAboutLinks = 167;
     static constexpr uint32_t kStrAboutIntro = 168;

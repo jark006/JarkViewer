@@ -309,7 +309,7 @@ namespace {
     std::string runLanguageTest() {
         std::string report;
         const uint32_t sampleIds[] = { 1, 2, 28, 39, 41, 54, 124, 126, 127, 129, 146, 149, 151, 156, 165, 190, 191, 192, 193,
-            196, 197, 198, 199, 200 }; // 含导航/音频/打印提示/分类帮助文案
+            196, 197, 198, 199, 200, 213 }; // 含导航/音频/打印提示/分类帮助/WASD 反向文案
         const uint32_t wideIds[] = { 1, 13, 30, 49 };            // 窗口标题/窗口创建失败/删除到回收站/批量无图提示
 
         const uint32_t savedLanguage = GlobalVar::settingParameter.UI_LANG;
