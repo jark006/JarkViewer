@@ -85,7 +85,7 @@ def main():
         print("生成语料不完整，见 generate.log", flush=True)
         return 1
 
-    synthetic = ["navigation", "color", "resample", "cache", "spectrum", "svg", "sort", "exif", "batch"]
+    synthetic = ["navigation", "color", "resample", "cache", "spectrum", "svg", "sort", "exif", "batch", "print"]
     for name in synthetic:
         record(probe(name, [f"--{name}-test"]))
     record(probe("annotate", ["--annotate"]))

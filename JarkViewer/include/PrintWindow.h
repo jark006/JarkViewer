@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -66,6 +67,56 @@ public:
     }
 
     bool visible() const { return visible_; }
+
+    // 经实际 GDI 绘制后读回像素，覆盖上下方向、24bpp 行对齐与非连续源图。
+    static std::string runBitmapTests() {
+        std::string report;
+        int passed = 0, failed = 0;
+        HDC screenDc = GetDC(nullptr);
+        for (int width = 1; width <= 8; ++width) {
+            for (bool useRoi : { false, true }) {
+                cv::Mat backing(7, useRoi ? width + 3 : width, CV_8UC3);
+                cv::Mat image = useRoi ? backing(cv::Rect(1, 1, width, 5)) : backing;
+                for (int y = 0; y < image.rows; ++y) {
+                    for (int x = 0; x < image.cols; ++x)
+                        image.at<cv::Vec3b>(y, x) = cv::Vec3b(20 + x * 20, 30 + y * 20, 200 - y * 20);
+                }
+
+                HBITMAP source = toBitmap(image);
+                HDC sourceDc = CreateCompatibleDC(screenDc);
+                HDC targetDc = CreateCompatibleDC(screenDc);
+                HBITMAP target = CreateCompatibleBitmap(screenDc, width * 2, image.rows * 2);
+                HGDIOBJ oldSource = source && sourceDc ? SelectObject(sourceDc, source) : nullptr;
+                HGDIOBJ oldTarget = target && targetDc ? SelectObject(targetDc, target) : nullptr;
+                bool ok = screenDc && oldSource && oldSource != HGDI_ERROR &&
+                    oldTarget && oldTarget != HGDI_ERROR;
+                if (ok) {
+                    SetStretchBltMode(targetDc, COLORONCOLOR);
+                    ok = StretchBlt(targetDc, 0, 0, width * 2, image.rows * 2,
+                        sourceDc, 0, 0, width, image.rows, SRCCOPY) != FALSE;
+                    for (int y = 0; y < image.rows && ok; ++y) {
+                        for (int x = 0; x < image.cols && ok; ++x) {
+                            const auto pixel = image.at<cv::Vec3b>(y, x);
+                            ok = GetPixel(targetDc, x * 2, y * 2) == RGB(pixel[2], pixel[1], pixel[0]);
+                        }
+                    }
+                }
+                if (oldSource && oldSource != HGDI_ERROR)
+                    SelectObject(sourceDc, oldSource);
+                if (oldTarget && oldTarget != HGDI_ERROR)
+                    SelectObject(targetDc, oldTarget);
+                if (targetDc) DeleteDC(targetDc);
+                if (sourceDc) DeleteDC(sourceDc);
+                if (target) DeleteObject(target);
+                if (source) DeleteObject(source);
+                ok ? ++passed : ++failed;
+                report += std::format("[{}] GDI 打印位图方向/颜色/行距：宽 {}，{}\n",
+                    ok ? "ok" : "FAIL", width, useRoi ? "非连续 ROI" : "连续图像");
+            }
+        }
+        if (screenDc) ReleaseDC(nullptr, screenDc);
+        return std::format("---- 打印自检：{} 通过, {} 失败 ----\n{}", passed, failed, report);
+    }
 
     void draw() {
         if (!visible_)
@@ -360,6 +411,7 @@ private:
         BITMAPINFO info{};
         info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
         info.bmiHeader.biWidth = bgr.cols;
+        // 负高度是从上到下的 DIB，与 OpenCV 行序一致；复制时不能再倒序，否则打印会上下翻转。
         info.bmiHeader.biHeight = -bgr.rows;
         info.bmiHeader.biPlanes = 1;
         info.bmiHeader.biBitCount = 24;
@@ -375,7 +427,7 @@ private:
         const int stride = (rowBytes + 3) & ~3;
         uint8_t* target = static_cast<uint8_t*>(bits);
         for (int y = 0; y < bgr.rows; ++y) {
-            const uint8_t* source = bgr.ptr<uint8_t>(bgr.rows - 1 - y);
+            const uint8_t* source = bgr.ptr<uint8_t>(y);
             memcpy(target + static_cast<size_t>(y) * stride, source, rowBytes);
         }
         return bitmap;

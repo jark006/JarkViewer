@@ -89,6 +89,9 @@ pwsh tools/test_cache_budget.ps1 -Exe x64/Release/JarkViewer.exe -Image <一张�
 # Exif UserComment 编码自检（AI 生图提示词的 UNICODE/ASCII/无前缀 × UTF-16 大小端/BOM/中文）
 ./x64/Release/JarkViewer.exe --probe --exif-test
 
+# 打印位图自检（经实际 GDI 缩放绘制后逐像素核对上下方向/颜色、24bpp 行对齐及非连续 ROI；不提交打印作业）
+./x64/Release/JarkViewer.exe --probe --print-test --out "$env:TEMP/print-test.txt"
+
 # 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
 ./x64/Release/JarkViewer.exe --probe --navigation-test
 ./x64/Release/JarkViewer.exe --probe --thumbnail-test [--out-dir 临时目录]
@@ -286,6 +289,7 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
 | 窗口几何与保存 | `tools/test_placement_memory.ps1` |
 | 主界面导航浮层 | `--probe --navigation-test`、`tools/test_navigation.ps1` |
 | 编辑与标注 | `--probe --annotate`、`tools/test_editor_text.ps1` |
+| 打印位图 / 打印方向 | `--probe --print-test --out <报告>` |
 | 命令行参数 / 语言 / 设置读写 | `tools/test_language_override.ps1` |
 | 字符串表 / 格式清单 / 工程文件列表 | `tools/check_source_invariants.ps1` + `tools/verify_source_invariant_checks.ps1` |
 
@@ -575,6 +579,10 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
   预览会叠加前一次的效果、另存和打印也跟着错。`adjustBrightnessContrast()` 里对比度>100 时
   低灰度会算出负值，`pow(负底数)` 是 NaN（整片变黑），必须先夹到 0~255。调整参数在
   `close()` 里用 `rememberParameters()` 记进 `settingParameter`（关窗口就算数，不必先打印）。
+- 打印位图 `PrintWindow::toBitmap()` 的 `biHeight` 为负，表示从上到下存储，必须按源图的
+  `ptr(y)` 正序复制，不能再倒序取行，否则打印（含 Microsoft Print to PDF）会上下翻转。
+  24bpp DIB 仍需按 4 字节对齐目标行距；`--probe --print-test` 经 GDI 绘制后逐像素核对，
+  覆盖宽 1–8 像素及非连续 ROI，纳入 `test_refactor_audit.py` 的 `print` 项。
 - 主窗口（`D3D11App`/`JarkViewerApp`）是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()`
   给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新）；ImGui 侧由 `UiHost` 统一缩放。
 - 交换链使用**翻转模型**（`DXGI_SWAP_EFFECT_FLIP_DISCARD` + 双缓冲）。旧的

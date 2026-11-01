@@ -13,6 +13,7 @@
 #include "ImageResampler.h"
 #include "InfoScreen.h"
 #include "NavigationOverlay.h"
+#include "PrintWindow.h"
 #include "ThumbnailService.h"
 #include <sstream>
 #include "MediaDecoder.h"
@@ -3150,6 +3151,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool vectorTest = false;
     bool sortTest = false;
     bool exifTest = false;
+    bool printTest = false;
     int thumbnailWriter = -1;
     std::wstring annotateOutDir;
     jark::BatchOptions batchOptions;
@@ -3220,6 +3222,10 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--exif-test") {
             exifTest = true;
+            continue;
+        }
+        if (argv[i] == L"--print-test") {
+            printTest = true;
             continue;
         }
         if (argv[i] == L"--thumbnail-writer" && i + 1 < argv.size()) {
@@ -3339,7 +3345,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !batchRegressionTest && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && !cacheTest && thumbnailWriter < 0) {
+    if (targets.empty() && !batchRegressionTest && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && !printTest && !cacheTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -3388,6 +3394,11 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (exifTest) {
         const auto text = runExifTest();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (printTest) {
+        const auto text = PrintWindow::runBitmapTests();
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }
