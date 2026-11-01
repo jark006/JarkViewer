@@ -53,6 +53,7 @@ public:
         colorMode_ = std::min<uint32_t>(parameter.printercolorMode, 3);
         invert_ = parameter.printerInvertColors;
 
+        brightnessWheelRemainder_ = contrastWheelRemainder_ = 0.0f;
         previewDirty_ = true;
         visible_ = true;
         focusRequested_ = true;
@@ -228,6 +229,31 @@ private:
         data->DesiredSize.y = (std::max)(data->DesiredSize.y, 360.0f * scale);
     }
 
+    void drawAdjustmentSlider(const char* id, int& value, float& wheelRemainder) {
+        if (ImGui::SliderInt(id, &value, 0, 200, "%d")) {
+            previewDirty_ = true;
+            wheelRemainder = 0.0f;
+        }
+        if (!ImGui::IsItemHovered() || ImGui::IsItemActive() ||
+            !ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY)) {
+            wheelRemainder = 0.0f;
+            return;
+        }
+
+        // 每个滚轮刻度只调 1；高精度滚轮的小数在当前滑块内累积，移开后清掉。
+        wheelRemainder += ImGui::GetIO().MouseWheel;
+        const int steps = static_cast<int>(wheelRemainder);
+        wheelRemainder -= steps;
+        const int nextValue = std::clamp(value + steps, 0, 200);
+        if (nextValue != value) {
+            value = nextValue;
+            previewDirty_ = true;
+        }
+        // 到达边界后丢弃向外的小数余量，反向滚动应立即响应。
+        if ((value == 0 && wheelRemainder < 0) || (value == 200 && wheelRemainder > 0))
+            wheelRemainder = 0.0f;
+    }
+
     void drawControls(float scale) {
         const char* colorModes[] = { getUIString(kStrColor), getUIString(kStrGray), getUIString(kStrDocument), getUIString(kStrDither) };
 
@@ -281,21 +307,29 @@ private:
         noteRowWidth();
 
         // 标签放在控件左边
-        const float sliderWidth = 260.0f * scale;
+        const char* wheelHint = getUIString(kStrWheelFineTune);
+        // 给右侧提示留空间；长语言文案缩短滑块，避免提示被窗口边缘裁切。
+        const float labelsWidth = ImGui::CalcTextSize(getUIString(kStrBrightness)).x +
+            ImGui::CalcTextSize(getUIString(kStrContrast)).x + ImGui::CalcTextSize(wheelHint).x;
+        const auto* viewport = ImGui::GetMainViewport();
+        const float availableWidth = (std::min)(ImGui::GetContentRegionAvail().x,
+            viewport->Pos.x + viewport->Size.x - ImGui::GetCursorScreenPos().x - 8.0f * scale);
+        const float sliderWidth = (std::min)(260.0f * scale, (std::max)(80.0f * scale,
+            (availableWidth - labelsWidth - ImGui::GetStyle().ItemSpacing.x * 4.0f - 4.0f * scale) * 0.5f));
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(getUIString(kStrBrightness));
         ImGui::SameLine();
         ImGui::SetNextItemWidth(sliderWidth);
-        if (ImGui::SliderInt("##brightness", &brightness_, 0, 200, "%d"))
-            previewDirty_ = true;
+        drawAdjustmentSlider("##brightness", brightness_, brightnessWheelRemainder_);
 
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(getUIString(kStrContrast));
         ImGui::SameLine();
         ImGui::SetNextItemWidth(sliderWidth);
-        if (ImGui::SliderInt("##contrast", &contrast_, 0, 200, "%d"))
-            previewDirty_ = true;
+        drawAdjustmentSlider("##contrast", contrast_, contrastWheelRemainder_);
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", wheelHint);
         noteRowWidth();
 
         minWidth_ = rowWidth + ImGui::GetStyle().WindowPadding.x + 4.0f * scale;
@@ -557,6 +591,7 @@ private:
     static constexpr uint32_t kStrInvert = 108;     // 反相
     static constexpr uint32_t kStrSaveAs = 109;     // 另存为
     static constexpr uint32_t kStrPrint = 126;      // 打印
+    static constexpr uint32_t kStrWheelFineTune = 196; // 滚轮可微调
 
     bool visible_ = false;
     bool focusRequested_ = false;
@@ -571,6 +606,8 @@ private:
 
     int brightness_ = 100;
     int contrast_ = 100;
+    float brightnessWheelRemainder_ = 0.0f;
+    float contrastWheelRemainder_ = 0.0f;
     uint32_t colorMode_ = 1;
     bool invert_ = false;
 };

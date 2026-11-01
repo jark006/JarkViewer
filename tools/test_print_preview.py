@@ -1,4 +1,4 @@
-"""打印抖动预览回归：逐像素对照独立误差扩散结果，并检查窗口缩放、反相和模式切换。
+"""打印预览回归：逐像素核对抖动、窗口缩放、反相/模式切换及滑块悬停滚轮。
 
 python -I tools/test_print_preview.py --exe x64/Release/JarkViewer.exe
 依赖 Pillow/numpy；会操作鼠标键盘，程序、语料、设置和截图均在独立 TEMP 目录。
@@ -21,9 +21,10 @@ import numpy as np
 from PIL import Image
 
 
-def dither_reference(width, height):
-    # 独立实现 C++ 的整数误差扩散语义（负数除法向零截断），输入为亮度 80 的均匀灰图。
-    value = round((128 / 255) ** ((2 - 0.8) ** 3) * 255)
+def dither_reference(width, height, brightness=80, contrast=100, gray=128):
+    # 独立实现整数误差扩散语义（负数除法向零截断），用已知均匀灰图核对实时调整。
+    adjusted = max(0, min(255, (gray - 128) * (contrast / 100) ** 3 + 128))
+    value = round((adjusted / 255) ** ((2 - max(1, min(199, brightness)) / 100) ** 3) * 255)
     rows = [bytearray([value]) * width for _ in range(height)]
     for y, row in enumerate(rows):
         for x in range(width):
@@ -49,6 +50,7 @@ def dither_reference(width, height):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exe", type=Path, required=True)
+    parser.add_argument("--wheel-only", action="store_true", help="只验证亮度/对比度滑块滚轮")
     args = parser.parse_args()
     root = Path(tempfile.mkdtemp(prefix="JarkViewer-print-preview-"))
     print(f"Artifacts: {root}", flush=True)
@@ -126,6 +128,14 @@ def main():
         user.mouse_event(4, 0, 0, 0, 0)
         time.sleep(0.35)
 
+    def wheel(hwnd, x, y, delta):
+        mouse(hwnd, x, y)
+        point = wt.POINT(round(x), round(y))
+        user.ClientToScreen(hwnd, ct.byref(point))
+        user.PostMessageW(hwnd, 0x020A, (delta & 0xFFFF) << 16,
+                          (point.x & 0xFFFF) | ((point.y & 0xFFFF) << 16))
+        time.sleep(0.2)
+
     def capture(hwnd, path):
         rect = wt.RECT()
         user.GetClientRect(hwnd, ct.byref(rect))
@@ -153,13 +163,16 @@ def main():
             user.ReleaseDC(hwnd, screen)
 
     results = []
-    for label, size in [("large", (4000, 3000)), ("portrait", (601, 853)), ("small", (113, 73))]:
+    cases = [] if args.wheel_only else [("large", (4000, 3000)), ("portrait", (601, 853)), ("small", (113, 73))]
+    cases.append(("wheel", (397, 293)))
+    for label, size in cases:
         folder = root / label
         folder.mkdir()
         exe = folder / "JarkViewer.exe"
         shutil.copy2(args.exe.resolve(), exe)
         source = folder / "gray.png"
-        Image.new("RGB", size, (128, 128, 128)).save(source)
+        gray_value = 96 if label == "wheel" else 128  # 偏离 128，才能从预览判断对比度确有变化。
+        Image.new("RGB", size, (gray_value,) * 3).save(source)
         digest = hashlib.sha256(source.read_bytes()).hexdigest()
         process = subprocess.Popen([str(exe), "--lang", "2", str(source)], cwd=folder,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -189,7 +202,7 @@ def main():
             left, top = (rect.right - width) / 2, (rect.bottom - height) / 2
             click(hwnd, left + 434 * scale, top + 54 * scale)  # B/W dither
 
-            def verify(stage, invert=False):
+            def verify(stage, invert=False, brightness=80, contrast=100):
                 image = capture(hwnd, folder / f"{stage}.png")
                 # 主画布为均匀灰，工具窗口下半部只有预览包含纯黑/纯白；不靠写死预览尺寸定位。
                 x0, y0 = round(left + 12 * scale), round(top + 116 * scale)
@@ -201,12 +214,13 @@ def main():
                     raise RuntimeError(f"{stage}: binary preview missing; controls or layout may have changed")
                 preview = area[ys[0]:ys[-1] + 1, xs[0]:xs[-1] + 1]
                 h, w = preview.shape[:2]
-                expected = dither_reference(w, h)
+                expected = dither_reference(w, h, brightness, contrast, gray_value)
                 if invert:
                     expected = 255 - expected
                 mismatches = int(np.count_nonzero(np.any(preview != expected[:, :, None], axis=2)))
                 row = {"case": label, "stage": stage, "width": w, "height": h,
-                       "dpi": round(scale * 96), "mismatched_pixels": mismatches}
+                       "dpi": round(scale * 96), "brightness": brightness, "contrast": contrast,
+                       "mismatched_pixels": mismatches}
                 results.append(row)
                 (root / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
                 if mismatches:
@@ -215,6 +229,58 @@ def main():
                 return w, h, (x0 + xs[0], y0 + ys[0], x0 + xs[-1] + 1, y0 + ys[-1] + 1)
 
             before = verify("initial")
+            if label == "wheel":
+                # 无需点击/聚焦滑块，按实际滚轮消息验证步进、限值与参数输入归属。
+                brightness_x, contrast_x, slider_y = left + 160 * scale, left + 510 * scale, top + 90 * scale
+                steps = [
+                    ("brightness-up", brightness_x, slider_y, 120, 81, 100),
+                    ("brightness-down", brightness_x, slider_y, -120, 80, 100),
+                    ("contrast-up", contrast_x, slider_y, 120, 80, 101),
+                    ("contrast-down-two", contrast_x, slider_y, -240, 80, 99),
+                    ("contrast-restored", contrast_x, slider_y, 120, 80, 100),
+                    ("brightness-three", brightness_x, slider_y, 360, 83, 100),
+                    ("brightness-back-three", brightness_x, slider_y, -360, 80, 100),
+                    ("brightness-half", brightness_x, slider_y, 60, 80, 100),
+                    ("brightness-full", brightness_x, slider_y, 60, 81, 100),
+                    ("brightness-reset", brightness_x, slider_y, -120, 80, 100),
+                    ("brightness-leftover", brightness_x, slider_y, 60, 80, 100),
+                    ("contrast-half-isolated", contrast_x, slider_y, 60, 80, 100),
+                    ("contrast-full", contrast_x, slider_y, 60, 80, 101),
+                    ("contrast-reset", contrast_x, slider_y, -120, 80, 100),
+                    ("brightness-half-isolated", brightness_x, slider_y, 60, 80, 100),
+                    ("outside-sliders", left + 40 * scale, top + 160 * scale, 1200, 80, 100),
+                    ("brightness-new-half", brightness_x, slider_y, 60, 80, 100),
+                    ("brightness-upper-limit", brightness_x, slider_y, 24000, 200, 100),
+                    ("brightness-upper-half", brightness_x, slider_y, 60, 200, 100),
+                    ("brightness-upper-reverse", brightness_x, slider_y, -120, 199, 100),
+                    ("brightness-lower-limit", brightness_x, slider_y, -24000, 0, 100),
+                    ("brightness-lower-half", brightness_x, slider_y, -60, 0, 100),
+                    ("brightness-lower-reverse", brightness_x, slider_y, 120, 1, 100),
+                    ("brightness-restored", brightness_x, slider_y, 9480, 80, 100),
+                    ("contrast-upper-limit", contrast_x, slider_y, 24000, 80, 200),
+                    ("contrast-upper-reverse", contrast_x, slider_y, -120, 80, 199),
+                    ("contrast-lower-limit", contrast_x, slider_y, -24000, 80, 0),
+                    ("contrast-lower-reverse", contrast_x, slider_y, 120, 80, 1),
+                    ("contrast-final", contrast_x, slider_y, 12000, 80, 101),
+                    ("brightness-final", brightness_x, slider_y, 120, 81, 101),
+                ]
+                for stage, x, y, delta, brightness, contrast in steps:
+                    wheel(hwnd, x, y, delta)
+                    verify(stage, brightness=brightness, contrast=contrast)
+                # 打印参数按“关闭预览窗口”记忆；先点预览标题栏关闭，再正常退出主窗口。
+                click(hwnd, left + width - 22 * scale, top + 14 * scale)
+                user.PostMessageW(hwnd, 0x10, 0, 0)
+                if process.wait(timeout=15) != 0:
+                    raise RuntimeError("abnormal shutdown")
+                # 4096 字节设置：header[32] + RECT[16] + showCmd[4]，之后是两个 uint32。
+                settings = (folder / "JarkViewer.db").read_bytes()
+                if len(settings) != 4096 or struct.unpack_from("<II", settings, 52) != (81, 101):
+                    raise RuntimeError("wheel values were not saved as brightness=81, contrast=101")
+                if hashlib.sha256(source.read_bytes()).hexdigest() != digest:
+                    raise RuntimeError("wheel adjustment modified source file")
+                print("PASS wheel: exact saved values 81/101, source preserved", flush=True)
+                continue
+
             # 缩小工具窗口高度，保证在小屏幕/高 DPI 下也能实际改变预览尺寸。
             mouse(hwnd, left + width - 2, top + height - 2)
             user.mouse_event(2, 0, 0, 0, 0)

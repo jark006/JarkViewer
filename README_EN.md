@@ -83,6 +83,8 @@ Pick a video or audio file from the command line, drag-and-drop, or the Open dia
 
 `Ctrl + P` opens the print preview, where you can adjust `contrast`, `brightness` and `invert`, choose a color mode (`Color`, `Gray`, `Document`, `Dithering`), and then **Save As** another image file or **continue printing**.
 
+Hover over the brightness or contrast slider to fine-tune it with the mouse wheel: each notch up adds 1, each notch down subtracts 1, within 0–200.
+
 1. **Document**: balances overall brightness, highlights text, and avoids the visual impact of local shadows. Suitable for printing images of photographed text documents.
 2. **Dithering**: simulates pixel grayscale values using the distribution density of pure black pixels. This mode is suitable for dot-matrix and thermal printers and can also produce good image results.
 

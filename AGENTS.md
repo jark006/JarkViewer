@@ -92,7 +92,7 @@ pwsh tools/test_cache_budget.ps1 -Exe x64/Release/JarkViewer.exe -Image <一张�
 # 打印位图与抖动预览自检（GDI 方向/颜色/行距、物理像素布局、缩放后抖动/反相/源图不变；不提交打印作业）
 ./x64/Release/JarkViewer.exe --probe --print-test --out "$env:TEMP/print-test.txt"
 
-# 抖动预览实机回归（大图/竖图/小图、调整窗口尺寸、反相与模式切换；独立 TEMP 副本，会操作鼠标键盘）
+# 打印预览实机回归（抖动像素、窗口缩放、反相/模式切换、滑块悬停滚轮；独立 TEMP 副本，会操作鼠标键盘）
 python -I tools/test_print_preview.py --exe x64/Release/JarkViewer.exe
 
 # 主界面导航自检（鸟瞰几何/定位/输入归属断言）与缩略图缓存自检（1000 项 LRU/双进程并发/清理 epoch/Shell 失败后的本地解码兜底）
@@ -592,6 +592,12 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
   窗口尺寸改变也要作废预览缓存；打印仍按打印机分辨率先缩放再抖动，另存仍按源图尺寸处理。
   `--print-test` 覆盖多种像素缩放与极端比例；`tools/test_print_preview.py` 用独立误差扩散参考
   逐像素核对真实窗口，覆盖大图/竖图/小图、窗口缩放、反相和模式切换，接入 `--gui` 的 `print-preview` 项。
+- 打印预览的亮度/对比度滑块悬停时，滚轮每格加减 1、范围 0–200，并立即作废预览缓存。
+  对比度滑块右侧显示“滚轮可微调”（窄表 196）；滑块宽度按当前语言的标签与提示长度收敛。
+  `drawAdjustmentSlider()` 用 ImGui 的滚轮归属避免同时滚动窗口；高精度滚轮累积小数，离开滑块
+  或拖动/文字编辑时清余量，两个滑块不共享。边界外余量丢弃，反向滚动立即响应。
+  `python -I tools/test_print_preview.py --exe x64/Release/JarkViewer.exe --wheel-only` 定向验证
+  步进、连续多格、正反向、高精度半格、悬停隔离和边界，并核对实时预览及关闭后保存的数值。
 - 主窗口（`D3D11App`/`JarkViewerApp`）是 PerMonitorHighDPIAware：`D3D11App::uiScale()`/`dp()`
   给出所在显示器的缩放（`WM_DPICHANGED`/`WM_SIZE` 时刷新）；ImGui 侧由 `UiHost` 统一缩放。
 - 交换链使用**翻转模型**（`DXGI_SWAP_EFFECT_FLIP_DISCARD` + 双缓冲）。旧的
