@@ -24,7 +24,7 @@
 # NOTE: attaching masks the timing-sensitive crashes too (measured 1/5 normally vs
 #       almost never once attached). For those, let the process dump itself:
 #         JARKVIEWER_CRASH_DUMP=<file> JarkViewer.exe --probe ...
-#       (see the "JARKVIEWER_CRASH_DUMP" bullet in AGENTS.md).
+#       (see docs/debugging.md, "崩溃与内存 dump").
 
 param(
     [string]$Exe = "x64/Release/JarkViewer.exe",

@@ -146,17 +146,14 @@ ICC color management is on by default: images are converted from their embedded 
 **No thumbnails in File Explorer?**
 Tick the formats you want on the File association page in Settings and apply. Thumbnails come from the bundled `JarkThumbnailProvider.dll`, so make sure it sits next to the main executable.
 
-**Startup complains about a missing `VCOMP140.DLL`?**
-That is a missing VC++ runtime — install [vc_redist.x64.exe](https://aka.ms/vs/18/release/vc_redist.x64.exe). Versions from `v2.0` on no longer need it. If the error persists, double-check that you downloaded the right build.
-
 **Where are the AI generation prompts?**
 Press `middle click` or `TAB` to open the EXIF panel; prompts and workflow JSON written by StableDiffusion WebUI / ComfyUI show up there (as long as the image was not re-encoded while circulating online).
 
 **Will memory usage keep growing? Why does paging ever pause?**
-No. At most 10 images are cached at a time and never more than half of physical RAM (whichever limit hits first), the image you are looking at is never evicted, and at least 2 are kept — so paging backwards usually needs no re-decoding. A huge image (several GB once decoded) does not preload its neighbour, since that would double the memory; the pause when you reach it is the decode itself. Press `TAB` / `middle click` for the EXIF panel: the top lines show the cache — `Cache: 9/10 · 3.18/16.0 GB` and `Decodes 12 · evictions 2 · prefetch skips 0` ("Decodes" counts real decodes, so if paging keeps re-decoding you will see it climb).
+The image cache evicts entries as needed, with a default limit of 10 entries and a budget of half of physical RAM. Images still in use are kept, and at least 2 entries remain, so large images or images used by other features can temporarily take the cache over budget. Total application memory also includes the canvas, playback buffers and other data. Huge images skip neighbour preloading; opening an uncached image still takes time to decode. Press `TAB` / `middle click` to see cache usage, budget, decode count, evictions and prefetch skips at the top of the EXIF panel.
 
 **Does it support drag-and-drop?**
-Yes — drop an image, video or audio file onto the window to open it (when several files are dropped together only the first is used), then page through the same folder with the arrow keys. You can also pass a file path on the command line.
+Yes — drop an image, video or audio file onto the window to open it (when several files are dropped together only the first is used). Images support paging through the same folder; video and audio open in the player. You can also pass a file path on the command line.
 
 ## 👋 Quick Start
 
@@ -189,4 +186,4 @@ scoop install extras/jarkviewer
 
 This project is open-sourced under the GPL-3.0 License. For more details, see the [LICENSE file](https://github.com/jark006/JarkViewer/blob/main/LICENSE).
 
-> Want to build it yourself, or understand how the modules work? See [AGENTS.md](AGENTS.md) — development constraints, building, testing and debugging all live there.
+> For building, testing and module details, see the [developer documentation](docs/README.md) (in Chinese). AI collaboration rules are in [AGENTS.md](AGENTS.md).

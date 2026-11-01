@@ -1,6 +1,6 @@
 ﻿# Verify that the player window and the image window share ONE window-placement memory:
 # resize/position the window in one mode, quit, reopen in the other mode -- the geometry
-# must be inherited (that is the intended design, see AGENTS.md "简易播放器" section).
+# must be inherited (that is the intended design, see docs/architecture.md, "持久设置").
 #
 # Also checks the exceptions: quitting while in app-fullscreen (F11) must NOT poison the
 # memory with the borderless fullscreen rect (next launch would then be a fullscreen-sized

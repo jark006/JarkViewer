@@ -3,8 +3,8 @@
     用源码构建 JarkViewer 需要的 OpenCV 静态库（vcpkg 里没有它）。
 
 .DESCRIPTION
-    README「静态库」一节说明：工程里的第三方静态库除 OpenCV 外都来自 vcpkg，
-    只有 OpenCV 是源码自建，并且带 2 处源码修改。这个脚本把整件事串起来：
+    docs/build.md 说明了依赖来源；OpenCV 使用源码定制构建，并带 2 处源码修改。
+    这个脚本把整件事串起来：
     拉源码 → 打补丁（tools/opencv-jarkviewer.patch）→ CMake 配置 → 编译 → 安装。
 
     关键配置（4.13.0 那版是怎么配的，这里就怎么配，逐项对齐）：
