@@ -419,6 +419,9 @@ python -I tools/test_real_corpus.py --summarize <报告目录>
   宿主模块是 `JarkViewer/include/UiHost.h` 与 `src/UiHost.cpp`：创建上下文/后端、深浅两套主题
   （跟随 `GlobalVar::isCurrentUIDarkMode`）、按窗口 DPI 缩放字号与样式、系统字体（Segoe UI +
   微软雅黑 + 图标字体合并，1.92+ 动态字形加载）、以及把 `cv::Mat` 上传成 `ImTextureID` 的纹理池。
+  浅色主题保留白色控件填充，以 1 逻辑像素的中灰边框区分近白窗口背景；`FrameBorderSize`
+  必须在每次应用主题时按深浅重新赋值，防止切回深色后残留浅色边框。截图像素回归：
+  `python -I tools/test_theme_controls.py --exe x64/Release/JarkViewer.exe`（独立 TEMP 副本）。
   `jark::ui::drawWrappedText()`（同文件）是**折行文本块**的唯一实现：测量/绘制/配合滚动的裁剪，
   看图窗口的 EXIF 面板与播放器的媒体信息面板共用；坐标是客户区坐标，`origin` 传主视口左上角
   （多视口模式下画在前景列表上要换算）。

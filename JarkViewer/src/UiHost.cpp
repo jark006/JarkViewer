@@ -226,7 +226,8 @@ void UiHost::applyTheme() {
 
     style.WindowBorderSize = 1.0f;
     style.ChildBorderSize = 1.0f;
-    style.FrameBorderSize = 0.0f;
+    // 浅色控件是白底，必须有轮廓，否则未选中的复选框/单选框会融进近白的窗口背景。
+    style.FrameBorderSize = dark ? 0.0f : 1.0f;
     style.PopupBorderSize = 1.0f;
 
     style.WindowPadding = { 14.0f, 12.0f };
@@ -312,7 +313,7 @@ void UiHost::applyTheme() {
         colors[ImGuiCol_PopupBg] = bgLight;
         colors[ImGuiCol_MenuBarBg] = bgDeep;
 
-        colors[ImGuiCol_Border] = hex(0xFFD3D7DE);
+        colors[ImGuiCol_Border] = hex(0xFF7F8998);
         colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
 
         colors[ImGuiCol_FrameBg] = bgLight;
