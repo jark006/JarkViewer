@@ -3725,8 +3725,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (renamePerfTest) {
         if (targets.empty()) {
-            std::println("usage: JarkViewer.exe --probe --rename-perf <目录> [--rounds N] [--out 报告.txt]
-"
+            std::println("usage: JarkViewer.exe --probe --rename-perf <目录> [--rounds N] [--out 报告.txt]\n"
                 "       目录请给副本：自检会真的改名（跑完文件名与文件序都变了）");
             return 2;
         }
