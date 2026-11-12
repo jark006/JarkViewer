@@ -629,9 +629,12 @@ public:
             navigationImageVersion, curFileIdx);
     }
 
-    void updateNavigationDirectory() {
-        ++directoryVersion;
-        ++navigationImageVersion;
+    // imageChanged=false 用于“列表内容变了、但当前图像没变”的场景（目前只有改名）：
+    // 不递增 navigationImageVersion，避免白重建一次鸟瞰、也避免丢掉排队中的翻页请求。
+    void updateNavigationDirectory(bool imageChanged = true) {
+        ++directoryVersion; // 列表内容变了：排队中的缩略图点击必须作废
+        if (imageChanged)
+            ++navigationImageVersion;
         navigation.setDirectory(imgFileList.size() == 1 && imgFileList[0] == m_wndCaption
             ? std::vector<std::wstring>{} : imgFileList, curFileIdx);
     }
@@ -2341,13 +2344,12 @@ public:
             curFileIdx + 1, jarkUtils::wstringToUtf8(oldPath), jarkUtils::wstringToUtf8(newPath));
 
         imgDB.clear();            // 旧路径的缓存（连同相邻预读）一起作废，重新装载
-        ++navigationImageVersion; // 导航里按旧坐标的换图请求作废
         if (auto asset = requestCurrentImage(imgFileList[(curFileIdx + 1) % imgFileList.size()])) {
             curPar.imageAssetPtr = std::move(asset);
             updatePlaceholderImage();
             curPar.Init(winWidth, winHeight);
         }
-        updateNavigationDirectory();
+        updateNavigationDirectory(false); // 图像没变：不重建鸟瞰、不丢排队中的翻页请求
         operateQueue.push({ ActionENUM::refresh });
     }
 
