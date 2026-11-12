@@ -26,6 +26,7 @@
 #include <chrono>
 #include <thread>
 #include <cstdio>
+#include <cwctype>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -2950,6 +2951,279 @@ namespace {
         return report;
     }
 
+    // ---- 改名性能自检（headless）----------------------------------------------------
+    // 在真实解码器 + 真实文件列表逻辑上，把 applyRename 干的事拆开逐段计时（不建窗口）：
+    //   ① fs::rename 改盘
+    //   ② renameInFileList 列表原位替换（O(n)，1000 项一起挪）
+    //   ③ imgDB.clear() 缓存作废
+    //   ④ 缓存清空后重新装载当前图 —— 界面"改名后画面恢复"要等的就是这一段解码
+    // 再量改名后切下一张的命中率与未命中等待，以及 GUI 侧跟着跑的 navigation 整表拷贝。
+    //
+    // 为什么单独做一条自检：--probe 的普通路径只逐张解码，不经过文件列表与图像缓存；
+    // "改名顺手把缓存清空、于是每改一张就要重解一次"这种代价，正好是它看不见的那一项。
+    //
+    // 用法：JarkViewer.exe --probe --rename-perf <目录> [--rounds N] [--out 报告.txt]
+    // 目录请给**副本**：本自检真的会改名，跑完文件名与文件序都变了。
+    std::string runRenamePerf(const std::filesystem::path& directory, int rounds) {
+        namespace fs = std::filesystem;
+        using clock = std::chrono::steady_clock;
+
+        std::string report;
+        int failed = 0;
+        const auto elapsedMs = [](clock::time_point a, clock::time_point b) {
+            return std::chrono::duration<double, std::milli>(b - a).count();
+        };
+        // 中位数比平均值抗尖峰：一次 GC/杀毒扫描就能把平均拉高一倍
+        const auto timingLine = [](std::string_view name, std::vector<double> samples) {
+            if (samples.empty())
+                return std::format("[{}] 无样本\n", name);
+            std::sort(samples.begin(), samples.end());
+            double sum = 0.0;
+            for (const double value : samples)
+                sum += value;
+            const size_t p95Index = (std::min)(samples.size() - 1, (samples.size() * 95 + 99) / 100 - 1);
+            return std::format("[{}] n={}  中位 {:.3f} ms  平均 {:.3f} ms  p95 {:.3f} ms  最大 {:.3f} ms\n",
+                name, samples.size(), samples[samples.size() / 2], sum / static_cast<double>(samples.size()),
+                samples[p95Index], samples.back());
+        };
+
+        // 与 prepareFileList 同一套：只收支持的扩展名，再按名称自然序排（当前项下标 0）
+        std::vector<std::wstring> files;
+        std::error_code errorCode;
+        for (const auto& entry : fs::directory_iterator(directory, errorCode)) {
+            if (errorCode)
+                break;
+            if (!entry.is_regular_file())
+                continue;
+            std::wstring ext = entry.path().extension().wstring();
+            if (ext.length() < 2)
+                continue;
+            ext = ext.substr(1);
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+            if (ImageDatabase::supportExt.contains(ext) || ImageDatabase::supportRaw.contains(ext))
+                files.emplace_back(entry.path().wstring());
+        }
+        if (errorCode || files.empty())
+            return std::format("---- 改名性能自检：目录不可读或没有支持的图片 ----\n{}",
+                jarkUtils::wstringToUtf8(directory.wstring()));
+
+        int currentIndex = 0;
+        jarkUtils::sortImageFileList(files, 0, currentIndex);
+
+        size_t totalBytes = 0;
+        for (const auto& path : files)
+            totalBytes += static_cast<size_t>(fs::file_size(path, errorCode));
+
+        const int count = static_cast<int>(files.size());
+        report += std::format("---- 改名性能自检：{} 张 · {} ----\n",
+            count, jarkUtils::wstringToUtf8(directory.wstring()));
+        report += std::format("总字节 {:.1f} MB（平均每张 {:.2f} MB），改名轮数 {}\n",
+            totalBytes / 1048576.0, count > 0 ? totalBytes / 1048576.0 / count : 0.0,
+            (std::min)(rounds, count));
+
+        ImageDatabase imageDatabase;
+
+        // 单张解码（直接走 loader，不进缓存）：后面"改名后重装"的底账就是它
+        std::vector<double> decodeSamples;
+        for (int i = 0; i < (std::min)(3, count); ++i) {
+            const auto begin = clock::now();
+            auto asset = imageDatabase.loader(files[i]);
+            const auto end = clock::now();
+            if (asset.format == ImageFormat::None || (asset.primaryFrame.empty() && asset.frames.empty())) {
+                report += std::format("FAIL 解码失败：{}\n", jarkUtils::wstringToUtf8(files[i]));
+                ++failed;
+            }
+            decodeSamples.push_back(elapsedMs(begin, end));
+        }
+
+        // 等缓存里出现这张（200µs 轮询）：getSafePtr 内部是 10ms 一睡（实际 ≥15.6ms），
+        // 量 20ms 级的解码会被它量化成 15.6 的倍数，所以这里自己轮询
+        const auto waitCached = [&](const std::wstring& path) {
+            const auto begin = clock::now();
+            while (!imageDatabase.tryGetPtr(path)) {
+                if (clock::now() - begin > std::chrono::seconds(60))
+                    break;
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+            }
+            return elapsedMs(begin, clock::now());
+        };
+
+        // 诊断：先看这个进程在同一个目录里能不能改名（新建一个文件、改成别的名字、删掉）。
+        // 这一步用来把"文件被占用"和"进程/目录没有改名权限"分开——两者都报 ACCESS_DENIED。
+        {
+            const fs::path probePath = directory / L"rn_self_probe.txt";
+            const fs::path probeTarget = directory / L"rn_self_probe2.txt";
+            std::ofstream(probePath, std::ios::binary) << "x";
+            std::error_code selfError;
+            fs::rename(probePath, probeTarget, selfError);
+            report += std::format("诊断：自建文件改名 {}\n", selfError
+                ? std::format("失败（{} / 0x{:08X}）", selfError.message(), static_cast<unsigned>(selfError.value()))
+                : std::string("成功"));
+
+            // 单独探一下源文件上的 DELETE 权限（改名要它）
+            HANDLE deleteHandle = CreateFileW(files[count - 1].c_str(), DELETE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL, nullptr);
+            report += std::format("诊断：源文件以 DELETE 权限打开 {}（0x{:08X}），属性 0x{:08X}\n",
+                deleteHandle == INVALID_HANDLE_VALUE ? "失败" : "成功",
+                deleteHandle == INVALID_HANDLE_VALUE ? static_cast<unsigned>(GetLastError()) : 0u,
+                static_cast<unsigned>(GetFileAttributesW(files[count - 1].c_str())));
+            if (deleteHandle != INVALID_HANDLE_VALUE)
+                CloseHandle(deleteHandle);
+            fs::remove(probeTarget, selfError);
+        }
+
+        // 对照：目录里一个**本进程没解码过**的文件能不能改名——用来分辨
+        // "改名失败"是解码留下的文件锁，还是目录/权限本身的问题
+        std::string freshRenameReport;
+        {
+            const std::wstring freshPath = files[count - 1];
+            const std::wstring freshTarget = (directory / L"rn_fresh_probe.png").wstring();
+            std::error_code freshError;
+            fs::rename(freshPath, freshTarget, freshError);
+            freshRenameReport = freshError
+                ? std::format("未解码文件改名失败（{} / 0x{:08X}）",
+                    freshError.message(), static_cast<unsigned>(freshError.value()))
+                : std::string("未解码文件可以改名");
+            if (!freshError) {
+                freshError.clear();
+                fs::rename(freshTarget, freshPath, freshError);
+            }
+        }
+
+        // 预热：当前图 + 下一张都进缓存（等价于打开目录后预取跑完）
+        imageDatabase.requestPreloadBatch({ files[0], files[(std::min)(1, count - 1)] });
+        waitCached(files[0]);
+        if (count > 1)
+            waitCached(files[1]);
+
+        std::vector<double> renameSamples, listSamples, clearSamples, reloadSamples;
+        std::vector<double> switchHitSamples, switchMissSamples, normalSwitchSamples;
+        int switchHits = 0;
+        int switchMisses = 0;
+        int renameRetries = 0; // 第一下被占用、重试后才成功的次数
+        int index = 0;
+        const int totalRounds = (std::min)(rounds, count);
+
+        for (int round = 0; round < totalRounds; ++round) {
+            const std::wstring oldPath = files[index];
+            std::wstring newPath = (directory / std::format(L"rn{:04d}_{:04d}.png", round, index)).wstring();
+            if (fs::exists(newPath))
+                newPath = (directory / std::format(L"rn{:04d}_{:04d}_b.png", round, index)).wstring();
+
+            // ① 改盘
+            // 改名可能撞上"文件刚被读取"留下的短时占用（解码器收尾 / 杀毒实时扫描），
+            // 真实用户隔几十毫秒以上再按 Ctrl+R 不会遇到；自检是紧贴着解码改的，要重试几次，
+            // 顺便把"第几次才成"记下来——第一次就失败说明这段窗口期真的存在
+            int attempts = 0;
+            const auto renameBegin = clock::now();
+            do {
+                errorCode.clear();
+                fs::rename(oldPath, newPath, errorCode);
+                ++attempts;
+                if (errorCode && attempts < 4)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            } while (errorCode && attempts < 4);
+            renameSamples.push_back(elapsedMs(renameBegin, clock::now()));
+            if (attempts > 1)
+                ++renameRetries;
+            if (errorCode) {
+                // 失败原因要写进报告：GUI 上"改名失败"只弹一句错误码，
+                // 而占用文件的多半是解码器/索引服务/杀毒实时扫描，光看界面判断不出来
+                report += std::format("FAIL 改名失败（{} / 0x{:08X}）：{} → {}\n",
+                    errorCode.message(), static_cast<unsigned>(errorCode.value()),
+                    jarkUtils::wstringToUtf8(oldPath), jarkUtils::wstringToUtf8(newPath));
+                ++failed;
+                break;
+            }
+
+            // ② 列表原位替换（不重排：逐张重命名的连续性，见 applyRename 的注释）
+            const auto listBegin = clock::now();
+            jarkUtils::renameInFileList(files, index, newPath);
+            listSamples.push_back(elapsedMs(listBegin, clock::now()));
+
+            // ③ 缓存作废
+            const auto clearBegin = clock::now();
+            imageDatabase.clear();
+            clearSamples.push_back(elapsedMs(clearBegin, clock::now()));
+
+            // ④ 重新装载当前图（applyRename 之后由主循环 updatePendingLoad 收尾的那一段）
+            const int nextIndex = (index + 1) % count;
+            const int next2Index = (index + 2) % count;
+            imageDatabase.requestPreloadBatch({ newPath, files[nextIndex] });
+            reloadSamples.push_back(waitCached(newPath));
+
+            // ⑤ 改名后切下一张：预取可能已经完成（命中），也可能还在解（未命中，等它）
+            const auto switchBegin = clock::now();
+            imageDatabase.requestPreloadBatch({ files[nextIndex], files[next2Index] });
+            if (imageDatabase.tryGetPtr(files[nextIndex])) {
+                switchHitSamples.push_back(elapsedMs(switchBegin, clock::now()));
+                ++switchHits;
+            }
+            else {
+                ++switchMisses;
+                switchMissSamples.push_back(waitCached(files[nextIndex]));
+            }
+            index = nextIndex;
+        }
+
+        // ⑥ 改名后连续翻页：缓存刚被清空，看预取追不追得上（这一条才是用户改完名接着往下翻的手感）
+        std::vector<double> burstSamples;
+        int burstHits = 0;
+        for (int step = 0; step < 10 && count > 10; ++step) {
+            const int next = (index + 1) % count;
+            const int next2 = (index + 2) % count;
+            imageDatabase.requestPreloadBatch({ files[next], files[next2] });
+            if (imageDatabase.tryGetPtr(files[next]))
+                ++burstHits;
+            else
+                burstSamples.push_back(waitCached(files[next]));
+            index = next;
+        }
+
+        // 对照：未改名时切一张已预取的图（正常翻页的命中路径）
+        for (int i = 0; i < (std::min)(10, count - 1); ++i) {
+            const std::wstring target = files[(index + 2 + i) % count];
+            imageDatabase.requestPreloadBatch({ target, files[(index + 3 + i) % count] });
+            waitCached(target);
+            const auto begin = clock::now();
+            imageDatabase.tryGetPtr(target);
+            normalSwitchSamples.push_back(elapsedMs(begin, clock::now()));
+        }
+
+        // GUI 侧每改一次名都会跑一遍 navigation.setDirectory（它把整个列表拷一份）
+        std::vector<double> copySamples;
+        for (int i = 0; i < 20; ++i) {
+            const auto begin = clock::now();
+            std::vector<std::wstring> copied = files;
+            const auto end = clock::now();
+            copySamples.push_back(elapsedMs(begin, end));
+            if (copied.size() != files.size()) // 拷贝被优化掉的话这条会先炸
+                ++failed;
+        }
+
+        report += freshRenameReport + "\n";
+        report += std::format("改名重试次数（第一下被占用）：{} / {}\n", renameRetries, totalRounds);
+        report += timingLine("单张解码（直接 loader）", decodeSamples);
+        report += timingLine("① 改盘 fs::rename", renameSamples);
+        report += timingLine("② 列表原位替换（整表 O(n)）", listSamples);
+        report += timingLine("③ 缓存作废 imgDB.clear()", clearSamples);
+        report += timingLine("④ 改名后重装当前图（等解码）", reloadSamples);
+        report += timingLine("⑤ 改名后切下一张 · 命中", switchHitSamples);
+        report += timingLine("⑤ 改名后切下一张 · 未命中（等解码）", switchMissSamples);
+        report += timingLine("⑥ 改名后连续翻页 · 未命中等待", burstSamples);
+        report += std::format("改名后连续翻 10 张：预取追上 {} 张（其余要现解）\n", burstHits);
+        report += timingLine("对照：未改名切图 · 命中查表", normalSwitchSamples);
+        report += timingLine("GUI 跟随：navigation.setDirectory 整表拷贝", copySamples);
+        report += std::format("改名后切下一张：命中 {} 次 / 未命中 {} 次（命中率 {:.0f}%）\n",
+            switchHits, switchMisses,
+            switchHits + switchMisses > 0 ? 100.0 * switchHits / (switchHits + switchMisses) : 0.0);
+
+        report = std::format("---- 改名性能自检：{} 失败 ----\n", failed) + report;
+        return report;
+    }
+
     // 实时频谱自检（纯合成，不需要语料）：频段映射、电平标定、衰减、以及"按播放位置取帧"。
     // 这几条坏掉时界面上只表现为"条在跳"，看不出跳得对不对——尤其"取哪一帧"这一条：
     // 拿解码线程最新算出的那一帧也能跳，但会比听到的声音早一两秒。
@@ -3171,6 +3445,8 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     bool sortTest = false;
     bool exifTest = false;
     bool printTest = false;
+    bool renamePerfTest = false;
+    int renamePerfRounds = 20;
     int thumbnailWriter = -1;
     std::wstring annotateOutDir;
     jark::BatchOptions batchOptions;
@@ -3245,6 +3521,14 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
         }
         if (argv[i] == L"--print-test") {
             printTest = true;
+            continue;
+        }
+        if (argv[i] == L"--rename-perf") {
+            renamePerfTest = true;
+            continue;
+        }
+        if (argv[i] == L"--rounds" && i + 1 < argv.size()) {
+            renamePerfRounds = (std::max)(1, ::_wtoi(argv[++i].c_str()));
             continue;
         }
         if (argv[i] == L"--thumbnail-writer" && i + 1 < argv.size()) {
@@ -3364,7 +3648,7 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
 
     // 合成类自检不需要输入文件（用合成底图/纯逻辑断言），用真实图片只是额外输出可视化结果
-    if (targets.empty() && !batchRegressionTest && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && !printTest && !cacheTest && thumbnailWriter < 0) {
+    if (targets.empty() && !batchRegressionTest && !annotateTest && !languageTest && !navigationTest && !colorTest && !resampleTest && !spectrumTest && !thumbnailTest && !vectorTest && !sortTest && !exifTest && !printTest && !renamePerfTest && !cacheTest && thumbnailWriter < 0) {
         std::println("usage: JarkViewer.exe --probe <file> [<file>...] [--out <report>]");
         return 2;
     }
@@ -3418,6 +3702,17 @@ int runDecodeProbe(const std::vector<std::wstring>& argv) {
     }
     if (printTest) {
         const auto text = PrintWindow::runBitmapTests();
+        emit(text);
+        return text.find("FAIL") == std::string::npos ? 0 : 1;
+    }
+    if (renamePerfTest) {
+        if (targets.empty()) {
+            std::println("usage: JarkViewer.exe --probe --rename-perf <目录> [--rounds N] [--out 报告.txt]
+"
+                "       目录请给副本：自检会真的改名（跑完文件名与文件序都变了）");
+            return 2;
+        }
+        const auto text = runRenamePerf(std::filesystem::path(targets.front()), renamePerfRounds);
         emit(text);
         return text.find("FAIL") == std::string::npos ? 0 : 1;
     }

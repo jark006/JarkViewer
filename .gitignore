@@ -8,5 +8,8 @@ x64
 # 解码自检报告与批量输出
 decode-probe.txt
 
+# 性能自检的语料与报告（.perf/imgs-1000 等，体积以 GB 计，不进库）
+.perf/
+
 # 图标码位探针的临时备份（tools/gen_icon_probe.py 生成）
 tools/.drawui_backup
