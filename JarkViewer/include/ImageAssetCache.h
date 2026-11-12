@@ -82,6 +82,22 @@ private:
         }
     }
 
+    // 把一个键在预读队列与待处理表里的任务全丢掉（队列很短，逐个搬即可）。
+    // 改名要用：旧路径的任务已经不该再跑，否则它会把"改名后路径"的结果写回旧键。
+    void dropPendingLocked(const Key& key) {
+        if (!preload_pending.contains(key))
+            return;
+        preload_pending.erase(key);
+        std::queue<PreloadTask> kept;
+        while (!preload_queue.empty()) {
+            PreloadTask task = std::move(preload_queue.front());
+            preload_queue.pop();
+            if (task.key != key)
+                kept.push(std::move(task));
+        }
+        preload_queue.swap(kept);
+    }
+
     // 预读取工作线程函数
     void preloadWorker() {
         while (true) {
@@ -307,6 +323,33 @@ public:
         auto value_ptr = std::make_shared<ImageAsset>(std::move(value));
         std::unique_lock<std::shared_mutex> lock(cache_mutex);
         putInternal(key, value_ptr);
+    }
+
+    // 改名专用：把一条缓存从旧路径搬到新路径。像素内容没变、只是文件名变了，
+    // 没理由重新解码；其余条目（上一张 / 预取的下一张）原样留着，紧接着翻页还能命中。
+    // 旧键在预读队列里的任务一并丢掉。返回是否真的搬了一条（当前图是占位/在途时没有）。
+    bool renameKey(const Key& oldKey, const Key& newKey) {
+        if (oldKey == newKey)
+            return false;
+
+        std::lock_guard<std::mutex> preload_lock(preload_mutex);
+        std::unique_lock<std::shared_mutex> cache_lock(cache_mutex);
+
+        dropPendingLocked(oldKey);
+
+        auto it = cache_map.find(oldKey);
+        if (it == cache_map.end())
+            return false;
+
+        // 新键理论上不存在（新文件名刚过同名校验）；真撞上先拆掉旧的，避免两条并存
+        if (auto existing = cache_map.find(newKey); existing != cache_map.end())
+            eraseLocked(existing->second);
+
+        ListIterator node = it->second;
+        cache_map.erase(it);
+        node->key = newKey;       // 只换索引，像素与 LRU 位置都不动
+        cache_map[newKey] = node;
+        return true;
     }
 
     void clear() {

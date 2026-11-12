@@ -2955,12 +2955,14 @@ namespace {
     // 在真实解码器 + 真实文件列表逻辑上，把 applyRename 干的事拆开逐段计时（不建窗口）：
     //   ① fs::rename 改盘
     //   ② renameInFileList 列表原位替换（O(n)，1000 项一起挪）
-    //   ③ imgDB.clear() 缓存作废
-    //   ④ 缓存清空后重新装载当前图 —— 界面"改名后画面恢复"要等的就是这一段解码
+    //   ③ renameKey 缓存键迁移（只搬当前这一条，不清空）
+    //   ④ 迁移后当前图就绪 —— 命中迁移应当≈0，只有没迁移到时候才要重解码
     // 再量改名后切下一张的命中率与未命中等待，以及 GUI 侧跟着跑的 navigation 整表拷贝。
     //
     // 为什么单独做一条自检：--probe 的普通路径只逐张解码，不经过文件列表与图像缓存；
     // "改名顺手把缓存清空、于是每改一张就要重解一次"这种代价，正好是它看不见的那一项。
+    // ③④ 两段就是钉着这件事：缓存作废时 ④ 是一次完整重解码（实测 30ms），
+    // 改成迁移缓存键之后应当≈0，紧接着的翻页也不再退回冷解码。
     //
     // 用法：JarkViewer.exe --probe --rename-perf <目录> [--rounds N] [--out 报告.txt]
     // 目录请给**副本**：本自检真的会改名，跑完文件名与文件序都变了。
@@ -3100,9 +3102,12 @@ namespace {
 
         std::vector<double> renameSamples, listSamples, clearSamples, reloadSamples;
         std::vector<double> switchHitSamples, switchMissSamples, normalSwitchSamples;
+        std::vector<double> delayedSwitchSamples;
         int switchHits = 0;
         int switchMisses = 0;
-        int renameRetries = 0; // 第一下被占用、重试后才成功的次数
+        int delayedHits = 0;
+        int renameRetries = 0;  // 第一下被占用、重试后才成功的次数
+        int migrateMisses = 0;  // 当前图不在缓存里、没能迁移（这时才需要重解码）的次数
         int index = 0;
         const int totalRounds = (std::min)(rounds, count);
 
@@ -3143,10 +3148,12 @@ namespace {
             jarkUtils::renameInFileList(files, index, newPath);
             listSamples.push_back(elapsedMs(listBegin, clock::now()));
 
-            // ③ 缓存作废
+            // ③ 缓存键迁移（applyRename 的做法：只搬当前这一条，不清空缓存）
             const auto clearBegin = clock::now();
-            imageDatabase.clear();
+            const bool migrated = imageDatabase.renameKey(oldPath, newPath);
             clearSamples.push_back(elapsedMs(clearBegin, clock::now()));
+            if (!migrated)
+                ++migrateMisses;
 
             // ④ 重新装载当前图（applyRename 之后由主循环 updatePendingLoad 收尾的那一段）
             const int nextIndex = (index + 1) % count;
@@ -3166,6 +3173,14 @@ namespace {
                 switchMissSamples.push_back(waitCached(files[nextIndex]));
             }
             index = nextIndex;
+
+            // ⑤b 隔 200ms 再切一张（用户的正常手速）：预取有时间跑完，应当命中
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            const int delayedIndex = (index + 1) % count;
+            imageDatabase.requestPreloadBatch({ files[delayedIndex], files[(index + 2) % count] });
+            delayedHits += imageDatabase.tryGetPtr(files[delayedIndex]) != nullptr ? 1 : 0;
+            delayedSwitchSamples.push_back(waitCached(files[delayedIndex]));
+            index = delayedIndex;
         }
 
         // ⑥ 改名后连续翻页：缓存刚被清空，看预取追不追得上（这一条才是用户改完名接着往下翻的手感）
@@ -3208,10 +3223,13 @@ namespace {
         report += timingLine("单张解码（直接 loader）", decodeSamples);
         report += timingLine("① 改盘 fs::rename", renameSamples);
         report += timingLine("② 列表原位替换（整表 O(n)）", listSamples);
-        report += timingLine("③ 缓存作废 imgDB.clear()", clearSamples);
-        report += timingLine("④ 改名后重装当前图（等解码）", reloadSamples);
+        report += timingLine("③ 缓存键迁移 imgDB.renameKey()", clearSamples);
+        report += timingLine("④ 改名后当前图就绪（命中迁移即≈0）", reloadSamples);
+        report += std::format("缓存迁移未命中（当前图不在缓存）: {} / {}\n", migrateMisses, totalRounds);
         report += timingLine("⑤ 改名后切下一张 · 命中", switchHitSamples);
         report += timingLine("⑤ 改名后切下一张 · 未命中（等解码）", switchMissSamples);
+        report += timingLine("⑤b 改名后隔 200ms 再切（命中即≈0）", delayedSwitchSamples);
+        report += std::format("隔 200ms 再切：预取已就绪 {} / {} 次\n", delayedHits, totalRounds);
         report += timingLine("⑥ 改名后连续翻页 · 未命中等待", burstSamples);
         report += std::format("改名后连续翻 10 张：预取追上 {} 张（其余要现解）\n", burstHits);
         report += timingLine("对照：未改名切图 · 命中查表", normalSwitchSamples);
