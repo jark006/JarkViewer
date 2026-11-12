@@ -2317,7 +2317,8 @@ public:
         JARK_LOG("progressive: 原图接管");
     }
 
-    // 重命名确认后执行：改磁盘、同步列表（重排后的新位置）、作废缓存并重新装载
+    // 重命名确认后执行：改盘、列表**原位替换**（不重排，便于逐张重命名）、缩略图失效、缓存作废重装。
+    // 不调 sortImageFileList：理由见 jarkUtils::renameInFileList（恢复真实排序靠重开目录/换排序方式）。
     void applyRename(const std::wstring& newPath) {
         if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size())
             return;
@@ -2335,10 +2336,9 @@ public:
         }
 
         jark::ThumbnailService::instance().invalidate(oldPath);
-        imgFileList[curFileIdx] = newPath;
-
-        // 文件名变了，按当前排序设置把这张挪到新位置（与 initOpenFile 同一套规则）
-        jarkUtils::sortImageFileList(imgFileList, GlobalVar::settingParameter.sortMode, curFileIdx);
+        jarkUtils::renameInFileList(imgFileList, curFileIdx, newPath);
+        JARK_LOG("重命名：列表保持原位 #{}（{} → {}），真实排序在重开目录/换排序方式时恢复",
+            curFileIdx + 1, jarkUtils::wstringToUtf8(oldPath), jarkUtils::wstringToUtf8(newPath));
 
         imgDB.clear();            // 旧路径的缓存（连同相邻预读）一起作废，重新装载
         ++navigationImageVersion; // 导航里按旧坐标的换图请求作废

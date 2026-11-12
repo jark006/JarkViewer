@@ -1116,3 +1116,13 @@ void jarkUtils::sortImageFileList(std::vector<std::wstring>& files, uint32_t sor
         }
     }
 }
+
+// 重命名后的列表维护：只把当前项换成新路径，位置与下标都不动（Ctrl+R 逐张重命名的连续性）。
+// 与 sortImageFileList 分开，正是为了让“改名不跳位”成为一条可自检的规则：
+// --probe --sort-test 直接断言“改名后顺序与下标不变、重新排序后回到真实顺序”。
+// 真实排序在重新打开目录（prepareFileList）或切换排序方式（isNeedSortFileList）时恢复。
+void jarkUtils::renameInFileList(std::vector<std::wstring>& files, int index,
+    const std::wstring& newPath) {
+    if (index >= 0 && index < static_cast<int>(files.size()))
+        files[index] = newPath;
+}

@@ -13,6 +13,7 @@
 | WASD 平移与反向设置 | `test_wasd_pan.py` |
 | 图像缓存、预读、内存 | `--cache-test`、`test_cache_budget.ps1` |
 | ICC、SVG、文件排序 | 分别跑 `--color-test`、`--svg-test`、`--sort-test` |
+| 文件列表、改名后保持原位、改名耗时 | `--sort-test`（三种排序 + 下标跟随 + 改名后原位 / 重排恢复）、`--rename-perf <副本目录>`、`test_rename_order.ps1` |
 | 缩略图服务、Shell 链路 | `--thumbnail-test`、`--shell-thumbnail`、导航 GUI 回归 |
 | MediaPlayer / MediaDecoder / VideoPlayback / AudioOutput | `--video-test`（含纯音频）、`--playback-test`、`--audio-test`、`--hw-test` |
 | 音频频谱 | `--spectrum-test`，实开音频确认按播放位置显示 |
@@ -76,6 +77,7 @@ Get-Content -LiteralPath "$env:TEMP/cache-test.txt" -Encoding utf8
 | `--spectrum-test` | 频段、电平、直流过滤、衰减、按播放位置取帧 |
 | `--svg-test` | CSS 折叠、直通 alpha、区域/旋转、filter/textPath 能力边界 |
 | `--sort-test` | 自然序、时间/大小排序及当前图片下标 |
+| `--rename-perf <目录>` | 改名分段计时（改盘、列表原位替换、缓存作废、重装当前图、改名后切图、连续翻页）；目录用副本，自检真的会改名 |
 | `--exif-test` | UserComment 字符集前缀、UTF-16 端序/BOM/中文 |
 | `--print-test` | GDI 方向、颜色、行距及抖动布局；不提交打印作业 |
 | `--navigation-test` | 鸟瞰几何、定位和手势归属 |
@@ -116,6 +118,7 @@ python -I tools/test_psd_decode.py --real-corpus D:/Downloads/test/psd
 ```powershell
 pwsh tools/test_cache_budget.ps1 -Exe x64/Release/JarkViewer.exe -Image <中等图片> -Copies 12
 pwsh tools/test_navigation.ps1 -Exe <TEMP副本.exe> -Image <图片> -OutDirectory <截图目录> -CheckSettings
+pwsh tools/test_rename_order.ps1 -Exe <TEMP副本.exe>
 pwsh tools/test_player_resize.ps1 -Exe <TEMP副本.exe> -Video <视频> -OutDirectory <截图目录>
 pwsh tools/test_player_scaling.ps1 -Exe <TEMP副本.exe> -Video <棋盘格视频> -OutDirectory <截图目录>
 pwsh tools/test_placement_memory.ps1 -Exe x64/Release/JarkViewer.exe -Media <视频> -Image <图片>

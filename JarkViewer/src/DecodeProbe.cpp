@@ -2930,6 +2930,21 @@ namespace {
             check(index == 2, "文件大小：当前图片下标跟随重排");
         }
 
+        {
+            // 改名：只替换、不重排（Ctrl+R 逐张重命名的连续性）。这条盯着 applyRename 的策略，
+            // 别让“改名后就该排一下”的直觉把它改回去。
+            std::vector<std::wstring> files = seed; // {img1, img2, img10}，当前 = img2
+            int index = 1;
+            jarkUtils::renameInFileList(files, index, (dir / L"zzz.png").wstring());
+            check(byName(files[0]) == L"img1.png" && byName(files[1]) == L"zzz.png" &&
+                byName(files[2]) == L"img10.png", "改名：列表保持原位");
+            check(index == 1, "改名：当前图片下标不变");
+
+            // 重新打开目录 / 切换排序方式：恢复真实排序（zzz 排到末尾），下标跟着走
+            jarkUtils::sortImageFileList(files, 0, index);
+            check(byName(files[2]) == L"zzz.png" && index == 2, "重新排序：恢复真实顺序且下标跟随");
+        }
+
         fs::remove_all(dir, ec);
         report = std::format("---- 排序自检：{} 通过, {} 失败 ----\n", passed, failed) + report;
         return report;

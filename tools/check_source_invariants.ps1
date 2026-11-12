@@ -17,6 +17,7 @@
 #   12.  所有 .ps1 带 UTF-8 BOM 且含 PowerShell 7 守卫（无 BOM 时 5.1 会在跑到守卫前就语法报错）
 #   13.  两个工程的每个配置都开了多处理器编译 /MP（丢了它全量重编退回单核，且不会有任何报错）
 #   14.  视频解码是"先试硬解（D3D11VA）、不行再回退软解"（硬解段被删掉只是静默变慢，不报错）
+#   15.  重命名只替换列表项、不重排（applyRename 里出现 sortImageFileList 会让当前图跳位）
 #
 # 只支持 PowerShell 7（pwsh）：下面的守卫会拒绝 Windows PowerShell 5.1，并提示怎么装 pwsh。
 # 本文件必须保留 UTF-8 BOM——5.1 会把无 BOM 的 .ps1 按 ANSI 解码，脚本在跑到守卫之前就已经
@@ -365,6 +366,22 @@ Report ($probeConsole -match '(?s)if \(!outputRedirected\).*?freopen_s\([^\r\n]*
     "自检仅在 stdout 未重定向时连接控制台"
 Report ($probeConsole -notmatch 'freopen_s\([^\r\n]*CONOUT\$[^\r\n]*stderr') `
     "自检不把 stderr 重定向覆盖成 CONOUT$（避免诊断输出污染计时）"
+
+# 18. 重命名只替换列表项、不重排：applyRename 里出现 sortImageFileList 会让当前图跳位，
+#     逐张重命名时按 → 翻到别的图，而界面上看不出是代码问题（列表顺序看起来"正常"）。
+#     只切 applyRename 的函数体，纯注释行跳过（注释里提到函数名是正常的）。
+$applyStart = $mainCpp.IndexOf("void applyRename(")
+$nl = [string][char]10
+$applyEnd = if ($applyStart -ge 0) { $mainCpp.IndexOf($nl + "    }", $applyStart) } else { -1 }
+if ($applyStart -lt 0 -or $applyEnd -lt $applyStart) {
+    Report $false "重命名：找不到 applyRename 函数体"
+}
+else {
+    $applyBody = $mainCpp.Substring($applyStart, $applyEnd - $applyStart)
+    $applyCode = (($applyBody -split $nl) | Where-Object { $_ -notmatch '^\s*//' }) -join $nl
+    Report (-not ($applyCode -match 'sortImageFileList\s*\(')) "重命名：不再 sortImageFileList（列表保持原位）"
+    Report ($applyCode -match 'renameInFileList\s*\(') "重命名：改调 renameInFileList"
+}
 
 Write-Host ""
 if ($script:failed) {
