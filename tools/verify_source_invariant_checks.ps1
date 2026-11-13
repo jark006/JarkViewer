@@ -181,6 +181,18 @@ Test-Break "软解排到硬解前面（硬解段被挪到软解之后）" @{
         "    context->thread_count = 8;`r`n    // 1) 硬件优先。")
 }
 
+Test-Break "重命名又按顺序重排（applyRename 塞回 sortImageFileList）" @{
+    "JarkViewer/src/main.cpp" = @(
+        "        jarkUtils::renameInFileList(imgFileList, curFileIdx, newPath);",
+        "        jarkUtils::renameInFileList(imgFileList, curFileIdx, newPath);`r`n        jarkUtils::sortImageFileList(imgFileList, GlobalVar::settingParameter.sortMode, curFileIdx);")
+}
+
+Test-Break "重命名不再维护列表（renameInFileList 换成直接赋值）" @{
+    "JarkViewer/src/main.cpp" = @(
+        "        jarkUtils::renameInFileList(imgFileList, curFileIdx, newPath);",
+        "        imgFileList[curFileIdx] = newPath;")
+}
+
 Write-Host ""
 # 全部还原后再跑一遍完整检查，确认真文件恢复了
 Test-Break "缓存停止丢失 wait 同步锁" @{

@@ -675,6 +675,12 @@ public:
     // 与资源管理器默认的日期列排序一致）。取不到时间/大小的条目排在最后，不丢失。
     static void sortImageFileList(std::vector<std::wstring>& files, uint32_t sortMode, int& currentIndex);
 
+    // 重命名后的列表维护：只把 index 处的路径换成 newPath，**不按排序键重排**。
+    // Ctrl+R 是“逐张重命名同一目录”的连续作业，改名就让这张图挪位会把正在处理的位置抽走
+    // （改完按 → 已经翻到别的图）。真实排序由两个既有入口恢复：重新打开目录（prepareFileList）
+    // 与设置里切换排序方式（isNeedSortFileList）；期间“顺序 ≠ 排序键”是刻意的。
+    static void renameInFileList(std::vector<std::wstring>& files, int index, const std::wstring& newPath);
+
     // 选取文件
     static std::wstring SelectFile(HWND hWnd);
     static std::wstring SelectFolder(HWND hWnd); // 选文件夹（复制/移动目标、外部编辑器场景）

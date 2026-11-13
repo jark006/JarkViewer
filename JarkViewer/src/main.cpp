@@ -629,9 +629,12 @@ public:
             navigationImageVersion, curFileIdx);
     }
 
-    void updateNavigationDirectory() {
-        ++directoryVersion;
-        ++navigationImageVersion;
+    // imageChanged=false 用于“列表内容变了、但当前图像没变”的场景（目前只有改名）：
+    // 不递增 navigationImageVersion，避免白重建一次鸟瞰、也避免丢掉排队中的翻页请求。
+    void updateNavigationDirectory(bool imageChanged = true) {
+        ++directoryVersion; // 列表内容变了：排队中的缩略图点击必须作废
+        if (imageChanged)
+            ++navigationImageVersion;
         navigation.setDirectory(imgFileList.size() == 1 && imgFileList[0] == m_wndCaption
             ? std::vector<std::wstring>{} : imgFileList, curFileIdx);
     }
@@ -2317,7 +2320,9 @@ public:
         JARK_LOG("progressive: 原图接管");
     }
 
-    // 重命名确认后执行：改磁盘、同步列表（重排后的新位置）、作废缓存并重新装载
+    // 重命名确认后执行：改盘、列表**原位替换**（不重排，便于逐张重命名）、缩略图失效、
+    // 缓存键迁移（只搬当前这一条，不清空）。
+    // 不调 sortImageFileList：理由见 jarkUtils::renameInFileList（恢复真实排序靠重开目录/换排序方式）。
     void applyRename(const std::wstring& newPath) {
         if (curFileIdx < 0 || curFileIdx >= (int)imgFileList.size())
             return;
@@ -2335,19 +2340,30 @@ public:
         }
 
         jark::ThumbnailService::instance().invalidate(oldPath);
-        imgFileList[curFileIdx] = newPath;
+        jarkUtils::renameInFileList(imgFileList, curFileIdx, newPath);
+        JARK_LOG("重命名：列表保持原位 #{}（{} → {}），真实排序在重开目录/换排序方式时恢复",
+            curFileIdx + 1, jarkUtils::wstringToUtf8(oldPath), jarkUtils::wstringToUtf8(newPath));
 
-        // 文件名变了，按当前排序设置把这张挪到新位置（与 initOpenFile 同一套规则）
-        jarkUtils::sortImageFileList(imgFileList, GlobalVar::settingParameter.sortMode, curFileIdx);
-
-        imgDB.clear();            // 旧路径的缓存（连同相邻预读）一起作废，重新装载
-        ++navigationImageVersion; // 导航里按旧坐标的换图请求作废
-        if (auto asset = requestCurrentImage(imgFileList[(curFileIdx + 1) % imgFileList.size()])) {
-            curPar.imageAssetPtr = std::move(asset);
-            updatePlaceholderImage();
-            curPar.Init(winWidth, winHeight);
+        // 只把当前这一条缓存换到新路径：图像内容没变，重解码一次纯属浪费；
+        // 其余条目（上一张、预取的下一张）原样留着，改完名接着翻页还能命中。
+        // 命中时**不能**走下面那套"换图收尾"——curPar.Init() 会把缩放/平移/旋转
+        // 重置回适应窗口，而改名不该动用户的视图（放大着改名，画面会跳）。
+        const std::wstring nextPath = imgFileList[(curFileIdx + 1) % imgFileList.size()];
+        if (imgDB.renameKey(oldPath, newPath)) {
+            // 缓存保住了：当前图不用再解。旧路径在预读队列里的任务刚被丢掉，
+            // 顺手补一次邻居预取，改名后立刻按 → 才有得命中（否则要现解一张）。
+            if (shouldPrefetchNeighbor())
+                imgDB.requestPreloadBatch({ newPath, nextPath });
         }
-        updateNavigationDirectory();
+        else {
+            // 当前图不在缓存里（占位图 / 正在解码）：退回原来的重新请求
+            if (auto asset = requestCurrentImage(nextPath)) {
+                curPar.imageAssetPtr = std::move(asset);
+                updatePlaceholderImage();
+                curPar.Init(winWidth, winHeight);
+            }
+        }
+        updateNavigationDirectory(false); // 图像没变：不重建鸟瞰、不丢排队中的翻页请求
         operateQueue.push({ ActionENUM::refresh });
     }
 

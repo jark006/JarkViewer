@@ -20,9 +20,10 @@ void NavigationOverlay::setDirectory(const std::vector<std::wstring>& files, int
     current_ = current;
     first_ = current - (capacity_ - 1) / 2; // 当前图片居中（layout 会按新容量夹取）
     requested_.clear();
-    overviewDirty_ = true;
-    for (auto& texture : textures_)
-        texture.version = 0;
+    // 不清 texture.version、也不无条件标 overviewDirty_：draw() 已经按
+    // texture.path / thumbnail.version 判断要不要重传（见 draw 里的判定），清 version 只会让
+    // “同一张图被改名 / 只是重排顺序”时把整条带重传一遍；鸟瞰是否需要重建由 sync() 的
+    // imageVersion 与图像尺寸决定，目录内容变化本身不改当前画面。
     layout();
 }
 
